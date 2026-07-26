@@ -43,6 +43,8 @@ Duties are orthogonal to tier: a Volunteer may hold any combination, and `report
 
 ### Administration
 
+> Capability numbers are permanent identifiers assigned in order of introduction, not reading order — every other doc cites them by number, so they are never renumbered when a capability is added to an existing group. Cap 17 sitting among caps 1–3 is expected, not an error.
+
 | # | Capability |
 | :---- | :---- |
 | 1 | **Account management** — Admin creates/deletes non-admin accounts, assigns access tiers and duties. |
@@ -82,7 +84,7 @@ Duties are orthogonal to tier: a Volunteer may hold any combination, and `report
 | Shift assigned / defaulted to you | The owning driver | push + flag | event |
 | Shift reminder (hard-coded 1-hour offset before start) | The owning driver | push + flag | time |
 | Driver sets unavailability | Coordinator (Staff) only | push + flag | event |
-| Shift becomes open (due to cancellation) | Coordinator + eligible drivers | push + flag | event |
+| Shift returns to the board as open — release (cap 8), reschedule conflict (cap 9), or staff unassign. Never from `CANCELLED`, which is terminal. | Coordinator + eligible drivers | push + flag | event |
 | Shift still open and at-risk (1 day before start) | Coordinator + eligible drivers | push + flag | time |
 | Truck inbound | receiver tablet (device push subscription; fires regardless of who is logged in) | push + flag | event |
 
@@ -93,7 +95,7 @@ Eligible driver (the fan-out set for open-shift and at-risk alerts) is computed 
 | # | Capability |
 | :---- | :---- |
 | 14 | **Weight entry** — The logged-in receiver picks the run/shift they're receiving against, then records weights by stop and category at the receiver tablet; each entry is attributed to that user and confirmed on submit (no separate sign-off step at the entry level). Closing out the whole run is a separate, explicit "Receive done" action once every stop is weighed or skipped. |
-| 15 | **Report generation** — Auto-calculated, inspectable to store-category-day, with in-app AGFP→NTFB (Meal Connect) category mapping, exportable. Every inspected entry (weight, reportable flag) is editable from this drill-in, using the same void-old + insert-new mechanism as receiver edits (cap 14). Before the receiver's edit window closes (`N` days from shift start, ops-configured), the receiver can also edit their own entries directly at the tablet (cap 14); after it closes, editing is Reporter-only, exclusively from here — the only path to correct a bad entry discovered later without reopening receiver access. |
+| 15 | **Report generation** — Auto-calculated, inspectable to store-category-day, with in-app AGFP→NTFB (Meal Connect) category mapping, exportable. Every inspected entry is editable from this drill-in. **Weight corrections** use the same void-old + insert-new mechanism as receiver edits (cap 14), preserving the audit trail. The **reportable flag** is a plain field edit — last write wins, stamped with who and when — since it carries no weight and has no prior value worth preserving as a row. Before the receiver's edit window closes (`N` days from shift start, ops-configured), the receiver can also edit their own entries directly at the tablet (cap 14); after it closes, editing is Reporter-only, exclusively from here — the only path to correct a bad entry discovered later without reopening receiver access. |
 | 16 | **Metrics view** — Admin sees per-store and total-intake metrics, including unreported donation volume. Also surfaces shift-coverage failures: unclaimed shifts (window passed, never claimed) and no-shows (claimed, never started), by driver/store/period — the same "consistently under-covered route" or "this driver flakes" visibility the store-donation pattern gets. |
 
 **Key data boundary:** *Intake ≠ NTFB-reported.* R3 records all rescued/donated weight for admin metrics, but only donations flagged for reporting (the toggle, ON by default) flow to the NTFB report. Unreported donations are tracked for metrics, never reported. These are two distinct numbers the system keeps separate from day one.

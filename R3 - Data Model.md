@@ -1,6 +1,6 @@
 # R3 — Data Model
 
-**Purpose.** Physical PostgreSQL schema for R3: concrete types, nullability, constraints, and indexes that *enforce* the locked domain model (`R3 - Domain Modeling .md`, I1–I30) at the storage layer, plus the concerns `Domain Modeling` explicitly punts here: concurrency/optimistic locking, soft-delete mechanics, the polymorphic `Donor` FK + free-text label, and the `horizon` config. Owns *how data is stored and constrained*. Defers full PII/credential attributes (→ architecture/access doc, not yet written), report and metric definitions (→ reporting doc, not yet written), and notification delivery mechanics (→ notifications doc, not yet written).
+**Purpose.** Physical PostgreSQL schema for R3: concrete types, nullability, constraints, and indexes that *enforce* the locked domain model (`R3 - Domain Modeling .md`, I1–I30) at the storage layer, plus the concerns `Domain Modeling` explicitly punts here: concurrency/optimistic locking, soft-delete mechanics, the polymorphic `Donor` FK + free-text label, and the `horizon` config. Owns *how data is stored and constrained*. Defers full PII/credential attributes and the `session` table (→ `R3 - Architecture.md` §4.2), report and metric definitions (→ reporting doc, deferred), and notification delivery mechanics (→ notifications doc, deferred).
 
 Reconciled against `R3 - Domain Modeling .md` (locked) and the PRD. Invariant citations (I#) are verified against `Domain Modeling §4`.
 
@@ -32,7 +32,7 @@ CREATE TYPE shiftstop_disposition AS ENUM ('PENDING','COLLECTED','SKIPPED','REAS
 CREATE TYPE donation_status       AS ENUM ('SUGGESTED','CONFIRMED');                  -- Domain Modeling §2.3
 ```
 
-Tradeoff accepted (decision 4): adding/renaming a state later needs `ALTER TYPE ... ADD VALUE`. Fine, these sets are domain-locked.
+Native enums rather than lookup tables. Tradeoff accepted: adding or renaming a state later needs `ALTER TYPE ... ADD VALUE`. Fine — these sets are domain-locked, and an enum makes an invalid state unrepresentable rather than merely unreferenced.
 
 ---
 
@@ -60,7 +60,7 @@ CREATE TABLE app_user (
   username       text NOT NULL,                    -- lowercase [a-z0-9], non-empty (I3)
   tier           tier NOT NULL,                     -- I1
   -- credential (PIN hash for Volunteer / password hash for Staff+Admin) and PII (phone, address — NOT name, which is public-within-org and shown on login/board to everyone)
-  -- are owned by the architecture/access doc (not yet written). PIN defaults to last 4 of phone (PRD §2). NOT modeled here.
+  -- are owned by `R3 - Architecture.md` §4.2. PIN defaults to last 4 of phone, is NOT unique, and is never force-changed (Architecture §4.2). NOT modeled here.
   deactivated_at timestamptz,                        -- NULL = active
   created_at     timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT uq_user_username   UNIQUE (username),                    -- spans deactivated users (I3: reserved, no reuse)
@@ -70,7 +70,7 @@ CREATE TABLE app_user (
 CREATE TABLE user_duty (
   user_id uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
   duty    duty NOT NULL,
-  PRIMARY KEY (user_id, duty)                        -- 0..3 duties per user (I2); junction (decision 4)
+  PRIMARY KEY (user_id, duty)                        -- 0..3 duties per user (I2); junction, not a column set
 );
 ```
 
@@ -126,14 +126,14 @@ CREATE TABLE route (
   created_at     timestamptz NOT NULL DEFAULT now()
 );
 
--- Lifecycle (extends Domain Modeling §3.3, which is silent on Route): archive via deactivated_at (soft), OR hard-delete
--- when nothing references it (FK-RESTRICT lets it through). Same pattern as the I21 masters. Domain Modeling §3.3 needs a Route line.
+-- Lifecycle (Domain Modeling §3.3, Route row): archive via deactivated_at (soft), OR hard-delete
+-- when nothing references it (FK-RESTRICT lets it through). Same pattern as the I21 masters.
 
 CREATE TABLE route_stop (
   id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   route_id uuid NOT NULL REFERENCES route(id) ON DELETE RESTRICT,
   donor_id uuid NOT NULL REFERENCES donor(id) ON DELETE RESTRICT,
-  position integer NOT NULL,                                       -- integer order (decision 8)
+  position integer NOT NULL,                                       -- contiguous integer order; reorder renumbers the route (~8 stops, so fractional ranks buy nothing)
   CONSTRAINT uq_route_stop_donor    UNIQUE (route_id, donor_id),               -- I28 (template side): ≤1 stop per donor
   CONSTRAINT uq_route_stop_position UNIQUE (route_id, position) DEFERRABLE INITIALLY DEFERRED
 );
@@ -152,16 +152,15 @@ CREATE TABLE recurrence_pattern (
   end_time         time NOT NULL,
   end_date         date,                              -- domain field; NULL = open-ended (Domain Modeling §5.3)
   owner_default_id uuid REFERENCES app_user(id) ON DELETE RESTRICT,  -- "claim all future" target; NULL = none
-  active           boolean NOT NULL DEFAULT true,     -- Domain Modeling §5.3 pattern.active (NOT the I21 soft-delete pattern)
-  created_by       uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,  -- pattern author (decision 2; physical add beyond I26)
+  created_by       uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,  -- pattern author; physical add beyond I26
   created_at       timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT ck_rp_weekdays CHECK (array_length(weekdays,1) >= 1
                                    AND weekdays <@ ARRAY[1,2,3,4,5,6,7]::smallint[]),
-  CONSTRAINT ck_rp_window   CHECK (end_time > start_time)  -- intra-day windows only (no overnight pickups, confirmed)
+  CONSTRAINT ck_rp_window   CHECK (end_time > start_time)  -- intra-day only, no overnight pickups (Domain Modeling §5.3)
 );
 ```
 
-`created_by` is a **physical addition beyond I26's named set** (which lists only WeightEntry/UnscheduledDonation/Shift). It exists solely to source the minted-shift author per decision 2.
+`created_by` is a **physical addition beyond I26's named set** (which lists only WeightEntry/UnscheduledDonation/Shift). It exists solely to source the minted-shift author: the materialization job has no logged-in user, so a recurring shift inherits its `created_by` from whoever authored the pattern.
 
 ### 5.3 Shift (materialized instance, or one-off)
 
@@ -179,11 +178,11 @@ CREATE TABLE shift (
   pickup_completed_at   timestamptz,                           -- I27 handoff milestone; gate is service-layer
   note                  text,                                  -- Shift.note: one run-level note, driver-authored (Domain Modeling §2.3)
   staff_note            text,                                  -- coordinator→driver note, staff-authored, shown on driver's shift detail (PRD cap 11)
-  created_by            uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,  -- = recurrence_pattern.created_by for minted (decision 2)
+  created_by            uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,  -- = recurrence_pattern.created_by for minted shifts
   updated_by            uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT uq_shift_occurrence UNIQUE (recurrence_pattern_id, occurrence_date),  -- idempotency (decision 6)
+  CONSTRAINT uq_shift_occurrence UNIQUE (recurrence_pattern_id, occurrence_date),  -- idempotency: what makes the materialization sweep safe to re-run
   CONSTRAINT ck_shift_window     CHECK (ends_at > starts_at),
   CONSTRAINT ck_shift_truck      CHECK (truck_id IS NULL OR status IN ('IN_PROGRESS','COMPLETED')),  -- I8
   CONSTRAINT ck_shift_owner      CHECK (                                           -- I7 / Domain Modeling §2.2 (LOCKED)
@@ -292,12 +291,12 @@ CREATE TABLE unscheduled_donation (
   updated_by    uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,  -- I26
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now(),
-  -- (decision 1) source is FK XOR label XOR neither(anon); never both
+  -- source is FK XOR label XOR neither(anon); never both. Free text never auto-creates a master Donor.
   CONSTRAINT ck_ud_source_exclusive CHECK (donor_id IS NULL OR donor_label IS NULL),
-  -- shape table: CONFIRMED => weight present (unconditional)
+  -- I16(a): CONFIRMED => weight present (unconditional; metrics count unreportable rows too)
   CONSTRAINT ck_ud_confirmed_weight CHECK (status <> 'CONFIRMED' OR weight IS NOT NULL),
-  -- I16: CONFIRMED ∧ reportable => source present
-  CONSTRAINT ck_ud_i16_source CHECK (
+  -- I16(b): CONFIRMED ∧ reportable => source present
+  CONSTRAINT ck_ud_i16b_source CHECK (
     NOT (status = 'CONFIRMED' AND reportable)
     OR  (donor_id IS NOT NULL OR donor_label IS NOT NULL)
   )
@@ -308,7 +307,7 @@ Source discriminator is **derived** (`donor_id` → master; `donor_label` → la
 
 **On-route guard (I29, service-layer):** if `shift_id` is non-null, `donor_id` must **not** match any `shift_stop.donor_id` of that shift (more food from a scheduled stop is additional WeightEntry rows, not an UnscheduledDonation). Cross-table → not CHECK-expressible.
 
-**SUGGESTED lifecycle (I17):** unconfirmed `SUGGESTED` rows are **hard-deleted** at the shift's receive-done or edit-window expiry (zero ledger value). Allowed because a SUGGESTED row has no children.
+**SUGGESTED lifecycle (I17):** unconfirmed `SUGGESTED` rows are **hard-deleted** — inline in the receive-done transaction, or, for a shift never received against, by the daily sweep once the edit window has expired (zero ledger value either way). Allowed because a SUGGESTED row has no children.
 
 ---
 
@@ -330,11 +329,11 @@ report  = weight_entry[NOT voided]  ∪  unscheduled_donation[CONFIRMED ∧ repo
 metrics = weight_entry[NOT voided]  ∪  unscheduled_donation[CONFIRMED]            -- ignores reportable
 ```
 
-Neither may filter the union on `shift` (walk-ins have none). Grouping is `report_day × category × donor-or-label`; anonymous walk-ins collapse to one "unattributed" bucket (decision 1 surfacing).
+Neither may filter the union on `shift` (walk-ins have none). Grouping is `report_day × category × donor-or-label`; anonymous walk-ins collapse to one "unattributed" bucket — the visible consequence of allowing a null source.
 
 ---
 
-## 9. Concurrency & locking (decision 3)
+## 9. Concurrency & locking
 
 - **No `version` column anywhere.** No `SELECT ... FOR UPDATE` on common paths.  
 - **Lifecycle transitions = state-predicate conditional UPDATE.** The precondition *is* the optimistic check; `rowcount = 0` = lost race / stale state.
@@ -373,7 +372,7 @@ CREATE TABLE availability_block (
 );
 ```
 
-Whole-person, time-only (I19) — `Domain Modeling` deliberately dropped the PRD's route-scoped availability to keep eligibility a pure temporal overlap (`Domain Modeling §5.2`, appendix). Overlap test: `b.starts_at < shift.ends_at AND shift.starts_at < b.ends_at` (half-open).
+Whole-person, time-only (I19) — `Domain Modeling` deliberately dropped the PRD's route-scoped availability to keep eligibility a pure temporal overlap (`Domain Modeling §5.2`). Overlap test: `b.starts_at < shift.ends_at AND shift.starts_at < b.ends_at` (half-open).
 
 Shape ratified: `(user_id, starts_at, ends_at)`, no `route_id`. If route-scoped unavailability is ever needed, that is a change to `Domain Modeling` first (add nullable `route_id`, NULL = all routes), then here.
 
@@ -389,14 +388,28 @@ CREATE TABLE notification (
   recipient_id   uuid REFERENCES app_user(id) ON DELETE RESTRICT,      -- NULL = device-scoped (truck-inbound only)
   subscription_id uuid REFERENCES push_subscription(id) ON DELETE RESTRICT, -- set when recipient_id IS NULL; identifies which device
   event          text NOT NULL,                        -- event taxonomy owned by notifications doc
+  shift_id       uuid REFERENCES shift(id) ON DELETE RESTRICT,  -- subject shift when the event has one; NULL otherwise
   payload        jsonb NOT NULL DEFAULT '{}',
   read_at        timestamptz,                           -- NULL = unread (in-app inbox = source of truth, PRD); device-scoped rows have no inbox reader and are never marked read
+  -- Push dispatch state (outbox pattern; owned by Architecture §4.4). The row is written INSIDE the
+  -- business transaction; the push is dispatched OUTSIDE it, because write transactions run
+  -- SERIALIZABLE with retry and a retried transaction would re-send (Architecture §4.1).
+  delivered_at    timestamptz,                          -- NULL = push not yet delivered. Inbox delivery never depends on this.
+  attempts        integer NOT NULL DEFAULT 0,           -- dispatch attempts; give up after a cap (push is best-effort, PRD channel strategy)
+  last_attempt_at timestamptz,                          -- drives retry backoff
   created_at     timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT ck_notif_recipient CHECK (
     (recipient_id IS NOT NULL AND subscription_id IS NULL) OR
     (recipient_id IS NULL AND subscription_id IS NOT NULL)
   )
 );
+
+-- Send-idempotency for catch-up sweeps (Architecture §4.4): time-based jobs (1-hour reminder,
+-- at-risk-1-day) are written as "find what's due and unsent", so a delayed or repeated run must not
+-- re-send. Enforced as a constraint, not by job discipline. Only shift-scoped, time-triggered events
+-- need it; event-triggered notifications fire once by construction.
+CREATE UNIQUE INDEX uq_notif_shift_event ON notification (event, shift_id, recipient_id)
+  WHERE shift_id IS NOT NULL AND recipient_id IS NOT NULL;
 
 CREATE TABLE push_subscription (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -411,6 +424,12 @@ CREATE TABLE push_subscription (
 ```
 
 Added in reconciliation. `user_id NULL` models the device-level receiver-tablet subscription (PRD §2: "a notification endpoint, not a login"). Recommend deferring final shape to the notifications doc; included here so the data model isn't silently incomplete.
+
+**`shift_id` serves two purposes** (hence a real FK rather than a `payload` key): it is the deep-link anchor for the in-app inbox (UI S1.9, "tap to act") and the dedupe key for `uq_notif_shift_event` above. Nullable — not every event has a subject shift (e.g. "driver sets unavailability").
+
+**Dispatch state is architecture's, not the notifications doc's.** `delivered_at` / `attempts` / `last_attempt_at` exist because the `notification` row *is* the outbox: it is committed atomically with the business change, and a separate in-process sweep delivers the push. If the process dies between commit and delivery the row survives and the next sweep retries it. Delivery is **at-least-once** (a crash between "push sent" and "mark delivered" re-sends — a duplicate banner is preferable to a lost reminder). A permanently failed push is **not** a data-integrity problem: the in-app inbox is the source of truth (PRD channel strategy), so dispatch gives up after a cap and logs. A `410 Gone` from the push gateway means the subscription is dead (uninstalled / permission revoked) → delete the `push_subscription` row; this is the normal end of a subscription's life, not an error.
+
+**Also note the receiver edit window is NOT a job.** `now < shift.starts_at + app_config.receiver_edit_window_days` is derived at request time; only the `SUGGESTED` purge (I17) needs a scheduled write.
 
 `notification.recipient_id` is nullable because truck-inbound is a genuinely device-scoped event (fires at the receiver tablet regardless of who, if anyone, is logged in) and has no `app_user` to point at. Its row instead carries `subscription_id`, referencing the device's `push_subscription` row. Every other event type keeps `recipient_id NOT NULL` / `subscription_id NULL` — this is a one-event carve-out, not a general schema loosening (`ck_notif_recipient` enforces exactly one of the two is set).
 
@@ -444,6 +463,9 @@ CREATE INDEX ix_ab_user_window  ON availability_block (user_id, starts_at, ends_
 CREATE INDEX ix_notif_unread    ON notification (recipient_id, created_at) WHERE read_at IS NULL AND recipient_id IS NOT NULL;
 CREATE INDEX ix_notif_device    ON notification (subscription_id, created_at) WHERE subscription_id IS NOT NULL;
 
+-- push dispatch drain (Architecture §4.4): "undelivered, oldest first"
+CREATE INDEX ix_notif_pending   ON notification (created_at) WHERE delivered_at IS NULL;
+
 -- FK indexes (PG does NOT auto-index FKs; needed for joins + RESTRICT delete checks). Add on:
 --   route_stop(route_id), shift(route_id, recurrence_pattern_id, truck_id, created_by),
 --   shift_stop(shift_id), weight_entry(category_id, created_by), unscheduled_donation(shift_id, donor_id, category_id),
@@ -453,33 +475,13 @@ CREATE INDEX ix_notif_device    ON notification (subscription_id, created_at) WH
 
 ---
 
-## Candidate invariants for CLAUDE.md
+## 13. Cross-doc dependencies
 
-1. All instants `timestamptz`; one pantry tz in `app_config.timezone` (IANA, DST-aware). Never a fixed offset, never naive `timestamp`.  
-2. Soft-delete = `deactivated_at` (`NULL`=active) on Donor/Category/Truck/User (I21). Active reads filter `deactivated_at IS NULL`.  
-3. Every FK `ON DELETE RESTRICT` — this **is** the I21 history guard. `created_by`/`updated_by` are real, `NOT NULL` FKs (I26) → a stamped user can't be hard-deleted.  
-4. Minted `shift.created_by = recurrence_pattern.created_by`. No system user. Minted ⇔ `recurrence_pattern_id IS NOT NULL`.  
-5. `shiftstop_disposition` ∈ {PENDING,COLLECTED,SKIPPED,REASSIGNED}; `WEIGHED` derived (I12) via EXISTS over non-voided WeightEntry, never stored. `REASSIGNED` is terminal, set only by staff mid-run reassignment (I30) — a new ShiftStop row is inserted on the destination shift, never an in-place `shift_id` update.  
-6. WeightEntry value columns immutable; sole mutation is void (`false→true`, once). Totals = `SUM(weight) WHERE NOT voided` (I13). Never store a running total.  
-7. UnscheduledDonation: `donor_id` XOR `donor_label` XOR neither; `CONFIRMED ⇒ weight`; `CONFIRMED ∧ reportable ⇒ source` (I16). `shift_id` is 0..1 (driver-add has one, walk-in NULL).  
-8. `report = weight_entry[¬voided] ∪ unscheduled_donation[CONFIRMED ∧ reportable]`; `metrics` drops the `reportable` filter. Never filter the union on shift. Day = `shift.occurrence_date` / `unscheduled_donation.received_date`.  
-9. Recurrence idempotency: `UNIQUE(recurrence_pattern_id, occurrence_date)`, NULLS DISTINCT; job inserts `ON CONFLICT DO NOTHING`. Born-CLAIMED only if `owner_default_id` set ∧ `eligible()` (I25).  
-10. Cross-pattern duplicate-run identity is a soft warn at pattern create/edit, never a constraint; the rolling job never conflict-checks.  
-11. No `version` column. Lifecycle via state-predicate UPDATE (`rowcount 0` = lost); cancel predicate `status IN ('OPEN','CLAIMED')` enforces I9. Field edits LWW. No claim count cap; claim gate is `eligible()` (I20).  
-12. `UNIQUE(parent, donor)` on route_stop/shift_stop = I28. Integer `position`, deferrable unique, renumber-in-txn.  
-13. I29 (on-shift walk-in donor ≠ a ShiftStop donor) and the I12/I27 completion/handoff gates are service-layer (cross-table/cross-row, non-declarative).  
-14. `username` `text`, lowercase `[a-z0-9]` non-empty, UNIQUE across deactivated users, immutable (I3).  
-15. Truck: no exclusivity (I22), no unique time-binding. AvailabilityBlock: whole-person, time-only (I19).
-
----
-
-## Cross-doc dependencies
-
-- **Architecture/access doc (not yet written):** materialization job (reads `app_config.horizon_days` + `timezone`; converts local rule times → instants DST-aware; `ON CONFLICT DO NOTHING`; born-CLAIMED via `eligible()`); auth/session boundary owns `app_user` credential (PIN/password by tier) + PII columns; service-layer transition guards (I9/I10/I11/I12/I27) and `eligible()`.  
-- **API doc (not yet written):** endpoint contracts for claim/start/receive-done/weigh/skip/void/confirm/reportable-toggle.  
-- **Workflow doc (not yet written):** duplicate-run soft-warn flow (proceed/skip-dates/cancel) at pattern create/edit; receive worklist via WEIGHED-EXISTS; pickup-complete handoff sets `pickup_completed_at`; SUGGESTED purge at receive-done/window expiry (I17).  
+- **Architecture (`R3 - Architecture.md`):** materialization job (reads `app_config.horizon_days` + `timezone`; converts local rule times → instants DST-aware; `ON CONFLICT DO NOTHING`; born-CLAIMED via `eligible()`); auth/session boundary owns `app_user` credential (PIN/password by tier) + PII columns; service-layer transition guards (I9/I10/I11/I12/I27) and `eligible()`. **Adds to this schema:** a `session` table (§4.2), credential + PII columns on `app_user`, session-lifetime keys in `app_config`, and the `notification` dispatch columns already applied in §11. **Constrains this schema's use:** all write transactions run `SERIALIZABLE` with retry, so the §9 conditional-UPDATE predicates are a second line of defence rather than the only one; and every invariant is pushed to the lowest enforcement tier that can express it (Architecture §4.1), which is the principle this doc's CHECK-vs-service split already follows.  
+- **API doc (deferred):** endpoint contracts for claim/start/receive-done/weigh/skip/void/confirm/reportable-toggle.  
+- **Workflow doc (deferred):** duplicate-run soft-warn flow (proceed/skip-dates/cancel) at pattern create/edit; receive worklist via WEIGHED-EXISTS; pickup-complete handoff sets `pickup_completed_at`; SUGGESTED purge at receive-done/window expiry (I17).  
 - **UI/UX Spec** (`R3 - UI_UX Spec .md`): `reportable` toggle default+visibility; off-route donor warning (WeightEntry donor not in snapshot); board preview beyond horizon (read-only, no rows); active-only pickers rely on `deactivated_at IS NULL`.  
 - **Reporting doc:** owns `report`/`metrics` view definitions and MISSED/UNCLAIMED/NO_SHOW derivations; consumes the day-anchor + union shape in §8.  
 - **Notifications doc:** owns event taxonomy, fan-out matrix, scheduling; consumes `notification`/`push_subscription` (§11).  
-- **Domain Modeling (canonical, locked):** full attribute lists, state machines, I1–I29. This doc transcribes value-sets into DDL; on any mismatch, `Domain Modeling` wins.
+- **Domain Modeling (canonical, locked):** full attribute lists, state machines, I1–I30. This doc transcribes value-sets into DDL; on any mismatch, `Domain Modeling` wins.
 

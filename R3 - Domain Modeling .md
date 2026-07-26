@@ -92,7 +92,7 @@ Read as **left : right** (instances of left per one right ; instances of right p
 
 **Availability — whole-person, time-only.** No route scope. Eligibility is a pure time-overlap test.
 
-**Soft-delete rule (applies to `Donor`, `Category`, `Truck`, `User`).** Has any referencing history → **soft-delete only** (deactivate/archive; hidden from new use; preserved everywhere referenced). Has no history → hard-delete permitted (fix a mistaken create). (Field edits — name, address, notes — are always allowed; soft-delete is only about removal.) For `User`, "referencing history" includes owned shifts, `created_by`/`updated_by` stamps, and any intake rows; auth/session mechanics live in the access doc.
+**Soft-delete rule (applies to `Donor`, `Category`, `Truck`, `User`).** Has any referencing history → **soft-delete only** (deactivate/archive; hidden from new use; preserved everywhere referenced). Has no history → hard-delete permitted (fix a mistaken create). (Field edits — name, address, notes — are always allowed; soft-delete is only about removal.) For `User`, "referencing history" includes owned shifts, `created_by`/`updated_by` stamps, and any intake rows; auth/session mechanics live in `R3 - Architecture.md` §4.2.
 
 **Truck.** `truck_name`, optional `plate`, `active` status. Inactive trucks hidden from driver selection. **No exclusivity invariant** — double-booking the same truck across concurrent shifts is allowed (soft, low-impact).
 
@@ -179,7 +179,7 @@ One shared entity advanced by **two actors in sequence**: the driver during the 
 | Category | ACTIVE ⇄ ARCHIVED | archived: hidden from new entry, preserved in history/reports |
 | Truck | ACTIVE ⇄ INACTIVE | inactive: hidden from driver selection |
 | Donor | ACTIVE ⇄ DEACTIVATED | hard-delete only if zero referencing history |
-| User | ACTIVE ⇄ DEACTIVATED | hard-delete only if zero referencing history (login/session → access doc) |
+| User | ACTIVE ⇄ DEACTIVATED | hard-delete only if zero referencing history (login/session → Architecture §4.2) |
 | Route | ACTIVE ⇄ ARCHIVED | archived: hidden from route picker (S1.6); hard-delete only if zero referencing history |
 
 ---
@@ -212,8 +212,8 @@ One shared entity advanced by **two actors in sequence**: the driver during the 
 - **I13** WeightEntry is keyed (Shift, Donor, Category), has no ShiftStop FK, and is append-only. Weight rows are immutable; corrections are void-old + insert-new. Voided rows are retained but excluded from every sum/derivation; totals are SUM(non-voided)-on-read, never stored.
 - **I14** Planned intake → WeightEntry. Unplanned intake → UnscheduledDonation. A driver-add never creates a ShiftStop row.
 - **I15** scheduled ⇒ reportable (one-way): every WeightEntry is reportable and needs no flag. Only UnscheduledDonation carries a reportable flag (default ON); unscheduled does NOT imply reportable (store-call = ON, walk-in = OFF).
-- **I16** CONFIRMED ∧ reportable=true ⇒ (Donor FK or donor_label non-null) ∧ weight non-null.
-- **I17** A SUGGESTED UnscheduledDonation originates only from a driver-add; unconfirmed SUGGESTED rows are deleted at that shift's receive-done (or edit-window expiry).
+- **I16** Two clauses, deliberately separate: (a) CONFIRMED ⇒ weight non-null, unconditionally — metrics union every CONFIRMED row regardless of `reportable`, so a weightless one would corrupt the total; (b) CONFIRMED ∧ reportable=true ⇒ source (Donor FK or donor_label) non-null — NTFB needs an attributable store, an unreported walk-in does not.
+- **I17** A SUGGESTED UnscheduledDonation originates only from a driver-add; unconfirmed SUGGESTED rows are deleted at that shift's receive-done (inline, in that transaction) or, for shifts never received against, by the daily sweep once the edit window has expired.
 - **I18** WeightEntry and UnscheduledDonation are peer weight records; neither references the other. Report/metrics union them, never nest.
 
 **AVAILABILITY / ELIGIBILITY**
@@ -305,14 +305,17 @@ RecurrencePattern
   rule          weekly on {days} + time-of-day + route
   ownerDefault  0..1 User      # "claim all future" sets this
   endDate       optional       # staff: "runs until Dec 20"  |  null = open-ended (domain)
-  active        bool
 ```
+
+**Time-of-day windows are intra-day.** `end_time > start_time` — no overnight pickups. A run that would cross midnight is split into two patterns.
+
+**One stop condition, not two.** `endDate` is the only way a pattern stops generating; there is no separate active/paused flag. A second switch would be redundant (`endDate` in the past stops the job identically) and would give the materialization loop two conditions that can disagree. Pausing an open-ended series means writing today into `endDate` and clearing it to resume. Note that neither stopping mechanism retracts *already-materialized* instances — because materialization is eager to the horizon, ending a series also requires staff bulk-terminate over the remaining tail.
 
 horizon = system config, LOCKED at ~1 year, rolling. NOT a domain field. (→ ops / data-model.)
 
 ```
 Materialization (rolling job):
-  for each active pattern:
+  for each pattern:
     for each occurrence date D in [now, horizon]:
         if pattern.endDate and D > pattern.endDate:  stop this pattern
         if no Shift exists for (pattern, D):
@@ -351,24 +354,7 @@ bulk-terminate staff-only: CANCELLED (terminal) on instances in [from, to]; patt
 
 ---
 
-## 6. Candidate invariants for CLAUDE.md
-
-Global rules this section revealed, to promote into the project-wide builder contract:
-
-1. `ShiftStop` is a frozen snapshot taken at Shift start; route edits never alter a started/finished shift (I5, I6).  
-2. Intake is append-only; totals are SUM-on-read; never store a running total (I13).  
-3. `reportable = true ⇒ source (donor FK or label) and weight are non-null` (I16).  
-4. Master data with history is soft-deleted only; hard-delete is for zero-history mistakes only (I21).  
-5. A Shift completes only via the receiver's receive-done; no auto-complete (I11).  
-6. A Shift cannot complete until every ShiftStop is `WEIGHED`, `SKIPPED`, or `REASSIGNED` (I12).  
-7. Never transition into `CANCELLED` from `IN_PROGRESS` or `COMPLETED` (I9).  
-8. `username` is unique, immutable, lowercase, and never reused while a user is deactivated (I3).  
-9. No driver may hold two time-overlapping active shifts, nor a shift overlapping their availability (I20).  
-10. Per-instance recurrence operations never mutate the pattern (I23).
-
----
-
-## 7. Cross-doc dependencies
+## 6. Cross-doc dependencies
 
 | Concern | Owns | This doc depends on it for |
 | :---- | :---- | :---- |
@@ -376,7 +362,7 @@ Global rules this section revealed, to promote into the project-wide builder con
 | **API** | Endpoint shapes. | Claim / start / receive-done / weigh / skip operations. |
 | **UI** | Screens; receiver worklist; the `reportable` toggle's default + visibility (now load-bearing for NTFB accuracy); board preview beyond horizon; off-route donor warning. | Surfacing snapshots, suggestions, and the completion gate. |
 | **Reporting** | The NTFB report and all metrics. `report = WeightEntry[voided = false] ∪ UnscheduledDonation[CONFIRMED ∧ reportable]`. The report query **must not filter on `Shift`** (walk-ins have none). Metrics union everything. `MISSED = passed ∧ state ∈ {OPEN, CLAIMED}`, split UNCLAIMED (OPEN) vs NO_SHOW (CLAIMED). | Definition of reportable intake. |
-| **Access & Sessions** | Auth (PIN/password by tier), sessions, inactivity timeout, who-can-edit-when enforcement, the `User` behind `created_by`. | Identity that `created_by` / ownership reference. |
+| **Architecture** (`R3 - Architecture.md`) | Auth (PIN/password by tier), sessions, inactivity timeout, who-can-edit-when enforcement, the `User` behind `created_by`. Also: **which enforcement tier each invariant above lands in** (§4.1) — DB constraint, conditional-UPDATE predicate, or service layer — plus transaction boundaries, `SERIALIZABLE` isolation, and the `eligible()` call sites. | Identity that `created_by` / ownership reference; the layer that actually enforces I3 (immutability), I5, I6, I11–I15, I17, I20, I23–I25, I27, I29, I30. |
 | **Notifications** | Delivery mechanics; reminder scheduling. | Reminders require materialized near-term instances (§5.3). |
 | **Audit (deferred)** | Full edit history (every intermediate value). | Only `last-writer` is modeled here; promote to a full trail only if NTFB disputes require it. |
 

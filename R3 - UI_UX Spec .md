@@ -71,7 +71,8 @@ Each lists states: default / hover / active / disabled / loading where relevant.
 - **Numeric keypad** — large 0–9 + decimal + backspace, ≥64px keys. The only weight/PIN input. No system keyboard.  
 - **Text input** — 48px tall, 18px text, visible label above (never placeholder-only). Used sparingly (notes, names in admin).  
 - **Card** — `--surface-paper`, 12px radius, 1px `--border`.  
-- **Status chip** — pill, text + color: Open (orange), Mine (success), Claimed (muted), At-risk (warning), Cancelled (muted strike).  
+- **Status chip** — pill, text + color: Open (orange), Claimed (muted), In progress (`--brand-orange` filled), Done (muted), At-risk (warning), Cancelled (muted strike). One chip per row, reflecting `Shift.status`.  
+- **Mine** is an *ownership overlay*, not a status — it renders in success color and replaces the Claimed chip when the viewer is the owner. Every other status keeps its own chip regardless of who owns the shift.  
 - **Top bar** — `--structural-dark`, AGFP heart logo left, current user + logout right, notification bell with unread count, push-state chip.  
 - **Bottom nav (phone)** — ≤4 items, icon + label always (no icon-only). 56px tall.  
 - **Modal / confirm** — centered, one question, two buttons. Destructive confirm names the consequence ("Release this run? It goes back to the board for others.").  
@@ -147,7 +148,7 @@ Caps 1–11, 13 (minus truck-inbound). Canonical devices: phone (driver) + deskt
 - User/device: all / shared + phone.  
 - Layout: name list → PIN keypad or password. Per §5.  
 - Primary action: Enter.  
-- Edge: wrong PIN shows inline count ("3 tries left"), never locks silently on a shared device without telling staff.
+- Edge: wrong PIN shows an inline count ("3 tries left"). At zero the account soft-locks for ~15 minutes and the message says so exactly — "Too many tries. Try again in 15 minutes." The lock always self-clears; copy must never imply a volunteer needs staff to unlock them, because nobody can (Architecture §4.2). Repeated attempts during the lock do not extend it.
 
 ### S1.2 Shared shift board (adoption centerpiece)
 
@@ -155,7 +156,7 @@ Caps 1–11, 13 (minus truck-inbound). Canonical devices: phone (driver) + deskt
 - Purpose: see every shift and its owner; claim open runs.  
 - Layout: vertical list of big rows grouped by day. Each row: date/time, route name, truck, owner name (or "OPEN"), status chip. Open runs float to the top of each day. Filter is a simple segmented control: All · Open · Mine (no dropdown).  
 - Primary action: on an Open row, **Claim**. On a Mine row, the row opens S1.3.  
-- States: Open (orange chip + Claim), Mine (success chip), Claimed-by-other (muted, owner name, no action), At-risk (warning chip, staff view).  
+- States: Open (orange chip + Claim), Mine (success chip), Claimed-by-other (muted, owner name, no action), In progress (no action from the board), Done (muted, read-only), At-risk (warning chip, staff view).  
 - Edge: recurring shift shows a small "repeats weekly" tag. Claiming prompts: "Claim every Tuesday run, or just this one?" (covers PRD: claim-once-covers-all vs single).  
 - **Partial-success feedback:** claiming "every Tuesday run" only claims instances where `eligible()` holds (Domain) — some future instances may be skipped (conflict with the driver's own overlapping shift or declared availability), never force-claimed. On completion, a toast/summary states the actual result: "Claimed 10 of 12 Tuesday runs — 2 skipped (conflicts with your schedule)," with a link to view which dates were skipped. A full-success claim (12 of 12) shows the normal, unremarkable success toast — the partial-result summary only appears when at least one instance was skipped.  
 - Copy: header "Pickup runs". Empty "No runs scheduled yet."
@@ -344,7 +345,7 @@ Caps 15–16. Canonical device: shared desktop. Pure aggregation over Phase 1+2 
 - Purpose: produce the weekly NTFB (Meal Connect) report from system data, no Excel re-summing (Success Metric 3).  
 - Layout: pick a week. Show AGFP categories with auto-summed weights, mapped to NTFB categories via an **in-app AGFP→NTFB mapping** (editable mapping table maintained here or in Admin). Every line is **inspectable down to store-category-day** (Success Metric 4: 100% traceable) — click a number to expand the underlying entries with the store, day, and receiver.  
 - Only donations flagged for reporting flow in (the toggle). The screen states the two numbers separately where relevant.  
-- **Reporter edit (PRD cap 15):** in the drill-in, each entry has an edit affordance (✎, same overwrite-look/void-insert-underneath pattern as S2.2). Before the receiver's edit window closes, this mirrors what the receiver could already do at the tablet; after it closes, this is the *only* remaining way to correct that entry — the tablet no longer allows it. No separate approval step; the Reporter's edit is itself the correction.  
+- **Reporter edit (PRD cap 15):** in the drill-in, each entry has an edit affordance (✎, same overwrite-look/void-insert-underneath pattern as S2.2). The reportable toggle is a plain switch, not a void-insert — flipping it overwrites in place (PRD cap 15). Before the receiver's edit window closes, this mirrors what the receiver could already do at the tablet; after it closes, this is the *only* remaining way to correct that entry — the tablet no longer allows it. No separate approval step; the Reporter's edit is itself the correction.  
 - Primary action: **Export** (Meal Connect format). Secondary: drill-in.  
 - States: incomplete week (show what is missing), ready, exported.  
 - Edge: an edited weight upstream (from either the receiver in-window or the Reporter here) reflects live; no version history shown beyond the underlying void trail (PRD out-of-scope as a UI feature).
@@ -384,3 +385,4 @@ Caps 15–16. Canonical device: shared desktop. Pure aggregation over Phase 1+2 
 2. **No duty-picker modal.** Nav is derived from role/duty because each shared device hosts one duty workflow. If a future device hosts two, a picker returns.  
 3. **AGFP→NTFB category mapping** is maintained in the Report screen (or Admin). Confirm where you want it to live.
 
+ 
