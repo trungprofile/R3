@@ -1,6 +1,6 @@
 # R3 — Data Model
 
-**Purpose.** Physical PostgreSQL schema for R3: concrete types, nullability, constraints, and indexes that *enforce* the locked domain model (`R3 - Domain Modeling .md`, I1–I29) at the storage layer, plus the concerns `Domain Modeling` explicitly punts here: concurrency/optimistic locking, soft-delete mechanics, the polymorphic `Donor` FK + free-text label, and the `horizon` config. Owns *how data is stored and constrained*. Defers full PII/credential attributes (→ architecture/access doc, not yet written), report and metric definitions (→ reporting doc, not yet written), and notification delivery mechanics (→ notifications doc, not yet written).
+**Purpose.** Physical PostgreSQL schema for R3: concrete types, nullability, constraints, and indexes that *enforce* the locked domain model (`R3 - Domain Modeling .md`, I1–I30) at the storage layer, plus the concerns `Domain Modeling` explicitly punts here: concurrency/optimistic locking, soft-delete mechanics, the polymorphic `Donor` FK + free-text label, and the `horizon` config. Owns *how data is stored and constrained*. Defers full PII/credential attributes (→ architecture/access doc, not yet written), report and metric definitions (→ reporting doc, not yet written), and notification delivery mechanics (→ notifications doc, not yet written).
 
 Reconciled against `R3 - Domain Modeling .md` (locked) and the PRD. Invariant citations (I#) are verified against `Domain Modeling §4`.
 

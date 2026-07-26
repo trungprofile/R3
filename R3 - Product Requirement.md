@@ -48,7 +48,7 @@ Duties are orthogonal to tier: a Volunteer may hold any combination, and `report
 | 1 | **Account management** — Admin creates/deletes non-admin accounts, assigns access tiers and duties. |
 | 2 | **Donor management** — Admin maintains permanent store donors (master data). |
 | 3 | **Truck management** — Admin maintains the truck list. A truck is a selectable entity chosen by the driver at route start (identity + attribution only). Telemetry, mileage, and maintenance are out of scope. |
-| 4 | **Category management** — Admin maintains the list of weight-entry categories (master data): add a category, archive one (hidden from new entry, preserved in history/reports). Seeded with the 11 AGFP categories at launch; not a fixed enum. |
+| 17 | **Category management** — Admin maintains the list of weight-entry categories (master data): add a category, archive one (hidden from new entry, preserved in history/reports). Seeded with the 11 AGFP categories at launch; not a fixed enum. |
 
 ### Driver scheduling & coordination
 
