@@ -1,12 +1,6 @@
 # R3 — Domain Modeling
 
-**Status:** locked for build. **Owns:** the conceptual model — ubiquitous language, entities + relationships (cardinalities), state machines, hard invariants, and the three named algorithms. **Does not own:** column types / nullability / indexes / physical schema (→ data-model doc), endpoint shapes (→ API doc), screens (→ UI doc), the report and metrics (→ reporting doc), auth/sessions (→ access doc).
-
----
-
-## Purpose
-
-Defines *what the R3 things are*, how they relate, how they change state, and the rules that must always hold. This is the source of truth the builder reads before any schema, endpoint, or screen. The PRD owns *what/why*; this doc owns the *technical how* of the domain only.
+**Purpose**: Defines *what the R3 things are*, how they relate, how they change state, and the rules that must always hold. This is the source of truth the builder reads before any schema, endpoint, or screen. The PRD owns *what/why*; this doc owns the *technical how* of the domain only.
 
 ---
 
