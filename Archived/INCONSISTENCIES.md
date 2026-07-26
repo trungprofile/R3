@@ -94,4 +94,4 @@ Suggested order: A1 → A2 → A9 → B11 → A4 → A5 → rest.
 
 ---
 
-**When all boxes are checked:** re-read the four docs once more for drift introduced by the fixes themselves, then delete this file.
+**When all boxes are checked:** re-read the four docs once more for drift introduced by the fixes themselves.
