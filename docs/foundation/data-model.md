@@ -1,8 +1,8 @@
 # R3 — Data Model
 
-**Purpose.** Physical PostgreSQL schema for R3: concrete types, nullability, constraints, and indexes that *enforce* the locked domain model (`R3 - Domain Modeling .md`, I1–I30) at the storage layer, plus the concerns `Domain Modeling` explicitly punts here: concurrency/optimistic locking, soft-delete mechanics, the polymorphic `Donor` FK + free-text label, and the `horizon` config. Owns *how data is stored and constrained*. Defers full PII/credential attributes and the `session` table (→ `R3 - Architecture.md` §4.2), report and metric definitions (→ reporting doc, deferred), and notification delivery mechanics (→ notifications doc, deferred).
+**Purpose.** Physical PostgreSQL schema for R3: concrete types, nullability, constraints, and indexes that *enforce* the locked domain model (`domain-modeling.md`, I1–I30) at the storage layer, plus the concerns `Domain Modeling` explicitly punts here: concurrency/optimistic locking, soft-delete mechanics, the polymorphic `Donor` FK + free-text label, and the `horizon` config. Owns *how data is stored and constrained*. Defers full PII/credential attributes and the `session` table (→ `architecture.md` §4.2), report and metric definitions (→ reporting doc, deferred), and notification delivery mechanics (→ notifications doc, deferred).
 
-Reconciled against `R3 - Domain Modeling .md` (locked) and the PRD. Invariant citations (I#) are verified against `Domain Modeling §4`.
+Reconciled against `domain-modeling.md` (locked) and the PRD. Invariant citations (I#) are verified against `Domain Modeling §4`.
 
 ---
 
@@ -60,7 +60,7 @@ CREATE TABLE app_user (
   username       text NOT NULL,                    -- lowercase [a-z0-9], non-empty (I3)
   tier           tier NOT NULL,                     -- I1
   -- credential (PIN hash for Volunteer / password hash for Staff+Admin) and PII (phone, address — NOT name, which is public-within-org and shown on login/board to everyone)
-  -- are owned by `R3 - Architecture.md` §4.2. PIN defaults to last 4 of phone, is NOT unique, and is never force-changed (Architecture §4.2). NOT modeled here.
+  -- are owned by `architecture.md` §4.2. PIN defaults to last 4 of phone, is NOT unique, and is never force-changed (Architecture §4.2). NOT modeled here.
   deactivated_at timestamptz,                        -- NULL = active
   created_at     timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT uq_user_username   UNIQUE (username),                    -- spans deactivated users (I3: reserved, no reuse)
@@ -477,10 +477,10 @@ CREATE INDEX ix_notif_pending   ON notification (created_at) WHERE delivered_at 
 
 ## 13. Cross-doc dependencies
 
-- **Architecture (`R3 - Architecture.md`):** materialization job (reads `app_config.horizon_days` + `timezone`; converts local rule times → instants DST-aware; `ON CONFLICT DO NOTHING`; born-CLAIMED via `eligible()`); auth/session boundary owns `app_user` credential (PIN/password by tier) + PII columns; service-layer transition guards (I9/I10/I11/I12/I27) and `eligible()`. **Adds to this schema:** a `session` table (§4.2), credential + PII columns on `app_user`, session-lifetime keys in `app_config`, and the `notification` dispatch columns already applied in §11. **Constrains this schema's use:** all write transactions run `SERIALIZABLE` with retry, so the §9 conditional-UPDATE predicates are a second line of defence rather than the only one; and every invariant is pushed to the lowest enforcement tier that can express it (Architecture §4.1), which is the principle this doc's CHECK-vs-service split already follows.  
+- **Architecture (`architecture.md`):** materialization job (reads `app_config.horizon_days` + `timezone`; converts local rule times → instants DST-aware; `ON CONFLICT DO NOTHING`; born-CLAIMED via `eligible()`); auth/session boundary owns `app_user` credential (PIN/password by tier) + PII columns; service-layer transition guards (I9/I10/I11/I12/I27) and `eligible()`. **Adds to this schema:** a `session` table (§4.2), credential + PII columns on `app_user`, session-lifetime keys in `app_config`, and the `notification` dispatch columns already applied in §11. **Constrains this schema's use:** all write transactions run `SERIALIZABLE` with retry, so the §9 conditional-UPDATE predicates are a second line of defence rather than the only one; and every invariant is pushed to the lowest enforcement tier that can express it (Architecture §4.1), which is the principle this doc's CHECK-vs-service split already follows.  
 - **API doc (deferred):** endpoint contracts for claim/start/receive-done/weigh/skip/void/confirm/reportable-toggle.  
 - **Workflow doc (deferred):** duplicate-run soft-warn flow (proceed/skip-dates/cancel) at pattern create/edit; receive worklist via WEIGHED-EXISTS; pickup-complete handoff sets `pickup_completed_at`; SUGGESTED purge at receive-done/window expiry (I17).  
-- **UI/UX Spec** (`R3 - UI_UX Spec .md`): `reportable` toggle default+visibility; off-route donor warning (WeightEntry donor not in snapshot); board preview beyond horizon (read-only, no rows); active-only pickers rely on `deactivated_at IS NULL`.  
+- **UI/UX Spec** (`ui-ux-spec.md`): `reportable` toggle default+visibility; off-route donor warning (WeightEntry donor not in snapshot); board preview beyond horizon (read-only, no rows); active-only pickers rely on `deactivated_at IS NULL`.  
 - **Reporting doc:** owns `report`/`metrics` view definitions and MISSED/UNCLAIMED/NO_SHOW derivations; consumes the day-anchor + union shape in §8.  
 - **Notifications doc:** owns event taxonomy, fan-out matrix, scheduling; consumes `notification`/`push_subscription` (§11).  
 - **Domain Modeling (canonical, locked):** full attribute lists, state machines, I1–I30. This doc transcribes value-sets into DDL; on any mismatch, `Domain Modeling` wins.
