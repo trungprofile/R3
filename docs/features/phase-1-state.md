@@ -13,8 +13,8 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **1 — preparing (lead pre-work, no lanes spawned yet)** |
-| Wave status | wave 0 **passed**; wave 1 not yet spawned |
+| Current wave | **1 — 3 lanes in flight** |
+| Wave status | spawned; awaiting reports. Lead pre-work merged as `9ee7a14`, gate green before spawn |
 | Branch | `phase-1` |
 | Loop armed | **yes** — armed 2026-07-28 |
 | Consecutive gate failures | 0 (reset on pass; wave 0 took 3 gate rounds) |
@@ -32,9 +32,11 @@ is the only record that these lanes exist.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **identity** | `server/src/middleware/**`, `server/src/routes/**`, `server/src/services/{auth,session,user}.ts`, `server/src/pii.ts`, `server/src/index.ts`, `shared/src/**`, its own `server/test/*.test.ts` | — | — | no | — | — |
-| **surface** | `client/index.html`, `client/vite.config.ts`, `client/src/{main.tsx,app/**,tokens/**,components/**,api/**}` | — | — | no | — | — |
-| **signal** | `server/src/services/notification.ts`, `server/src/jobs/**`, `client/src/sw.ts`, its own `server/test/*.test.ts` | — | — | no | — | — |
+| **identity** | `server/src/middleware/**`, `server/src/routes/**`, `server/src/services/{auth,session,user}.ts`, `server/src/pii.ts`, `server/src/index.ts`, `shared/src/**`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-ac20d698894c3410d` | `worktree-agent-ac20d698894c3410d` | **yes** | — | — |
+| **surface** | `client/index.html`, `client/vite.config.ts`, `client/src/{main.tsx,app/**,tokens/**,components/**,api/**}` | `.claude/worktrees/agent-aeae25452ec5869da` | `worktree-agent-aeae25452ec5869da` | **yes** | — | — |
+| **signal** | `server/src/services/notification.ts`, `server/src/jobs/**`, `client/src/sw.ts`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-a98720bc4ea57d5d9` | `worktree-agent-a98720bc4ea57d5d9` | **yes** | — | — |
+
+All three branched from `9ee7a14` (the pre-work commit). Spawned 2026-07-28.
 
 Seams the lead owns, deliberately not given to any lane:
 
