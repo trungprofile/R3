@@ -1,0 +1,5 @@
+{
+  "name": "@r3/client",
+  "private": true,
+  "type": "module"
+}

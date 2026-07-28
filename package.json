@@ -1,0 +1,9 @@
+{
+  "name": "r3",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ]
+}

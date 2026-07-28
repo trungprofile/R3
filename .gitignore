@@ -1,2 +1,16 @@
 archived
 .claude
+CLAUDE.md
+
+node_modules/
+dist/
+build/
+
+# Secrets live in an env file on the box, never committed (§5.1)
+.env
+.env.*
+!.env.example
+
+*.log
+.DS_Store
+

@@ -1,0 +1,60 @@
+# Runtime topology per architecture.md §4.5: Node/Express, Postgres, cloudflared.
+# No reverse proxy, no cache, no queue broker, no worker.
+#
+# NOTE: not yet exercised — the app image has no build to run until the scaffold
+# has real dependencies. The `test` profile below is independent and usable now.
+
+services:
+  app:
+    build: .
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    # Serves the API, the React build, and runs the in-process job scheduler.
+    # Not published to the host: cloudflared reaches it over the compose network.
+
+  postgres:
+    image: postgres:16
+    env_file: .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  # Disposable database for `server/test`. Built by running server/migrations, never
+  # from a fixture schema — the constraints carrying I1-I28 only exist as real DDL.
+  # tmpfs: no durability wanted, and SERIALIZABLE retry tests run measurably faster.
+  postgres-test:
+    profiles: ["test"]
+    image: postgres:16
+    environment:
+      POSTGRES_DB: r3_test
+      POSTGRES_USER: r3
+      POSTGRES_PASSWORD: r3
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U r3 -d r3_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:

@@ -1,39 +1,70 @@
 # R3
 
-System of record for Amazing Grace Food Pantry's weekly food-rescue cycle (rescue → receive → report), replacing a paper-and-phone process. PERN stack (Postgres, Express, React, Node), self-hosted, single Docker box, ~15 pickups/week, under 10 concurrent users. Build order is Phase 1 (rescue loop + scheduling) → Phase 2 (receive) → Phase 3 (report + metrics).
+System of record for Amazing Grace Food Pantry's weekly food-rescue cycle (rescue → receive → report), replacing a paper-and-phone process. PERN stack, self-hosted, single Docker box, ~15 pickups/week, under 10 concurrent users. Build order: Phase 1 (rescue loop + scheduling) → Phase 2 (receive) → Phase 3 (report + metrics).
 
-## Check the relevant doc before acting
+## Find the rule before writing the code
 
-**Don't read all foundation docs up front, but don't skip them either.** They're long and mostly non-overlapping by design — each owns a slice and defers the rest. Before touching anything a doc below owns, load it first; guessing at a rule this repo already wrote down is a bug, not a shortcut. Use the routing table to find the right doc(s) for the task at hand. Every doc ends in a "Cross-doc dependencies" table — follow that when a task touches more than one area.
+Load the doc that owns the area you're touching — these docs are long and non-overlapping by design, so read the relevant one, not all of them. Guessing at a rule the repo already wrote down is a bug. Each doc ends in a "Cross-doc dependencies" table; follow it when a task spans areas.
 
-**Authority order, when docs seem to conflict:**
-`domain-modeling.md` is **locked** and wins any mismatch → `product-requirement.md` wins on product *why/what* → `architecture.md` wins on *how it runs* → `data-model.md` wins on physical schema → `ui-ux-spec.md` wins on layout/interaction. If you find an actual inconsistency, flag it rather than silently picking a side.
-
-**Citation convention:** rules are cited as `I#` (invariant number, defined in `domain-modeling.md §4`) and `§#` (section in the doc named). When implementing something an invariant governs, cite the `I#` in code comments/PR description rather than restating the rule.
-
-### Routing table — foundation docs (`docs/foundation/`)
-
-| Doc | Load it when you're... | Owns |
+| Doc (`docs/foundation/`) | Load it when you're... | Owns |
 | :---- | :---- | :---- |
-| [`product-requirement.md`](docs/foundation/product-requirement.md) | scoping a feature, unsure *why* something works a given way, checking phase/capability numbers | Problem, roles/tiers/duties, capabilities (numbered, permanent), phasing, success metrics, notification matrix |
-| [`domain-modeling.md`](docs/foundation/domain-modeling.md) | touching any entity, state machine, or invariant (I1–I30); writing service-layer logic | Entities, cardinalities, state machines (Shift, ShiftStop), invariants I1–I30, named algorithms (username gen, `eligible()`, recurrence materialization) |
-| [`architecture.md`](docs/foundation/architecture.md) | deciding *where* a rule is enforced, touching auth/sessions, jobs/notifications dispatch, deployment, or the Kysely/migration layer | Invariant enforcement tiers (DB/predicate/service), auth & sessions (PIN/password, shared-device rules), authorization model, async jobs, process topology, schema/migration tooling, deploy & ops |
-| [`data-model.md`](docs/foundation/data-model.md) | writing a migration, a query, or anything touching table shape, constraints, or indexes | Physical Postgres schema: types, constraints, indexes, conditional-UPDATE predicates, concurrency approach |
-| [`ui-ux-spec.md`](docs/foundation/ui-ux-spec.md) | building any screen or component | Design tokens, component contracts, per-screen layouts (S1.x/S2.x/S3.x), microcopy rules, responsive matrix |
+| [`product-requirement.md`](docs/foundation/product-requirement.md) | scoping a feature, checking phase/capability numbers, unsure *why* | Problem, roles/tiers/duties, capabilities, phasing, success metrics, notification matrix |
+| [`domain-modeling.md`](docs/foundation/domain-modeling.md) | touching any entity, state machine, or invariant; writing service logic | Entities, state machines (Shift, ShiftStop), I1–I30, named algorithms (username gen, `eligible()`, recurrence materialization) |
+| [`architecture.md`](docs/foundation/architecture.md) | deciding *where* a rule is enforced; auth, jobs, deploy, Kysely/migrations | Enforcement tiers, auth & sessions, authorization, async jobs, process topology, schema tooling, ops |
+| [`data-model.md`](docs/foundation/data-model.md) | writing a migration or query; anything touching table shape | Physical schema: types, constraints, indexes, conditional-UPDATE predicates, concurrency |
+| [`ui-ux-spec.md`](docs/foundation/ui-ux-spec.md) | building any screen or component | Design tokens, component contracts, screens (S1.x/S2.x/S3.x), microcopy, responsive matrix |
 
-### As features get built
+**Authority when docs conflict:** `domain-modeling.md` is **locked** and wins any mismatch → `product-requirement.md` (why/what) → `architecture.md` (how it runs) → `data-model.md` (physical schema) → `ui-ux-spec.md` (layout/interaction). Flag real inconsistencies; don't silently pick a side.
 
-Add per-feature/per-duty docs under `docs/features/` (e.g. `docs/features/receive.md`) once a feature has enough implementation-specific detail (worked examples, edge cases hit during build) that it doesn't belong in the high-level foundation docs. Link new docs from this routing table so they stay discoverable — don't let pointers go stale.
+**Citations:** `I#` = invariant (`domain-modeling.md §4`), `§#` = section of the named doc. Cite the `I#` in code comments rather than restating the rule.
 
-`archived/` is prior scratch work — ignore unless explicitly asked to look there.
+Add `docs/features/<name>.md` once a feature accumulates worked examples or edge cases that don't belong in a foundation doc, and link it here. `archived/` is prior scratch work — ignore unless asked.
 
-## Conventions worth knowing before writing code
+## Where code goes
 
-- TypeScript throughout; Kysely (typed query builder) over an ORM — see `architecture.md §4.6` for why.
-- The database is schema source of truth: DDL → migration SQL → database → generated types. Never author a competing schema file.
-- All write transactions run `SERIALIZABLE` (see `architecture.md §4.1`) — this is load-bearing, not incidental.
-- Client-side checks are communication only; every rule is enforced server-side (usually named in `domain-modeling.md` as an `I#`).
+```
+client/src/
+  screens/{s1-rescue,s2-receive,s3-report}/  one folder per UI §8 screen ID
+  components/  tokens/  api/                 UI §3 contracts, §2 tokens, typed fetch
+  sw.ts                                      service worker — push only, never cache-first (§4.5)
+server/
+  migrations/                                hand-authored SQL, forward-only — schema authority
+  src/
+    db/index.ts                              Kysely instance + pool
+    db/types.ts                              GENERATED by kysely-codegen — never hand-edit
+    db/transaction.ts                        SERIALIZABLE + 40001 retry — every write goes through it
+    middleware/                              auth, default-deny gate, error handler (§4.3)
+    pii.ts                                   shapeUser() — sole exit path for app_user
+    routes/                                  parse, declare tier/duty, shape. No domain rules
+    services/                                one function per domain operation; owns txns; I1–I30
+    jobs/                                    catch-up sweeps (§4.4)
+    index.ts                                 boots Express + scheduler in one process (§4.5)
+  test/                                      runs against a migrated DB, never a fixture schema
+shared/src/                                  types + enum values, zero runtime dependencies
+scripts/                                     test-db, migration rehearsal, backup (§5.3)
+```
+
+Rules that aren't obvious from the path:
+
+- **Schema flows one way** (§4.6): DDL → migration → database → generated types. Editing `types.ts` to fix an error desyncs code from where invariants are enforced.
+- **Nothing outside `services/` opens a write transaction** — routes *and* jobs call in through services, which is the only thing making "the service layer enforces I12" a guarantee rather than a sentence (§4.1).
+- **A route declaring no tier/duty requirement is rejected, not open** (§4.3 default-deny).
+- **`pii.ts` gates people, not places.** PII is phone/address on `app_user`; donor `address`/`contact` are operational data drivers need and must not be trimmed.
+- **Jobs ask "what is due and unhandled?"**, never "fire at time T" — so a missed tick self-heals instead of being lost to a restart.
+
+## Conventions
+
+- TypeScript throughout; Kysely (typed query builder), never an ORM or a competing schema file.
+- All write transactions run `SERIALIZABLE` — load-bearing, not incidental (§4.1).
+- Client-side checks are communication only; every rule is enforced again server-side.
+- Tests run against a **migrated** database, never a fixture schema — tier-1/2 invariants exist only as real DDL.
+- Tier comparisons are hierarchical (`>=`); duty comparisons are set membership. Easy to write as equality by accident.
+
+## Commits
+
+- **Run the `doc-qa` agent before committing**, unless the change is trivial (typos, formatting, comments). It checks the diff against the foundation docs and reports each mismatch as either a code bug or a stale doc. Resolve every finding before committing — fix the code, or sync the doc *and* any doc its "Cross-doc dependencies" table implicates. It is report-only and never edits, so the fix is yours to make. See [`.claude/agents/doc-qa.md`](.claude/agents/doc-qa.md).
+- Do **not** add `Co-Authored-By` trailers or tool attribution to commit messages.
 
 ## Commands
 
-No build yet — this section fills in once the app scaffold exists (install/dev/test/migrate commands).
+Scaffold exists but has no dependencies installed yet — install/dev/test/migrate commands land here once tooling is added. `scripts/test-db.sh` brings up the disposable test database.
