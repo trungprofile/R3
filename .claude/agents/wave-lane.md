@@ -1,6 +1,6 @@
 ---
 name: wave-lane
-description: Builds one lane of one R3 Phase-1 wave in an isolated worktree, then reports. Use when the lead is fanning a wave out across file-disjoint lanes. Not for exploration, review, or cross-lane work.
+description: "Builds one lane of one R3 Phase-1 wave in an isolated worktree, then reports. Use when the lead is fanning a wave out across file-disjoint lanes. Not for exploration, review, or cross-lane work."
 tools: Read, Write, Edit, Grep, Glob, Bash, Skill
 model: opus
 effort: high
