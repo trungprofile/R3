@@ -5,6 +5,11 @@ archived
 .claude/settings.local.json
 .claude/**/*.local.*
 
+# Agent worktrees are whole checkouts of this repo living inside it. Without
+# this, the lead's `git add -A` after a wave merge would commit every lane's
+# entire working tree into phase-1.
+.claude/worktrees/
+
 node_modules/
 dist/
 build/
