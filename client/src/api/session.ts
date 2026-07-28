@@ -5,40 +5,33 @@
 // render the "Still here?" prompt — expiry is server-authoritative,
 // `architecture.md §4.2`), and a way to sign out (always visible, §5).
 //
-// ENDPOINT PATHS ARE ASSUMED. The auth routes are being written in another lane
-// and did not exist in this tree. They are collected here, in one file, so
-// realigning them is one edit rather than a search. See the report's `Assumed:`.
+// Paths were assumed while the auth routes were being written in another lane
+// (`phase-1-state.md` A15) and reconciled by the lead at the Wave-1 merge: the
+// real current-user route is `/me`, not `/auth/me`. Keeping them collected here
+// is what made that a one-line correction.
 
-import type { Duty, Tier } from '@r3/shared';
+import type { Duty, ShapedUser, SessionResponse, Tier } from '@r3/shared';
 import { api } from './client.ts';
 
 const PATHS = {
-  me: '/auth/me',
+  me: '/me',
   logout: '/auth/logout',
 } as const;
 
 /** The signed-in user as the server shapes it (`pii.ts` — `architecture.md §4.3`).
  *  Phone and address are present because you always see your own; they are absent
- *  on other people's records for a Volunteer viewer. */
-export interface CurrentUser {
-  id: string;
-  username: string;
-  firstName: string;
-  lastName: string;
-  /** Hierarchical — compare with `>=`, never equality (I1). */
-  tier: Tier;
-  /** Set membership — holding one implies nothing about another (I2). */
-  duties: Duty[];
-  phone?: string | null;
-  address?: string | null;
-}
+ *  — not null — on other people's records for a Volunteer viewer.
+ *
+ *  This is the server's own `ShapedUser`, re-exported rather than restated: the
+ *  local copy A15 recorded existed only because `shared/src` belonged to another
+ *  lane that wave, and two hand-kept copies of a response shape drift. */
+export type CurrentUser = ShapedUser;
 
-export interface SessionInfo {
-  user: CurrentUser;
-  /** ISO timestamp. The sign-in ends then unless activity slides it; the client
-   *  only renders a warning from this value and never decides expiry itself. */
-  expiresAt: string;
-}
+/** Server-authoritative. `sharedDevice` is the §4.2 device classification, which
+ *  the shell needs because a shared device may not offer "remember me". */
+export type SessionInfo = SessionResponse;
+
+export type { Duty, Tier };
 
 /** Also the keep-alive: any authenticated request slides `last_seen_at` server
  *  side (`architecture.md §4.2`), so re-reading this is what "Yes, I'm here"

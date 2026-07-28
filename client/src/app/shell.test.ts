@@ -16,7 +16,15 @@ import type { CurrentUser } from '../api/session.ts';
 import type { Duty, Tier } from '@r3/shared';
 
 function user(tier: Tier, duties: Duty[]): CurrentUser {
-  return { id: 'u1', username: 'kholt', firstName: 'Karen', lastName: 'Holt', tier, duties };
+  return {
+    id: 'u1',
+    username: 'kholt',
+    firstName: 'Karen',
+    lastName: 'Holt',
+    tier,
+    duties,
+    active: true,
+  };
 }
 
 const driver = user('VOLUNTEER', ['DRIVE']);

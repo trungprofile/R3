@@ -32,7 +32,7 @@ is the only record that these lanes exist.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **identity** | `server/src/middleware/**`, `server/src/routes/**`, `server/src/services/{auth,session,user}.ts`, `server/src/pii.ts`, `server/src/index.ts`, `shared/src/**`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-ac20d698894c3410d` | `worktree-agent-ac20d698894c3410d` | **yes** | — | — |
+| **identity** | `server/src/middleware/**`, `server/src/routes/**`, `server/src/services/{auth,session,user}.ts`, `server/src/pii.ts`, `server/src/index.ts`, `shared/src/**`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-ac20d698894c3410d` | `worktree-agent-ac20d698894c3410d` | **yes** | **complete** (`7906d7b`, 113 tests) | **yes** — 3rd |
 | **surface** | `client/index.html`, `client/vite.config.ts`, `client/src/{main.tsx,app/**,tokens/**,components/**,api/**}` | `.claude/worktrees/agent-aeae25452ec5869da` | `worktree-agent-aeae25452ec5869da` | **yes** | **complete** (`0f6e65f`, 19 tests) | **yes** — 2nd |
 | **signal** | `server/src/services/notification.ts`, `server/src/jobs/**`, `client/src/sw.ts`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-a98720bc4ea57d5d9` | `worktree-agent-a98720bc4ea57d5d9` | **yes** | **complete** (`a64baad`, 54 tests) | **yes** — 1st |
 
@@ -113,6 +113,25 @@ agreement is currently coincidence, not a constraint anything checks.
 | **A21** | 1 | **"Still here?" cannot poll for expiry** — polling would itself slide `last_seen_at` forever and the timeout would never fire. Assumed the client mirrors the slide locally from its own successful requests; expiry stays server-authoritative and the real sign-out arrives as a 401. | open — the client's local mirror must not drift from the server's rule |
 | A22 | 1 | **Error text carries no correlation identifier.** §6 forbids a code in error text; `architecture.md §5.5` returns a generic message plus a correlation id. Assumed the client renders its own plain per-kind message and never the identifier; the server's message rides along as `detail`. | open, non-blocking |
 | A23 | 1 | **"Tablet: no nav" taken literally** — in Phase 1 a tablet reaches a screen only by its URL. | open, non-blocking |
+
+### Wave 1 — identity lane
+
+**A24 is a §5.5 HALT condition and the reason this run stops.** See the Halt section.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| **A24** | 1 | **PII visibility — `product-requirement.md §2` contradicts itself, on a security rule.** Verified by the lead against the source, not taken from the report: §2's role table says Staff "Cannot ... see others' PII" and lists "PII visibility" in the **Admin-only delta**, while §2's own prose bullet three lines later says "Only phone/address are gated to **Staff-tier-and-above**" — the opposite reading. `architecture.md §4.3` implements the bullet (`viewer.tier >= STAFF` OR `viewer.id == subject.id`) and cites `PRD §2` for it. The lane implemented `architecture.md §4.3`. The authority order **cannot** resolve this: both readings sit in the higher-authority doc. One line in `pii.ts` either way. | **HALT — human decision required** |
+| A25 | 1 | **Brute-force throttle counters live in process memory**, not a table — migrations are Wave-0-owned and §4.5 runs one process. A restart clears a 15-minute soft lock. | open, non-blocking |
+| A26 | 1 | **Threshold numbers**: account lock at **4** failures (so the first attempt can report S1.1's "3 tries left"), per-IP ceiling of **20 failures per rolling 15 min**, delay curve 250 ms doubling to a 2 s cap. §4.2 fixes none of these. | open, non-blocking |
+| A27 | 1 | **Minimum staff/admin password length is 8.** No doc states a minimum. | open, non-blocking |
+| A28 | 1 | **The device marker is a signed, `httpOnly`, ten-year `r3_device` cookie**, set by `POST /api/devices`. An unknown marker is treated as personal, not rejected. Builds on A1's resolved `device` table. | open, non-blocking |
+| A29 | 1 | **`SESSION_COOKIE_SECRET` HMAC-signs the session cookie value.** `.env.example` carries the variable; §4.2 does not say what signs what. | open, non-blocking |
+| A30 | 1 | **Admin accounts cannot be created directly** (PRD cap 1 says "non-admin accounts"); Admin is reached by promotion, and deleting an Admin-tier account is refused. | open, non-blocking |
+| A31 | 1 | **A tier change crossing the PIN/password boundary must carry a new credential**, else 400. A Volunteer promoted to Staff has a 4-digit PIN where a password is required. | open, non-blocking |
+| A32 | 1 | **`GET /api/users` requires STAFF**, not ADMIN — §2 grants Staff "operational status across all volunteers". All account **writes** require ADMIN. | open, non-blocking |
+| A33 | 1 | **Login identifies the account by `username`**; session cookie is `SameSite=Lax`; **the roster endpoint is public** (S1.1 shows a name list before anyone is signed in — §4.2 defends the PIN by throttling, not by hiding usernames). | open, non-blocking |
+| A34 | 1 | **Server code imports `shared/src/index.ts` by relative path, not as `@r3/shared`** — `server/package.json` declares no dependency on it, and inside a worktree `node_modules/@r3/shared` resolves to the **main checkout's** file, so a lane would silently typecheck against another tree. | open — worth making structural in Wave 2 |
+| A35 | 1 | **`TRUST_PROXY` is a new environment variable** (default `loopback`). On the box it must name the `cloudflared` network, or §4.2's per-IP counter collapses to a single address. **Not in `.env.example`** — no lane may edit it; the lead adds it. | open — needs the deploy value |
 
 ## Blocked
 

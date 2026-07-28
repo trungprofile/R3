@@ -18,6 +18,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import express, { type Express } from 'express';
 import { attachActor } from './middleware/auth.js';
 import { errorHandler } from './middleware/error.js';
+import { startScheduler } from './jobs/index.js';
 import { createApiRouter } from './routes/index.js';
 
 const DEFAULT_CLIENT_DIST = fileURLToPath(new URL('../../client/dist', import.meta.url));
@@ -64,9 +65,12 @@ export function start(): void {
   const app = createApp();
   const port = Number(process.env['PORT'] ?? 3000);
 
-  // The scheduler goes here: `startScheduler()` from `server/src/jobs/`, which is
-  // another lane's file and does not exist in this worktree. The lead wires this
-  // one call at merge (`phase-1-state.md`, "Seams the lead owns").
+  // Wired by the lead at the Wave-1 merge: Express is the identity lane's, `jobs/`
+  // is the signal lane's, and neither could import a file absent from its own
+  // worktree. Started before `listen` deliberately — jobs are catch-up sweeps
+  // (§4.4), so the first tick reconciles whatever the last shutdown left due,
+  // and nothing about that depends on the port being open.
+  startScheduler();
 
   app.listen(port, () => {
     console.log(JSON.stringify({ event: 'listening', port }));
