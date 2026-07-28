@@ -89,6 +89,26 @@ else
   fail "node_modules missing"
 fi
 
+# 3b. Client test suite. Separate run because it needs no database and must not
+#     get one: these are pure-logic tests (routing, tier/duty comparison, nav
+#     derivation), and a client test that reaches a database is testing the wrong
+#     thing. Skipped until the first client test exists, for the same reason the
+#     client typecheck is.
+step "test suite (client)"
+if [ -d node_modules ] && [ -n "$(find client/src -name '*.test.ts' -o -name '*.test.tsx' 2>/dev/null)" ]; then
+  if npx vitest run --root client >/tmp/r3-gate-test-client.log 2>&1; then
+    ok
+  else
+    fail "client tests failed — see /tmp/r3-gate-test-client.log"
+    tail -30 /tmp/r3-gate-test-client.log
+  fi
+elif [ ! -d node_modules ]; then
+  fail "node_modules missing"
+else
+  printf '  (no client tests yet)\n'
+  ok
+fi
+
 # 4. No stubbed service functions. A wave that reports "complete" while leaving
 #    a service throwing NotImplemented has moved work into the next wave without
 #    saying so, and the report contract (§5.1) would not catch it.

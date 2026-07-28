@@ -33,7 +33,7 @@ is the only record that these lanes exist.
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
 | **identity** | `server/src/middleware/**`, `server/src/routes/**`, `server/src/services/{auth,session,user}.ts`, `server/src/pii.ts`, `server/src/index.ts`, `shared/src/**`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-ac20d698894c3410d` | `worktree-agent-ac20d698894c3410d` | **yes** | — | — |
-| **surface** | `client/index.html`, `client/vite.config.ts`, `client/src/{main.tsx,app/**,tokens/**,components/**,api/**}` | `.claude/worktrees/agent-aeae25452ec5869da` | `worktree-agent-aeae25452ec5869da` | **yes** | — | — |
+| **surface** | `client/index.html`, `client/vite.config.ts`, `client/src/{main.tsx,app/**,tokens/**,components/**,api/**}` | `.claude/worktrees/agent-aeae25452ec5869da` | `worktree-agent-aeae25452ec5869da` | **yes** | **complete** (`0f6e65f`, 19 tests) | **yes** — 2nd |
 | **signal** | `server/src/services/notification.ts`, `server/src/jobs/**`, `client/src/sw.ts`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-a98720bc4ea57d5d9` | `worktree-agent-a98720bc4ea57d5d9` | **yes** | **complete** (`a64baad`, 54 tests) | **yes** — 1st |
 
 All three branched from `9ee7a14` (the pre-work commit). Spawned 2026-07-28.
@@ -90,6 +90,29 @@ Precedent is A3, also a naming-only assumption, carried open.
 | A10 | 1 | **A notification for a recipient with no live registration burns its attempts and is then dropped by dispatch.** The row stays in the inbox, which is the source of truth. The alternative — leaving it pending forever — would fire an alert the moment someone first enables push, about a run that may be over. Not addressed by any doc. | open, non-blocking |
 | A11 | 1 | **Only `410` revokes.** §4.4 names `410 Gone` and nothing else, so `404` — which push gateways also use for a dead endpoint — takes the ordinary retry-then-give-up path. Chosen to avoid widening a documented rule. | open, non-blocking |
 | A12 | 1 | **A missing VAPID environment degrades dispatch to a logged no-op** rather than failing process start. The inbox remains the source of truth, so an unconfigured box loses the alerting layer and nothing else. Never logged with a key value (§5.4). | open, non-blocking |
+
+### Wave 1 — surface lane
+
+The lane reported that `gate.sh` ran vitest with `--root server` only, so its 19 tests sat outside
+the mechanical gate. Fixed by the lead at merge: step 3b now runs the client suite. Reporting a gap
+in the thing that judges you is the behaviour the report contract is for.
+
+**A13 and A14 resolve cleanly against sibling lanes** — recorded rather than dropped because the
+agreement is currently coincidence, not a constraint anything checks.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| A13 | 1 | **Screen URLs** — the spec names screens, not paths. Assumed `/login`, `/board`, `/shifts/:shiftId`, `/my-shifts`, `/pickup/:shiftId`, `/schedule`, `/schedule/:shiftId/reschedule`, `/admin`, `/inbox`; `/` redirects a signed-in user to `/board`. | **yes** — matches signal's A8 deep-link `/shifts/:id`. Both lanes guessed the same path independently |
+| A14 | 1 | **The built service worker is emitted at `/sw.js`**, fixed and unhashed, by the Vite config; any registration must use that path. | **yes** — consistent with signal's worker. Registration itself is Wave 2 (PWA onboarding), so nothing calls it yet |
+| **A15** | 1 | **Assumed auth endpoints**: `GET /api/auth/me` → `{ user, expiresAt }` and `POST /api/auth/logout`, with the current-user shape `{ id, username, firstName, lastName, tier, duties[], phone?, address? }` declared in `client/src/api/session.ts` because `shared/src` was the identity lane's this wave. **Must be reconciled against the identity lane's actual routes at merge**; path constants are at the top of that file, and the local type should be deleted in favour of a published shared shape. | open — reconcile in Wave 2 |
+| A16 | 1 | **Breakpoints**: phone `<768px`, tablet `768–1023px`, desktop `>=1024px`, **width-only**. The spec names three devices and states no pixel values. Width-only deliberately: an orientation rule would flip the pantry tablet's entire nav when stood upright. | open, non-blocking |
+| A17 | 1 | **Two token gaps filled, no §2 value altered.** §2 defines no text colour for use on `--structural-dark`, but §3 puts the user name and Logout there, and `--text` (#333) on #363839 is unreadable → added `--text-on-dark` (10.4:1) and `--text-on-dark-muted` (7.4:1). §2 states in prose that white passes on `--success`/`--danger` but names no token, and §3's "Disabled = greyed" names no colour → added `--text-on-fill`, `--disabled-fill`, `--disabled-text`, plus `--font-stack` and `--shadow-modal`. | open, non-blocking — contrast ratios computed, not eyeballed |
+| A18 | 1 | **Phone nav for a non-driver.** §4 gives a driver "Board · My Shifts · Inbox" and does not say what a non-driver sees. Assumed My Shifts requires the `DRIVE` duty; Board and Inbox are everyone's. | open, non-blocking |
+| A19 | 1 | **Desktop nav beyond the back office.** §4's desktop list is back-office only, but the responsive matrix marks board / my shifts / inbox "usable" on desktop. Assumed desktop also offers Board (Staff tier **or** `DRIVE`), My Shifts (`DRIVE`), Inbox (everyone). | open, non-blocking |
+| A20 | 1 | **Phase-3 nav sections are declared but filtered.** Report and Metrics are §4 nav items whose screens (S3.1, S3.2) are Phase 3. Assumed a nav item leading to a missing screen is worse than an absent one: declared with `phase: 3`, filtered by `CURRENT_PHASE = 1`. | open, non-blocking |
+| **A21** | 1 | **"Still here?" cannot poll for expiry** — polling would itself slide `last_seen_at` forever and the timeout would never fire. Assumed the client mirrors the slide locally from its own successful requests; expiry stays server-authoritative and the real sign-out arrives as a 401. | open — the client's local mirror must not drift from the server's rule |
+| A22 | 1 | **Error text carries no correlation identifier.** §6 forbids a code in error text; `architecture.md §5.5` returns a generic message plus a correlation id. Assumed the client renders its own plain per-kind message and never the identifier; the server's message rides along as `detail`. | open, non-blocking |
+| A23 | 1 | **"Tablet: no nav" taken literally** — in Phase 1 a tablet reaches a screen only by its URL. | open, non-blocking |
 
 ## Blocked
 
