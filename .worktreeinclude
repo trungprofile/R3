@@ -1,20 +1,19 @@
 # Gitignored files copied into every worktree Claude Code creates.
 #
-# .gitignore excludes `.claude` and `CLAUDE.md`, and a worktree checks out only
-# TRACKED files — so without this list an isolated agent starts with no project
-# instructions, no doc routing table, and no doc-qa definition. It would then
-# guess at rules the foundation docs already wrote down, which is the one failure
-# mode this repo is organized to prevent.
+# Only files that are BOTH listed here and gitignored get copied — tracked files
+# arrive with the checkout on their own. Since `.claude/` and `CLAUDE.md` became
+# tracked, they no longer belong here: a lane agent gets the doc routing table
+# and the agent definitions as part of its worktree automatically.
 #
-# .claude/worktrees/ is deliberately NOT listed: copying it would nest worktrees
-# inside worktrees.
-CLAUDE.md
-.claude/agents/
-.claude/commands/
-.claude/settings.json
+# What remains is genuinely local, so a worktree would otherwise start without it.
+
+# Per-machine permission overrides. Without these a lane agent can hit prompts
+# the main checkout was configured never to see.
 .claude/settings.local.json
 
-# Secrets: DB credentials, session secret, VAPID keys. Server tests fail at boot
-# without them (architecture.md §5.1).
+# Secrets: DB credentials, session secret, VAPID keys (architecture.md §5.1).
+# Not needed yet — scripts/test-db.sh and scripts/gate.sh derive DATABASE_URL
+# themselves — but listed now so the first lane that needs a real .env does not
+# fail in a worktree for a reason nobody thinks to check.
 .env
 .env.local
