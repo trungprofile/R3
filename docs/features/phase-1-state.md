@@ -34,7 +34,7 @@ is the only record that these lanes exist.
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
 | **identity** | `server/src/middleware/**`, `server/src/routes/**`, `server/src/services/{auth,session,user}.ts`, `server/src/pii.ts`, `server/src/index.ts`, `shared/src/**`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-ac20d698894c3410d` | `worktree-agent-ac20d698894c3410d` | **yes** | — | — |
 | **surface** | `client/index.html`, `client/vite.config.ts`, `client/src/{main.tsx,app/**,tokens/**,components/**,api/**}` | `.claude/worktrees/agent-aeae25452ec5869da` | `worktree-agent-aeae25452ec5869da` | **yes** | — | — |
-| **signal** | `server/src/services/notification.ts`, `server/src/jobs/**`, `client/src/sw.ts`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-a98720bc4ea57d5d9` | `worktree-agent-a98720bc4ea57d5d9` | **yes** | — | — |
+| **signal** | `server/src/services/notification.ts`, `server/src/jobs/**`, `client/src/sw.ts`, its own `server/test/*.test.ts` | `.claude/worktrees/agent-a98720bc4ea57d5d9` | `worktree-agent-a98720bc4ea57d5d9` | **yes** | **complete** (`a64baad`, 54 tests) | **yes** — 1st |
 
 All three branched from `9ee7a14` (the pre-work commit). Spawned 2026-07-28.
 
@@ -72,6 +72,24 @@ are the gaps a report cannot distinguish from correct answers, so they are never
 | A2 | 0 | `app_user` carries `first_name` / `last_name`. **Resolved: the docs do specify this.** `ui-ux-spec.md S1.8` — "create (first/last → auto username shown read-only)" — is an explicit two-field admin form, corroborated by `domain-modeling.md §5.1`'s `generate_username(first, last)`. The original citation was too weak; the columns are correct and doc-supported, not a guess. | **yes** |
 | A3 | 0 | Session-lifetime keys on `app_config` are named `session_idle_shared_minutes`, `session_absolute_shared_hours`, `session_idle_personal_volunteer_days`, `session_idle_personal_staff_days`. `architecture.md §4.2` fixes the four *values* (30 min / 12 h / 30 d / 7 d) and says they live in `app_config`, but names no keys. Naming is ours; the values are the doc's. | open, non-blocking |
 | **A4** | 0 | **A foundation-doc contradiction the migration made concrete.** `data-model.md §0` mandates `ON DELETE RESTRICT` on *every* FK, but `architecture.md §4.4` said a `410 Gone` means "delete the `push_subscription` row." Once anything references a subscription that DELETE fails, so the documented cleanup was unreachable. **Resolved 2026-07-28 (human): soft-revoke.** `push_subscription.revoked_at`; dispatch skips revoked rows; all FKs stay `RESTRICT`, so §0 keeps no exceptions and the record of which device a past alert reached is preserved. `architecture.md §4.4` and `data-model.md §11` updated from "delete" to "revoke". | **yes** |
+
+### Wave 1 — signal lane
+
+None of these is a §5.5 HALT: no DDL changes and no invariant moves tier. **A5 and A7 are the two
+to read first** — they are stored values, so changing them after real data exists is a data
+migration rather than a refactor. That is cheap only while the system is pre-launch and empty.
+Precedent is A3, also a naming-only assumption, carried open.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| **A5** | 1 | **The event taxonomy strings are the lane's invention.** `notification.event` is `text` whose "taxonomy [is] owned by the notifications doc" — **a doc that does not exist**. The PRD matrix fixes the six events, their recipients and their triggers; the identifiers `SHIFT_ASSIGNED`, `SHIFT_REMINDER`, `UNAVAILABILITY_DECLARED`, `SHIFT_OPENED`, `SHIFT_AT_RISK` are the lane's. **Stored values** — every row Wave 3 writes carries one. | open — decide before Wave 3 writes real rows |
+| A6 | 1 | **Banner copy is the lane's.** The PRD gives event, recipients and channel but no message content. Titles and bodies were written to `ui-ux-spec.md §7` and are asserted against the forbidden-word list in tests, but **no human has read them**: "You're on a run", "Your run starts in an hour", "&lt;name&gt; set time off", "A run needs a driver", "A run is still open for tomorrow". | open, non-blocking |
+| **A7** | 1 | **Push payload shape is `{ route?, when?, who? }`, with `when` pre-formatted by the enqueuing service.** Nothing specifies `notification.payload`. Wall-clock rendering needs `app_config.timezone`, which the enqueuing service has and dispatch does not, so formatting moved to the writer. Also a **stored shape**. | open — decide before Wave 3 |
+| A8 | 1 | **Deep-link URLs are `/shifts/:id`, falling back to `/inbox`.** S1.9 says "tap to act (deep-links to the relevant shift)" but no doc fixes client paths. Rendered at dispatch, not stored, so the fix is one line. **Cross-check against the surface lane's router when it merges.** | open — verify at wave-1 merge |
+| A9 | 1 | **Retry numbers: 5 attempts over 0/1/5/15/60 minutes; sweep every 60 s; batch of 50.** §4.4 says "retry with backoff, give up after a cap" and fixes no values. 60 s matches the reminder/at-risk sweep cadence the same section does fix. | open, non-blocking |
+| A10 | 1 | **A notification for a recipient with no live registration burns its attempts and is then dropped by dispatch.** The row stays in the inbox, which is the source of truth. The alternative — leaving it pending forever — would fire an alert the moment someone first enables push, about a run that may be over. Not addressed by any doc. | open, non-blocking |
+| A11 | 1 | **Only `410` revokes.** §4.4 names `410 Gone` and nothing else, so `404` — which push gateways also use for a dead endpoint — takes the ordinary retry-then-give-up path. Chosen to avoid widening a documented rule. | open, non-blocking |
+| A12 | 1 | **A missing VAPID environment degrades dispatch to a logged no-op** rather than failing process start. The inbox remains the source of truth, so an unconfigured box loses the alerting layer and nothing else. Never logged with a key value (§5.4). | open, non-blocking |
 
 ## Blocked
 
