@@ -1,0 +1,17 @@
+{
+  // The service worker alone (`architecture.md §4.5` — push only, never cache-first).
+  // Its own program because WebWorker and DOM cannot share one: both declare `self`,
+  // `fetch`, and the event types, with different shapes.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "WebWorker"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["src/sw.ts"]
+}

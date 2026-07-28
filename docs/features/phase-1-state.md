@@ -13,16 +13,41 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **0 complete — next is 1** |
-| Wave status | **passed.** `scripts/gate.sh` green (31 tests), `doc-qa` zero findings, committed to `phase-1` |
+| Current wave | **1 — preparing (lead pre-work, no lanes spawned yet)** |
+| Wave status | wave 0 **passed**; wave 1 not yet spawned |
 | Branch | `phase-1` |
-| Loop armed | **no** — awaiting human approval |
+| Loop armed | **yes** — armed 2026-07-28 |
 | Consecutive gate failures | 0 (reset on pass; wave 0 took 3 gate rounds) |
 | Halted | no |
 
 ## Halt
 
 *(none — H1 cleared. A1 and A4 were decided by the human on 2026-07-28; see Open assumptions.)*
+
+## Wave 1 — lanes in flight
+
+Named before spawning (§5.6 step 1). `worktreePath` / `worktreeBranch` are filled in from the
+spawn result the moment each agent starts; after a compaction this table plus `git worktree list`
+is the only record that these lanes exist.
+
+| Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
+| :---- | :---- | :---- | :---- | :---- | :---- | :---- |
+| **identity** | `server/src/middleware/**`, `server/src/routes/**`, `server/src/services/{auth,session,user}.ts`, `server/src/pii.ts`, `server/src/index.ts`, `shared/src/**`, its own `server/test/*.test.ts` | — | — | no | — | — |
+| **surface** | `client/index.html`, `client/vite.config.ts`, `client/src/{main.tsx,app/**,tokens/**,components/**,api/**}` | — | — | no | — | — |
+| **signal** | `server/src/services/notification.ts`, `server/src/jobs/**`, `client/src/sw.ts`, its own `server/test/*.test.ts` | — | — | no | — | — |
+
+Seams the lead owns, deliberately not given to any lane:
+
+- `server/src/index.ts` boots Express (identity) *and* the scheduler (signal). Identity writes the
+  Express half and leaves a marker; **the lead adds the `startScheduler()` call after both merge**,
+  before gating. Neither lane can import the other's file — it does not exist in their worktree.
+- `shared/src/index.ts` enum mirrors, `client/tsconfig{,.sw}.json`, and the gate's client typecheck
+  step were written by the lead before the wave, since two lanes each needed them.
+- `.env.example` already carries every variable this wave needs. No lane edits it.
+
+Carried to Wave 2: the expired-session cleanup job. `services/session.ts` (identity) exposes
+`purgeExpiredSessions()` this wave, but `jobs/` (signal) cannot register it — the two files live in
+different worktrees. Registering it is a Wave-2 one-liner, not a gap.
 
 ## Wave ledger
 

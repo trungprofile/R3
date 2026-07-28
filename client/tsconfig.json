@@ -1,0 +1,25 @@
+{
+  // Browser code. Separate from the root tsconfig (which covers shared/ + server/)
+  // because the two halves need different `lib`s and different module resolution:
+  // server code is nodenext, the bundle is bundler-resolved.
+  //
+  // `src/sw.ts` is excluded here and typechecked by tsconfig.sw.json instead. The
+  // service worker's globals (`self: ServiceWorkerGlobalScope`) come from the
+  // WebWorker lib, which collides with DOM if both are loaded into one program.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": []
+  },
+  "include": ["src"],
+  "exclude": ["src/sw.ts"]
+}

@@ -49,6 +49,21 @@ No permission prompts. Blast radius is contained by giving each agent its own gi
 destructive command hits that checkout and not the main tree. Agents commit locally; pushing is
 permitted but not part of any wave.
 
+### D5 — Dependencies are the lead's, added only between waves
+
+§3 says `package.json` is Wave-0-owned and a lane that wants a dependency stops. The reason is
+concurrency — worktrees share one `node_modules` by symlink, so a lane installing mid-wave corrupts
+every sibling's tree. That reason binds *lanes*, not the serial lead. The lead may add a dependency
+**between** waves, when no worktree exists, and records it here.
+
+- Added before Wave 1: **`web-push`** (+ `@types/web-push`). Web Push is VAPID signing plus RFC 8291
+  payload encryption; there is no built-in, and `architecture.md §5.1` already lists VAPID keys as
+  deploy configuration. Nothing else in the tree can send a push.
+- Considered and **rejected**: a routing library for the client shell. Both current release lines
+  carry open high-severity advisories, and the app is nine screens behind one nav. The Surface lane
+  hand-rolls the router, consistent with §4.4's "jobs you do not have cannot fail."
+- A lane still reports rather than installs. `npm audit` must stay at zero before a wave spawns.
+
 ## 2. Build order
 
 Phase 1 is one serial spine plus two rails. The spine's order is the domain's own layering — each

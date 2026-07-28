@@ -50,6 +50,31 @@ else
   fail "node_modules missing — dependencies are Wave-0-owned"
 fi
 
+# 2b. Typecheck the browser half. The root tsconfig covers shared/ + server/ only,
+#     so without this every line of client code Waves 1 and 4 write would reach the
+#     PR untypechecked — the gate would be green about a codebase it never read.
+#     Two programs because the service worker's WebWorker lib collides with DOM.
+#     The shell config is skipped while client/src still holds nothing but sw.ts —
+#     tsc treats an empty program as an error, and that is the state between Wave 0
+#     and the Surface lane's first merge. It arms itself the moment a file lands.
+step "typecheck (client)"
+if [ -d node_modules ]; then
+  CLIENT_TSC=0
+  CFGS="client/tsconfig.sw.json"
+  if [ -n "$(find client/src -name '*.ts' -o -name '*.tsx' | grep -v '^client/src/sw.ts$' || true)" ]; then
+    CFGS="client/tsconfig.json $CFGS"
+  else
+    printf '  (no client shell sources yet — tsconfig.json skipped)\n'
+  fi
+  for cfg in $CFGS; do
+    npx tsc --noEmit --pretty false -p "$cfg" 2>&1 | tee "/tmp/r3-gate-tsc-$(basename "$cfg").log" | tail -20
+    grep -q "error TS" "/tmp/r3-gate-tsc-$(basename "$cfg").log" && CLIENT_TSC=1
+  done
+  [ "$CLIENT_TSC" -eq 0 ] && ok || fail "type errors in client"
+else
+  fail "node_modules missing"
+fi
+
 # 3. Test suite, against the migrated database from step 1. Never a fixture
 #    schema: tier-1/2 invariants exist only as real DDL (CLAUDE.md).
 step "test suite"
