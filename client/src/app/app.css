@@ -1,0 +1,87 @@
+/* App shell layout — `ui-ux-spec.md §4` and the responsive matrix.
+ *
+ * One top bar everywhere. Nav differs by device and is derived from tier/duty in
+ * `nav.tsx`; this file only places it: bottom on a phone, left on a desktop,
+ * absent on a tablet.
+ */
+
+.r3-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.r3-app__body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.r3-app__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--screen-padding);
+}
+
+/* Room for the fixed-height bottom nav so the last row is never trapped under it. */
+.r3-app--phone .r3-app__main {
+  padding-bottom: var(--space-4);
+}
+
+.r3-app__fullscreen {
+  min-height: 100%;
+  padding: var(--screen-padding);
+}
+
+/* --- Blocking offline overlay (§6) --------------------------------------- */
+
+.r3-offline {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-5);
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.r3-offline__banner {
+  width: min(30rem, 100%);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--warning);
+  color: var(--text);
+  box-shadow: var(--shadow-modal);
+}
+
+.r3-offline__title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-h3);
+  font-weight: 700;
+}
+
+.r3-offline__body {
+  margin: 0;
+}
+
+/* A text-styled button, for a secondary choice inside a sentence. Still meets
+ * the 44px target rule through its padding. */
+.r3-linkish {
+  min-height: var(--target-min);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- Placeholder for a screen a later wave builds ------------------------- */
+
+.r3-placeholder {
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  color: var(--text-muted);
+}

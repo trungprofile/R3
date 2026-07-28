@@ -1,0 +1,600 @@
+/* Component styling for the contracts in `ui-ux-spec.md §3`.
+ *
+ * Every value here is a token (`tokens/tokens.css`). If you find yourself typing
+ * a hex or a px, the token is missing — add it there, not here.
+ *
+ * States follow §3: default / hover / active / disabled / loading.
+ */
+
+/* --- Button (§3) — min 44px tall, 18px label ------------------------------- */
+
+.r3-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-size: var(--font-body);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  /* §1.2: 8px minimum gap between adjacent targets. */
+  margin: 0;
+}
+
+.r3-btn + .r3-btn {
+  margin-left: var(--space-2);
+}
+
+.r3-btn--block {
+  display: flex;
+  width: 100%;
+}
+
+/* Primary: orange fill, dark label. Never white text on orange (2.9:1, §2). */
+.r3-btn--primary {
+  background: var(--action-fill);
+  color: var(--text-on-brand);
+}
+
+.r3-btn--secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.r3-btn--danger {
+  background: var(--danger);
+  color: var(--text-on-fill);
+}
+
+.r3-btn:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.r3-btn:active:not(:disabled) {
+  filter: brightness(0.88);
+}
+
+/* §3: "Disabled = greyed, but prefer hiding over disabling." */
+.r3-btn:disabled {
+  background: var(--disabled-fill);
+  border-color: var(--disabled-fill);
+  color: var(--disabled-text);
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* --- Big list row (§3) — >=56px, full row is the target -------------------- */
+
+.r3-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: var(--row-min);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  cursor: pointer;
+}
+
+.r3-row:hover {
+  background: var(--surface-paper);
+}
+
+.r3-row--static {
+  cursor: default;
+}
+
+.r3-row--static:hover {
+  background: var(--surface);
+}
+
+.r3-row__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.r3-row__title {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.r3-row__subtitle,
+.r3-row__meta {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.r3-row__side {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.r3-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* --- Status chip (§3) — pill, one per row --------------------------------- */
+
+.r3-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: var(--font-label);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.r3-chip--open {
+  color: var(--text);
+  border-color: var(--brand-orange);
+  background: var(--surface);
+}
+
+.r3-chip--in-progress {
+  background: var(--brand-orange);
+  color: var(--text-on-brand);
+}
+
+.r3-chip--mine {
+  background: var(--success);
+  color: var(--text-on-fill);
+}
+
+.r3-chip--muted {
+  background: var(--surface-paper);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+.r3-chip--at-risk {
+  background: var(--warning);
+  color: var(--text);
+}
+
+.r3-chip--cancelled {
+  background: var(--surface-paper);
+  color: var(--text-muted);
+  border-color: var(--border);
+  text-decoration: line-through;
+}
+
+.r3-chip--alerts-on {
+  background: var(--success);
+  color: var(--text-on-fill);
+}
+
+.r3-chip--alerts-off {
+  background: var(--warning);
+  color: var(--text);
+  min-height: var(--target-min);
+  cursor: pointer;
+}
+
+/* --- Card (§3) ------------------------------------------------------------ */
+
+.r3-card {
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+}
+
+/* --- Text input (§3) — 48px tall, visible label above --------------------- */
+
+.r3-field {
+  display: block;
+  margin-bottom: var(--space-4);
+}
+
+.r3-field__label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.r3-field__control {
+  display: block;
+  width: 100%;
+  height: var(--input-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-stack);
+  font-size: var(--font-body);
+}
+
+textarea.r3-field__control {
+  height: auto;
+  min-height: calc(var(--input-height) * 2);
+  padding: var(--space-2) var(--space-3);
+  line-height: var(--line-height);
+}
+
+.r3-field__control:disabled {
+  background: var(--disabled-fill);
+  color: var(--disabled-text);
+}
+
+.r3-field--invalid .r3-field__control {
+  border-color: var(--danger);
+}
+
+.r3-field__error {
+  margin-top: var(--space-1);
+  font-size: var(--font-label);
+  color: var(--danger);
+}
+
+.r3-field__hint {
+  margin-top: var(--space-1);
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* --- Numeric keypad (§3) — >=64px keys, the only numeric input ------------ */
+
+.r3-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  max-width: 22rem;
+}
+
+.r3-keypad__key {
+  min-height: var(--key-min);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-numeric);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.r3-keypad__key:hover {
+  background: var(--surface-paper);
+}
+
+.r3-keypad__key:active {
+  background: var(--border);
+}
+
+.r3-keypad__key--blank {
+  visibility: hidden;
+}
+
+/* --- Top bar (§3) — identical on every screen (§4) ------------------------ */
+
+.r3-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--top-bar-height);
+  padding: 0 var(--space-4);
+  background: var(--structural-dark);
+  color: var(--text-on-dark);
+}
+
+.r3-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+}
+
+/* §2 lists "the heart" among the orange accent's uses. */
+.r3-topbar__heart {
+  color: var(--brand-orange);
+}
+
+.r3-topbar__spacer {
+  flex: 1 1 auto;
+}
+
+.r3-topbar__user {
+  font-size: var(--font-label);
+  color: var(--text-on-dark-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 12rem;
+}
+
+.r3-topbar__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--text-on-dark-muted);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-on-dark);
+  font-size: var(--font-label);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.r3-topbar__action:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.r3-topbar__bell {
+  position: relative;
+  border-color: transparent;
+  padding: 0 var(--space-2);
+}
+
+.r3-topbar__badge {
+  position: absolute;
+  top: 0.125rem;
+  right: 0.125rem;
+  min-width: 1.25rem;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: var(--text-on-fill);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-align: center;
+}
+
+/* --- Bottom nav (phone, §3) — <=4 items, icon + label, 56px --------------- */
+
+.r3-bottomnav {
+  display: flex;
+  min-height: var(--bottom-nav-height);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.r3-bottomnav__item {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  min-height: var(--bottom-nav-height);
+  padding: var(--space-1);
+  border: 0;
+  border-top: 3px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-label);
+  cursor: pointer;
+}
+
+/* Active state is the orange accent — a bar plus the icon, never orange text. */
+.r3-bottomnav__item--active {
+  border-top-color: var(--brand-orange);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.r3-bottomnav__item--active svg {
+  color: var(--brand-orange);
+}
+
+/* --- Side nav (desktop, §4) ---------------------------------------------- */
+
+.r3-sidenav {
+  flex: 0 0 var(--side-nav-width);
+  padding: var(--space-4) var(--space-2);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.r3-sidenav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--target-min);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.r3-sidenav__item:hover {
+  background: var(--surface-paper);
+}
+
+.r3-sidenav__item--active {
+  border-left-color: var(--brand-orange);
+  background: var(--surface-paper);
+  font-weight: 600;
+}
+
+.r3-sidenav__item--active svg {
+  color: var(--brand-orange);
+}
+
+/* --- Modal / confirm (§3) — centered, one question, two buttons ----------- */
+
+.r3-modal__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.r3-modal {
+  width: 100%;
+  max-width: 26rem;
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-modal);
+}
+
+.r3-modal__question {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-h3);
+  font-weight: 700;
+}
+
+.r3-modal__consequence {
+  margin: 0 0 var(--space-5);
+  color: var(--text);
+}
+
+.r3-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* --- Toast (§3) — bottom, 4s ---------------------------------------------- */
+
+.r3-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-5);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(30rem, calc(100vw - var(--space-6)));
+  transform: translateX(-50%);
+}
+
+.r3-toast {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-modal);
+  font-size: var(--font-body);
+}
+
+.r3-toast--success {
+  background: var(--success);
+  color: var(--text-on-fill);
+}
+
+.r3-toast--error {
+  background: var(--danger);
+  color: var(--text-on-fill);
+}
+
+.r3-toast__action {
+  margin-left: var(--space-3);
+  min-height: var(--target-min);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- Inbox row (§3) ------------------------------------------------------- */
+
+.r3-inbox-row__dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--brand-orange);
+}
+
+.r3-inbox-row__dot--read {
+  background: transparent;
+}
+
+.r3-inbox-row__time {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.r3-inbox-row--unread .r3-row__title {
+  font-weight: 700;
+}
+
+/* --- Empty / loading / error blocks (§3, §6) ------------------------------ */
+
+.r3-block {
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  color: var(--text);
+}
+
+.r3-block__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-h3);
+  font-weight: 700;
+}
+
+.r3-block__body {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+}
+
+/* Skeleton rows, never a bare spinner (§6). Same height as the real rows so the
+ * list does not jump when content lands. */
+.r3-skeleton-row {
+  display: flex;
+  align-items: center;
+  min-height: var(--row-min);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.r3-skeleton-bar {
+  height: 1rem;
+  border-radius: var(--radius-control);
+  background: linear-gradient(90deg, #ece9e4 25%, #f5f3ef 50%, #ece9e4 75%);
+  background-size: 200% 100%;
+  animation: r3-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes r3-skeleton-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .r3-skeleton-bar {
+    animation: none;
+  }
+}

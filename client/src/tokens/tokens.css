@@ -1,0 +1,174 @@
+/* Design tokens — the single source of colour, type, spacing and target size.
+ * Transcribed from `ui-ux-spec.md §2`. Values live HERE and nowhere else; the
+ * TypeScript side (`tokens/index.ts`) exports `var(--…)` references, not copies,
+ * so there is exactly one place a hex or a step can drift.
+ *
+ * Contrast notes in §2 are load-bearing, not commentary:
+ *   - orange is fill-or-accent, NEVER text, and never carries white text (2.9:1)
+ *   - body text is --text (#333333) on white/light surfaces only
+ *   - a label on --action-fill is --text-on-brand (5.0:1)
+ *
+ * Sizes are relative units (§1 principle 3: must survive 200% zoom). The px value
+ * §2 states is given in the comment; the rem is that value at a 16px root.
+ */
+
+:root {
+  /* --- Colour (§2 table) --- */
+  --brand-orange: #e97900; /* accent only: active state, selected bar, focus ring, the heart, icons */
+  --brand-gold: #c49e0d; /* logo/decorative only — never a UI colour */
+  --text: #333333; /* all body + headings, on white/light backgrounds only */
+  --text-muted: #747474; /* non-critical labels only — never body text */
+  --text-on-brand: #1f2933; /* label colour specifically for text on --action-fill */
+  --action-fill: #e97900; /* primary button background */
+  --link: #b35c00; /* in-content links, always underlined */
+  --success: #2b7a44; /* confirmed pickup, reported, submitted — white text passes */
+  --warning: #e6a700; /* needs attention, at-risk — fill behind dark text */
+  --danger: #c2381f; /* cancel, conflict, destructive — white text passes */
+  --surface: #ffffff; /* page background */
+  --surface-paper: #f5f3ef; /* receive sheet, cards */
+  --structural-dark: #363839; /* top bar, footer band */
+  --border: #d6d2cc; /* grid lines, dividers */
+
+  /* Not in §2. The top bar (§3) is --structural-dark and carries the user name
+   * and Logout, but §2 defines no on-dark text colour and --text (#333) on
+   * #363839 is unreadable. White reads 10.4:1 there. See report `Assumed:`. */
+  --text-on-dark: #ffffff;
+  --text-on-dark-muted: #d8d5d1; /* 7.4:1 on --structural-dark — labels only */
+
+  /* Also not in §2, but stated there in prose: --success and --danger are the
+   * two fills where "white text passes". Named so no component writes the hex. */
+  --text-on-fill: #ffffff;
+
+  /* Disabled controls. §3 prefers hiding over disabling; this exists for the
+   * cases where the control must stay visible (e.g. a submit that needs input). */
+  --disabled-fill: #e6e3df;
+  --disabled-text: #6b6b6b;
+
+  /* --- Type scale (§2: base 18px / 1.5) --- */
+  --font-body: 1.125rem; /* 18px */
+  --font-label: 1rem; /* 16px — muted only */
+  --font-h3: 1.375rem; /* 22px */
+  --font-h2: 1.75rem; /* 28px */
+  --font-h1: 2.125rem; /* 34px */
+  --font-numeric: 2rem; /* 32px, bold, tabular — weights and totals */
+  --line-height: 1.5;
+  --font-stack: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* --- Spacing (§2: 4 / 8 / 12 / 16 / 24 / 32 / 48) --- */
+  --space-1: 0.25rem; /* 4 */
+  --space-2: 0.5rem; /* 8 — also the minimum gap between adjacent targets (§1.2) */
+  --space-3: 0.75rem; /* 12 */
+  --space-4: 1rem; /* 16 */
+  --space-5: 1.5rem; /* 24 — default screen padding */
+  --space-6: 2rem; /* 32 */
+  --space-7: 3rem; /* 48 */
+  --screen-padding: var(--space-5);
+
+  /* --- Radii (§2) --- */
+  --radius-control: 0.5rem; /* 8px */
+  --radius-card: 0.75rem; /* 12px */
+  --radius-pill: 999rem;
+
+  /* --- Focus ring (§2: 3px --brand-orange, 2px offset, on every focusable) --- */
+  --focus-width: 3px;
+  --focus-offset: 2px;
+
+  /* --- Target sizes (§1 principle 2, §3 component minimums) --- */
+  --target-min: 2.75rem; /* 44px — WCAG 2.5.5 AAA floor, not the 24px one */
+  --row-min: 3.5rem; /* 56px — big list row */
+  --key-min: 4rem; /* 64px — numeric keypad key */
+  --input-height: 3rem; /* 48px — text input */
+  --bottom-nav-height: 3.5rem; /* 56px */
+  --top-bar-height: 3.5rem;
+  --side-nav-width: 15rem;
+
+  --shadow-modal: 0 0.5rem 2rem rgba(0, 0, 0, 0.28);
+}
+
+/* --- Base --- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-stack);
+  font-size: var(--font-body);
+  line-height: var(--line-height);
+  /* §1.8: light only, no dark mode. Say so rather than letting the UA guess. */
+  color-scheme: light;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 var(--space-3);
+  color: var(--text);
+  font-weight: 700;
+}
+
+h1 {
+  font-size: var(--font-h1);
+}
+h2 {
+  font-size: var(--font-h2);
+}
+h3 {
+  font-size: var(--font-h3);
+}
+
+p {
+  margin: 0 0 var(--space-3);
+}
+
+a {
+  color: var(--link);
+  text-decoration: underline; /* §2: in-content links, always underlined */
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* §2: focus ring on EVERY focusable element. Applied here once so no component
+ * can forget it, and never removed without a replacement. */
+:focus-visible {
+  outline: var(--focus-width) solid var(--brand-orange);
+  outline-offset: var(--focus-offset);
+}
+
+.r3-numeric {
+  font-size: var(--font-numeric);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.r3-label {
+  font-size: var(--font-label);
+  color: var(--text-muted); /* §2: label size is muted-only */
+}
+
+/* Visually hidden but read aloud — used for icon-only affordances' names. */
+.r3-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
