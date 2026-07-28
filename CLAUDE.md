@@ -20,6 +20,10 @@ Load the doc that owns the area you're touching — these docs are long and non-
 
 Add `docs/features/<name>.md` once a feature accumulates worked examples or edge cases that don't belong in a foundation doc, and link it here. `archived/` is prior scratch work — ignore unless asked.
 
+| Feature doc | Load it when you're... |
+| :---- | :---- |
+| [`phase-1-build-plan.md`](docs/features/phase-1-build-plan.md) | building anything in Phase 1 — standing decisions (no `COMPLETED` in Phase 1, deferred `§7` tables), build order, single-owner files, and the rules every agent follows |
+
 ## Where code goes
 
 ```

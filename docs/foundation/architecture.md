@@ -133,7 +133,7 @@ The cost — a lookup plus a `last_seen_at` write per request — is sub-millise
 | :---- | :---- |
 | id | opaque random token, the cookie value |
 | user_id | FK to `app_user`, `ON DELETE RESTRICT` |
-| device_id | FK to the device record; determines lifetime policy |
+| device_id | FK to `device`, `ON DELETE RESTRICT`; **nullable — null means unregistered, i.e. personal**. Determines lifetime policy |
 | created_at | absolute-cap anchor |
 | last_seen_at | idle-timeout anchor, slid on each authenticated request |
 | expires_at | resolved expiry, whichever of idle/absolute binds first |
@@ -144,7 +144,9 @@ Session rules differ by device (`UI §5`: shared devices time out fast and never
 
 **Decision: enumerate the shared devices** — an admin registers the receiver tablet and reporter desktop; anything unregistered is personal. The set is small and fixed at two.
 
-This direction's failure mode is the unsafe one: a lost marker (browser data cleared, tablet reset) silently makes the pantry tablet "personal," holding weeks-long sessions on a device in a shared room. **It is neutralized by storing the marker on the same record as the tablet's device-level push subscription** (`Data Model §11`, `push_subscription.user_id IS NULL`). Losing it therefore also stops truck-inbound alerts — a receiver notices within a day, and one re-run of the setup restores both.
+**The registry is a `device` table, and membership in it *is* the shared-device marker.** `session.device_id` references it: non-null means a registered shared device (30 min idle / 12 h cap), null means unregistered and therefore personal. The marker cannot instead hang off `push_subscription`, because `PRD §2` gives a device-level push subscription to the **tablet only** ("additionally holds") and no event in the notification matrix targets the reporter desktop — so a desktop would never have a subscription row, would read as personal, and would silently hold a 7-day Staff/Admin session on a machine in a shared room. That is precisely the failure this section exists to prevent.
+
+This direction's failure mode is the unsafe one: a lost marker (browser data cleared, tablet reset) silently makes the pantry tablet "personal," holding weeks-long sessions on a device in a shared room. **It is neutralized by binding the tablet's device-level push subscription to its `device` row** (`Data Model §11`, `push_subscription.device_id`). Losing the registration therefore also stops truck-inbound alerts — a receiver notices within a day, and one re-run of the setup restores both. The desktop has no such coupling and no alerts to lose; its registration is verified by the session lifetime it produces, not by a signal.
 
 > **General rule:** when security-relevant state can degrade invisibly, bind it to something operationally visible so its loss announces itself.
 
@@ -270,7 +272,7 @@ Jobs run on intervals inside the Express process. The weakness — jobs die with
 The PRD makes this simpler than a typical outbox: push is best-effort and the in-app inbox is the source of truth, so a permanently failed push is **not** a data-integrity problem. Retry with backoff, give up after a cap, log. No dead-letter queue, no alerting.
 
 - **Delivery is at-least-once.** A crash between "push sent" and "mark delivered" re-sends; a duplicate banner beats a lost reminder.
-- **`410 Gone`** means the subscription is dead (uninstalled, permission revoked) → delete the `push_subscription` row. The normal end of a subscription's life, not an error.
+- **`410 Gone`** means the subscription is dead (uninstalled, permission revoked) → **revoke** the `push_subscription` row (`revoked_at`); dispatch skips revoked rows. The normal end of a subscription's life, not an error. Revoke rather than delete because every FK is `ON DELETE RESTRICT` (`Data Model §0`), so a row referenced by any session or notification cannot be removed — and a hard delete would take with it the record of which device a past alert went to.
 - **Dispatch fires immediately after commit** so a release fans out at once, *plus* the periodic sweep as the safety net that makes correctness independent of that call.
 
 Dispatch state (`delivered_at`, `attempts`, `last_attempt_at`) lives on `notification` (`Data Model §11`). Event taxonomy, fan-out sets, and message content remain the notifications doc's.

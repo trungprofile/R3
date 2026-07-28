@@ -1,0 +1,20 @@
+# Gitignored files copied into every worktree Claude Code creates.
+#
+# .gitignore excludes `.claude` and `CLAUDE.md`, and a worktree checks out only
+# TRACKED files — so without this list an isolated agent starts with no project
+# instructions, no doc routing table, and no doc-qa definition. It would then
+# guess at rules the foundation docs already wrote down, which is the one failure
+# mode this repo is organized to prevent.
+#
+# .claude/worktrees/ is deliberately NOT listed: copying it would nest worktrees
+# inside worktrees.
+CLAUDE.md
+.claude/agents/
+.claude/commands/
+.claude/settings.json
+.claude/settings.local.json
+
+# Secrets: DB credentials, session secret, VAPID keys. Server tests fail at boot
+# without them (architecture.md §5.1).
+.env
+.env.local

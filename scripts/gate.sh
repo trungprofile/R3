@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# The mechanical half of the wave gate (phase-1-build-plan.md §5.2).
+#
+# Exit code IS the verdict. The lead decides what the next wave is; it does not
+# decide whether the last one passed — a lead reading its own agents' reports
+# will rationalize a partial pass, which is the failure mode this script exists
+# to remove.
+#
+# The other half of the gate is `doc-qa` over the merged diff, which is an agent
+# and cannot run from a shell. Both must pass.
+
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+FAILED=0
+step() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
+fail() { printf '\033[31m  FAIL: %s\033[0m\n' "$1"; FAILED=1; }
+ok()   { printf '\033[32m  ok\033[0m\n'; }
+
+# 1. Migrations apply cleanly to an EMPTY database.
+#    This is why the test DB is dropped and recreated rather than reused: a
+#    migration that only works against an already-migrated database is a
+#    deploy-time failure we want to catch here instead (architecture.md §5.3).
+step "migrations apply to an empty database"
+if ./scripts/test-db.sh >/tmp/r3-gate-migrate.log 2>&1; then
+  # test-db.sh runs in a subshell, so its DATABASE_URL export dies with it.
+  # Every later step needs that value, so read it back off the script's last line
+  # rather than duplicating the naming logic here and letting the two drift.
+  export DATABASE_URL="$(sed -n 's/^test database ready: //p' /tmp/r3-gate-migrate.log | tail -1)"
+  if [ -z "$DATABASE_URL" ]; then
+    fail "could not determine DATABASE_URL from test-db.sh output"
+  else
+    ok
+  fi
+else
+  fail "migrations did not apply — see /tmp/r3-gate-migrate.log"
+  tail -20 /tmp/r3-gate-migrate.log
+fi
+
+# 2. Typecheck. Agents write most of this codebase; a type error caught at
+#    compile time is a defect that never ships (architecture.md §4.6).
+step "typecheck"
+if [ -d node_modules ]; then
+  if npx tsc --noEmit --pretty false 2>&1 | tee /tmp/r3-gate-tsc.log | tail -20; then
+    grep -q "error TS" /tmp/r3-gate-tsc.log && fail "type errors" || ok
+  else
+    fail "typecheck failed"
+  fi
+else
+  fail "node_modules missing — dependencies are Wave-0-owned"
+fi
+
+# 3. Test suite, against the migrated database from step 1. Never a fixture
+#    schema: tier-1/2 invariants exist only as real DDL (CLAUDE.md).
+step "test suite"
+if [ -d node_modules ]; then
+  if npx vitest run --root server >/tmp/r3-gate-test.log 2>&1; then
+    ok
+  else
+    fail "tests failed — see /tmp/r3-gate-test.log"
+    tail -30 /tmp/r3-gate-test.log
+  fi
+else
+  fail "node_modules missing"
+fi
+
+# 4. No stubbed service functions. A wave that reports "complete" while leaving
+#    a service throwing NotImplemented has moved work into the next wave without
+#    saying so, and the report contract (§5.1) would not catch it.
+step "no stubs in the service layer"
+STUBS=$(grep -rnE "TODO|FIXME|not implemented|NotImplemented" server/src/services/ 2>/dev/null || true)
+if [ -n "$STUBS" ]; then
+  fail "stubbed or unfinished service code:"
+  echo "$STUBS"
+else
+  ok
+fi
+
+# 5. Generated types are not hand-edited. Schema flows one direction only:
+#    DDL -> migration -> database -> generated types (architecture.md §4.6).
+#    Editing types.ts to silence an error desyncs code from where invariants
+#    are actually enforced.
+step "db/types.ts matches the database"
+if [ -d node_modules ] && [ -f server/src/db/types.ts ]; then
+  cp server/src/db/types.ts /tmp/r3-types-before.ts
+  if npm run --workspace @r3/server codegen >/dev/null 2>&1; then
+    if diff -q /tmp/r3-types-before.ts server/src/db/types.ts >/dev/null; then
+      ok
+    else
+      fail "db/types.ts is stale or hand-edited — regenerate it from the database"
+      diff /tmp/r3-types-before.ts server/src/db/types.ts | head -20
+    fi
+  else
+    fail "codegen did not run"
+  fi
+else
+  fail "db/types.ts missing"
+fi
+
+printf '\n'
+if [ "$FAILED" -eq 0 ]; then
+  printf '\033[32m▸ GATE PASSED\033[0m (mechanical half — doc-qa still required)\n'
+else
+  printf '\033[31m▸ GATE FAILED\033[0m\n'
+fi
+exit "$FAILED"

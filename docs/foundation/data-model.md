@@ -411,23 +411,41 @@ CREATE TABLE notification (
 CREATE UNIQUE INDEX uq_notif_shift_event ON notification (event, shift_id, recipient_id)
   WHERE shift_id IS NOT NULL AND recipient_id IS NOT NULL;
 
+-- The enumerated shared devices (Architecture §4.2). Membership IS the
+-- shared-device marker: an admin registers the receiver tablet and the reporter
+-- desktop, and anything unregistered is personal. `session.device_id` references
+-- this table, NULL meaning personal.
+CREATE TABLE device (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  label      text NOT NULL,                          -- "receiver tablet", "reporter desktop"
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE push_subscription (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    uuid REFERENCES app_user(id) ON DELETE RESTRICT,  -- NULL = device-level (receiver tablet, truck-inbound only)
+  user_id    uuid REFERENCES app_user(id) ON DELETE RESTRICT,  -- a person's own subscription
+  device_id  uuid REFERENCES device(id)   ON DELETE RESTRICT,  -- device-level (receiver tablet, truck-inbound only)
   endpoint   text NOT NULL,
   p256dh     text NOT NULL,
   auth       text NOT NULL,
-  label      text,                                   -- e.g. "receiver tablet"
+  label      text,
+  revoked_at timestamptz,                            -- 410 Gone; dispatch skips revoked rows
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT uq_push_endpoint UNIQUE (endpoint)
+  CONSTRAINT uq_push_endpoint UNIQUE (endpoint),
+  CONSTRAINT ck_push_owner CHECK (
+    (user_id IS NOT NULL AND device_id IS NULL) OR
+    (user_id IS NULL     AND device_id IS NOT NULL)
+  )
 );
 ```
 
-Added in reconciliation. `user_id NULL` models the device-level receiver-tablet subscription (PRD §2: "a notification endpoint, not a login"). Recommend deferring final shape to the notifications doc; included here so the data model isn't silently incomplete.
+Added in reconciliation. `device_id` set (with `user_id` null) models the device-level receiver-tablet subscription (PRD §2: "a notification endpoint, not a login"), and binding it to the `device` row is what makes a lost shared-device registration announce itself by also killing truck-inbound alerts (Architecture §4.2). Recommend deferring final shape to the notifications doc; included here so the data model isn't silently incomplete.
+
+**A dead subscription is revoked, not deleted.** A `410 Gone` sets `revoked_at`. §0's blanket `ON DELETE RESTRICT` means a subscription referenced by any `session` or `notification` row cannot be hard-deleted at all, so the alternative is not "delete sometimes" but "delete never works once used". Revocation also keeps the record of which device a past alert went to. Same soft-delete shape as the I21 masters, for the same reason.
 
 **`shift_id` serves two purposes** (hence a real FK rather than a `payload` key): it is the deep-link anchor for the in-app inbox (UI S1.9, "tap to act") and the dedupe key for `uq_notif_shift_event` above. Nullable — not every event has a subject shift (e.g. "driver sets unavailability").
 
-**Dispatch state is architecture's, not the notifications doc's.** `delivered_at` / `attempts` / `last_attempt_at` exist because the `notification` row *is* the outbox: it is committed atomically with the business change, and a separate in-process sweep delivers the push. If the process dies between commit and delivery the row survives and the next sweep retries it. Delivery is **at-least-once** (a crash between "push sent" and "mark delivered" re-sends — a duplicate banner is preferable to a lost reminder). A permanently failed push is **not** a data-integrity problem: the in-app inbox is the source of truth (PRD channel strategy), so dispatch gives up after a cap and logs. A `410 Gone` from the push gateway means the subscription is dead (uninstalled / permission revoked) → delete the `push_subscription` row; this is the normal end of a subscription's life, not an error.
+**Dispatch state is architecture's, not the notifications doc's.** `delivered_at` / `attempts` / `last_attempt_at` exist because the `notification` row *is* the outbox: it is committed atomically with the business change, and a separate in-process sweep delivers the push. If the process dies between commit and delivery the row survives and the next sweep retries it. Delivery is **at-least-once** (a crash between "push sent" and "mark delivered" re-sends — a duplicate banner is preferable to a lost reminder). A permanently failed push is **not** a data-integrity problem: the in-app inbox is the source of truth (PRD channel strategy), so dispatch gives up after a cap and logs. A `410 Gone` from the push gateway means the subscription is dead (uninstalled / permission revoked) → set `push_subscription.revoked_at`; dispatch skips revoked rows. This is the normal end of a subscription's life, not an error. Revoked rather than deleted: §0's blanket `ON DELETE RESTRICT` means a subscription referenced by any `session` or `notification` row cannot be hard-deleted at all, so deletion is not merely discouraged here — it is unreachable once the row has been used.
 
 **Also note the receiver edit window is NOT a job.** `now < shift.starts_at + app_config.receiver_edit_window_days` is derived at request time; only the `SUGGESTED` purge (I17) needs a scheduled write.
 

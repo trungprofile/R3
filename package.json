@@ -5,5 +5,12 @@
     "shared",
     "server",
     "client"
-  ]
+  ],
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "test": "npm test --workspace @r3/server",
+    "gate": "./scripts/gate.sh"
+  }
 }
