@@ -13,8 +13,8 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **1 — 3 lanes in flight** |
-| Wave status | spawned; awaiting reports. Lead pre-work merged as `9ee7a14`, gate green before spawn |
+| Current wave | **1 — all 3 lanes merged, gating** |
+| Wave status | `scripts/gate.sh` **green** on the cumulative diff (132 server + 19 client tests). `doc-qa` running over `14d01e8..HEAD`. **A24 halts promotion to Wave 2 regardless of the verdict** |
 | Branch | `phase-1` |
 | Loop armed | **yes** — armed 2026-07-28 |
 | Consecutive gate failures | 0 (reset on pass; wave 0 took 3 gate rounds) |
