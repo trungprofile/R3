@@ -173,7 +173,13 @@ Then: push `phase-1`, open **one** PR to `main`, stop. Do not merge it.
 
 ### 5.5 Escalation — when to HALT rather than continue
 
-HALT means: stop spawning, write the reason to `phase-1-state.md`, notify the human, wait.
+HALT means: stop spawning, write the reason to `phase-1-state.md`, end the loop, and wait.
+
+**No notification is sent.** This is deliberate: a halt is silent, and the human discovers it on
+their next check-in. The reason must therefore be written to `phase-1-state.md` *before* the loop
+ends, in enough detail to act on without re-reading a transcript — the state file is the only
+thing that will still exist. A halt whose reason is "gate failed" is a bug in this protocol; it
+should name the failing check, the lane, and what would unblock it.
 
 | Condition | Why it halts rather than retries |
 | :---- | :---- |
