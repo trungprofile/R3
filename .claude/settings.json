@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude-in-chrome__*",
+      "WebFetch(domain:localhost)",
+      "WebFetch(domain:127.0.0.1)",
+      "Bash(localhost:*)",
+      "Bash(127.0.0.1:*)",
+      "Edit",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git blame*)",
+      "Bash(git branch)",
+      "Bash(git branch --list*)",
+      "Bash(git stash list*)",
+      "Bash(git tag*)"
+    ],
+    "deny": [],
+    "defaultMode": "bypassPermissions"
+  },
+  "sandbox": {
+    "network": {
+      "allowedDomains": [
+        "localhost",
+        "127.0.0.1",
+        "*.localhost",
+        "registry.npmjs.org",
+        "*.npmjs.org",
+        "codeload.github.com",
+        "github.com",
+        "objects.githubusercontent.com",
+        "raw.githubusercontent.com",
+        "formulae.brew.sh",
+        "ghcr.io",
+        "pkg-containers.githubusercontent.com"
+      ]
+    }
+  },
+  "worktree": {
+    "baseRef": "head",
+    "symlinkDirectories": [
+      "node_modules"
+    ]
+  },
+  "model": "claude-opus-5",
+  "effortLevel": "high"
+}

@@ -1,6 +1,9 @@
 archived
-.claude
-CLAUDE.md
+
+# .claude/ ships with the repo so cloud sessions get the same agents,
+# commands, and settings. Only per-machine overrides stay local.
+.claude/settings.local.json
+.claude/**/*.local.*
 
 node_modules/
 dist/
