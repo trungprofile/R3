@@ -226,6 +226,20 @@ Per wave, in order:
 6. record  update phase-1-state.md, decide wave N+1, continue
 ```
 
+**Write state at every step, not only at step 6.** The lead's context compacts over a long run,
+and a resumed lead — after a compaction or after the session is restarted entirely — knows only
+what this file says. If state is written once per wave, a compaction landing between step 1 and
+step 2 leaves a lead that believes no lanes are running while three are, and it spawns three more.
+
+So: record lane names and their branches *before* spawning (step 1), mark each lane merged as it
+merges (step 2), and record the gate verdict as it lands (step 3). The cost is a few extra lines
+per wave. The failure it prevents is duplicate work landing on `phase-1` with no conflict to
+announce it, because two identical lanes conflict cleanly only some of the time.
+
+A resumed lead's first action is therefore always: read this file's §5.6, read `phase-1-state.md`,
+and run `git worktree list` — the worktrees on disk are ground truth about what is actually in
+flight, and they outlive any context.
+
 At the end of Phase 1 (§5.4): push, open **one** PR from `phase-1` to `main`, stop. Do not merge it.
 
 ## 6. Cross-doc dependencies
