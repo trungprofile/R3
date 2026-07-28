@@ -186,6 +186,48 @@ HALT means: stop spawning, write the reason to `phase-1-state.md`, notify the hu
 Never: invent a domain rule, edit a locked doc (`domain-modeling.md`), relax a constraint to make a
 test pass, or mark a wave complete with a red gate.
 
+### 5.6 Git protocol
+
+**The lead stays on `phase-1` for the whole run and never checks out another branch.** Lane
+isolation comes from worktrees, not from branch switching — switching under running agents would
+change the files they are editing.
+
+Worktrees share the repository's `.git`, so everything below is local. Nothing needs the remote
+until the final PR.
+
+Per wave, in order:
+
+```
+1. spawn   lane agents run with `isolation: worktree`. With worktree.baseRef = "head"
+           each gets .claude/worktrees/<lane> on branch worktree-<lane>, branched from
+           phase-1's current HEAD — so every lane starts from the previous wave's merged
+           result, not from origin/main.
+
+2. merge   git merge --no-ff worktree-<lane>        (once per lane, in report order)
+           A conflict is a HALT, not a merge to resolve: lanes are file-disjoint by
+           §3, so a conflict means the partition was wrong — a design error upstream
+           of the merge.
+
+3. gate    ./scripts/gate.sh   AND   doc-qa over the cumulative diff
+           red -> fixer agent, re-gate, max 3 rounds, then HALT (§5.5)
+
+4. push    git push origin phase-1
+           ONLY after a green gate. Not for review — as the offsite copy. A multi-hour
+           unattended run that exists only on one disk is one failure from zero
+           (architecture.md §5.3 makes the same argument about backups).
+
+5. clean   git worktree remove .claude/worktrees/<lane>
+           git branch -d worktree-<lane>
+           Required, not tidiness: Claude Code auto-removes a subagent worktree only
+           when the agent made NO changes, and the periodic sweep deliberately skips
+           any worktree still holding work. Every lane worktree therefore survives
+           until the lead removes it, and four waves would leave a dozen behind.
+
+6. record  update phase-1-state.md, decide wave N+1, continue
+```
+
+At the end of Phase 1 (§5.4): push, open **one** PR from `phase-1` to `main`, stop. Do not merge it.
+
 ## 6. Cross-doc dependencies
 
 | Doc | Owns | This doc depends on it for |
