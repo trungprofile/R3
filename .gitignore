@@ -10,7 +10,11 @@ archived
 # entire working tree into phase-1.
 .claude/worktrees/
 
-node_modules/
+# No trailing slash: worktrees get `node_modules` as a SYMLINK (settings.json
+# `worktree.symlinkDirectories`), and git treats a symlink as a file, so a
+# `node_modules/` pattern misses it. Every lane's `git add -A` would then commit
+# a machine-specific absolute-path symlink, and lanes would collide on it.
+node_modules
 dist/
 build/
 

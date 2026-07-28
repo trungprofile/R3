@@ -205,11 +205,19 @@ Per wave, in order:
 
 ```
 1. spawn   lane agents run with `isolation: worktree`. With worktree.baseRef = "head"
-           each gets .claude/worktrees/<lane> on branch worktree-<lane>, branched from
-           phase-1's current HEAD — so every lane starts from the previous wave's merged
-           result, not from origin/main.
+           each gets its own checkout under .claude/worktrees/, on its own branch,
+           branched from phase-1's current HEAD — so every lane starts from the
+           previous wave's merged result, not from origin/main.
 
-2. merge   git merge --no-ff worktree-<lane>        (once per lane, in report order)
+           The harness names both, not you: the path is .claude/worktrees/agent-<id>
+           and the branch worktree-agent-<id>, where <id> is the agent id. Do not
+           construct these from the lane name — they are returned in the spawn result
+           as worktreePath and worktreeBranch. Record them against the lane name in
+           phase-1-state.md immediately (see "write state at every step" below); after
+           a compaction that mapping exists nowhere else, and `git worktree list` is
+           then the only ground truth left.
+
+2. merge   git merge --no-ff <worktreeBranch>       (once per lane, in report order)
            A conflict is a HALT, not a merge to resolve: lanes are file-disjoint by
            §3, so a conflict means the partition was wrong — a design error upstream
            of the merge.
@@ -222,8 +230,12 @@ Per wave, in order:
            unattended run that exists only on one disk is one failure from zero
            (architecture.md §5.3 makes the same argument about backups).
 
-5. clean   git worktree remove .claude/worktrees/<lane>
-           git branch -d worktree-<lane>
+5. clean   git worktree remove <worktreePath> --force
+           git branch -D <worktreeBranch>
+           Both flags are load-bearing, not shortcuts: a lane worktree still holds
+           its build (untracked test databases, generated files), and the branch is
+           already merged into phase-1 by step 2 but `-d` still refuses branches git
+           cannot prove are merged. Verify against `git worktree list` afterwards.
            Required, not tidiness: Claude Code auto-removes a subagent worktree only
            when the agent made NO changes, and the periodic sweep deliberately skips
            any worktree still holding work. Every lane worktree therefore survives
