@@ -13,22 +13,73 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **1 — all 3 lanes merged, gating** |
-| Wave status | `scripts/gate.sh` **green** on the cumulative diff (132 server + 19 client tests). `doc-qa` running over `14d01e8..HEAD`. **A24 halts promotion to Wave 2 regardless of the verdict** |
+| Current wave | **1 complete — Wave 2 NOT started (halted)** |
+| Wave status | **passed.** `scripts/gate.sh` green on the cumulative diff (132 server + 19 client tests), `doc-qa` **zero findings**, merged and pushed to `origin/phase-1` at `add4e13` |
 | Branch | `phase-1` |
-| Loop armed | **yes** — armed 2026-07-28 |
-| Consecutive gate failures | 0 (reset on pass; wave 0 took 3 gate rounds) |
-| Halted | no |
+| Loop armed | **no** — stopped at H2 on 2026-07-28, awaiting a human decision |
+| Consecutive gate failures | 0 (wave 1 passed on the first gate round) |
+| Halted | **yes — H2 (A24), a security rule the docs answer both ways** |
 
 ## Halt
 
-*(none — H1 cleared. A1 and A4 were decided by the human on 2026-07-28; see Open assumptions.)*
+### H2 — PII visibility: `product-requirement.md §2` contradicts itself
 
-## Wave 1 — lanes in flight
+**Wave 1 passed its gate.** All four §5.3 promotion criteria hold: `gate.sh` exits 0, `doc-qa`
+reports zero findings, all three lanes reported `complete`, and every `Assumed:` line is recorded
+below. This halt is **not** a gate failure — it is §5.5's "a foundation doc contradicts another",
+which halts independently of promotion.
 
-Named before spawning (§5.6 step 1). `worktreePath` / `worktreeBranch` are filled in from the
-spawn result the moment each agent starts; after a compaction this table plus `git worktree list`
-is the only record that these lanes exist.
+**What contradicts what.** Inside a single section of the top-authority doc:
+
+| Where | Says |
+| :---- | :---- |
+| `product-requirement.md §2`, role table, **Staff** row | Staff "Cannot ... see others' PII" |
+| `product-requirement.md §2`, role table, **Admin** row | "PII visibility" is part of the **Admin-only delta** |
+| `product-requirement.md §2`, prose bullet, ~3 lines later | "Only phone/address are gated to **Staff-tier-and-above**" |
+| `architecture.md §4.3` | `viewer.tier >= STAFF` OR `viewer.id == subject.id` — and cites `PRD §2` as its source |
+
+The two readings are mutually exclusive: either a Staff coordinator can see a volunteer's phone
+number and address, or only an Admin can.
+
+**Why the authority order does not settle it.** `CLAUDE.md` ranks `product-requirement.md` above
+`architecture.md`, but both readings are *inside* `product-requirement.md`. The tiebreak has no
+input. Escalating is the protocol's own answer here, not caution.
+
+**What the code does now.** Follows `architecture.md §4.3` — Staff-and-above, plus always yourself.
+`doc-qa` confirmed this resolution is applied consistently everywhere it recurs: `shapeUser()` in
+`server/src/pii.ts` is the single implementation, and `routes/auth.ts` (roster, login, `/me`) and
+`routes/users.ts` (list/get/create/edit) all reach it through that one call. Nowhere resolves it the
+other way.
+
+**What a human needs to decide.** One question: **can Staff see other users' phone and address?**
+
+- **If yes** (current behaviour) — `product-requirement.md §2`'s role table is wrong. Remove "see
+  others' PII" from the Staff *Cannot* column and drop "PII visibility" from the Admin-only delta.
+  No code changes.
+- **If no** — `architecture.md §4.3` is wrong and so is the code. Change the predicate in
+  `server/src/pii.ts` to `viewer.tier >= ADMIN OR viewer.id == subject.id`, update
+  `architecture.md §4.3`'s PII-shaping paragraph, and fix the §2 prose bullet that says
+  "Staff-tier-and-above". `server/test/identity-pii.test.ts` asserts the current rule and would need
+  its expectations inverted.
+
+**Why this stops the run rather than deferring.** Wave 2 builds master-data CRUD and a second round
+of routes; Wave 4 builds S1.8, the admin account screen that renders these fields. Every one of them
+inherits this decision. It is one line today and a cross-cutting change with test churn in two
+waves' time — §5.5's "cheap to decide now, expensive to unwind later", exactly.
+
+**To resume:** answer the question above, apply the corresponding change, set `Halted` to no and
+`Loop armed` to yes, then restart the loop. Wave 2's lanes are already named in §2 of the build plan
+(master data CRUD incl. D2 ‖ route builder ‖ `eligible()` + availability ‖ PWA onboarding); nothing
+else blocks them.
+
+*(H1 was cleared in wave 0. A1 and A4 were decided by the human on 2026-07-28; see Open
+assumptions.)*
+
+## Wave 1 — lanes (all merged, worktrees removed)
+
+Named before spawning (§5.6 step 1). **Nothing is in flight** — all three worktrees and branches
+were removed per §5.6 step 5 and `git worktree list` shows only the main checkout. Kept as the
+record of who owned what.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
@@ -56,7 +107,7 @@ different worktrees. Registering it is a Wave-2 one-liner, not a gap.
 | Wave | Lanes | Merged | Gate | Notes |
 | :---- | :---- | :---- | :---- | :---- |
 | 0 — substrate | *(single-lane, lead-run)* | direct to `phase-1` | **pass** (round 3) | [report](../../reports/wave-0-substrate.md). 3 `doc-qa` findings, all real: A4 doc-vs-doc contradiction, A1 wrong inference, one incomplete doc edit |
-| 1 — identity / surface / signal | not started | — | — | |
+| 1 — identity / surface / signal | 3, file-disjoint | all 3, `--no-ff`, in report order: signal → surface → identity | **pass** (round 1) | Reports [identity](../../reports/1-identity.md), [surface](../../reports/1-surface.md), [signal](../../reports/1-signal.md). `doc-qa` zero findings. Pushed `add4e13`. Worktrees and branches removed, verified against `git worktree list`. **Halted after the wave on H2 (A24)** |
 | 2 — masters / routes / eligible / PWA | not started | — | — | |
 | 3 — schedule+recurrence / execution | not started | — | — | Coverage stays single-owner |
 | 4 — screens S1.1–S1.9 | not started | — | — | one agent per screen folder |
