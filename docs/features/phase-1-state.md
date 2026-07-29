@@ -13,8 +13,8 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **3 — all 3 lanes merged, mechanical gate green, NOT PROMOTED** |
-| Wave status | **All three Wave-3 lanes reported, merged `--no-ff` with no conflict, seams wired, `gate.sh` PASSED at 500 tests.** The wave is **not promoted**, because §5.3 needs all four criteria and only three are met: `doc-qa` **has not been run over the cumulative diff**. The human was nearly out of credit and asked to wrap up and commit, so the lead committed the work and stopped rather than spending the remaining budget on an agent. **The next lead's first action is `doc-qa` over `4c10428..HEAD`** — nothing else, and no Wave 4, until it is clean |
+| Current wave | **4a — spawning. Wave 3 is PROMOTED and closed.** |
+| Wave status | **Wave 3 promoted 2026-07-29 at `233fc22`.** All four §5.3 criteria met at last: `gate.sh` green (500 tests), **`doc-qa` round 2 clean — zero findings**, all three lanes reported `complete`, and every `Assumed:` (A79–A116) recorded below. Pushed to `origin/phase-1`; all four Wave-3 worktrees and their branches removed and verified against `git worktree list` (§5.6 step 5). The tree is clean and no lane is in flight |
 | Branch | `phase-1` |
 | Loop armed | **yes** — restarted 2026-07-28 on the human's go-ahead; resumed 2026-07-29 |
 | doc-qa (gate part 2) | **Round 1 reported 2026-07-29 over `4c10428..HEAD`: 4 findings, all resolved; round 2 pending.** Three were stale docs and **none was a code bug** — the Wave-3 lanes' code came through clean, and every finding traced to a doc restating a rule instead of citing it. (1) `data-model.md §11` and (2) `architecture.md §4.4` both still showed the pre-0009 `uq_notif_shift_event` DDL *and* the "event-triggered notifications fire once by construction" sentence that migration 0009 exists to refute — the same disproven claim in two places, which is why 0009 was needed at all. (3) `ui-ux-spec.md S1.5` still carried the superseded two-element I27 gate ("COLLECTED or SKIPPED"), which would have told a Wave-4 UI builder to hide *Heading back* on a run that had a stop reassigned off it — the exact freeze the I27 amendment was made to prevent. (4) was **A111**, escalated to the human and answered (see A111). All four fixed; re-run pending |
@@ -23,27 +23,37 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 ### The one thing the next lead must do first
 
-**Run `doc-qa` over `git diff 4c10428..HEAD`.** Wave 3 is merged and mechanically green but
-**unpromoted**: §5.3 requires all four criteria and the `doc-qa` half of the gate never ran. Do not
-start Wave 4, do not remove the Wave-3 worktrees, and do not treat the ledger's "green" as a pass —
-the gate decides pass/fail and only half of it has spoken.
+**Wave 3 is closed. The next action is Wave 4a's merge-and-gate, or its spawn if the lanes below are
+not yet running.** Nothing from Wave 3 is outstanding: gate green both halves, pushed, worktrees
+removed. `git worktree list` showing only the main checkout is the confirmation.
 
-Three things in this wave are exactly what `doc-qa` exists to catch, and all three are the **lead's**
-edits rather than a lane's:
+**Wave 4 is split into two batches, 4a then 4b.** `phase-1-build-plan.md §2` sizes Wave 4 as "high"
+parallelism, one agent per `S1.x` screen — nine lanes. The lead split it rather than spawning nine at
+once, for two reasons that are about *diagnosis*, not machine load: §5.5 allows only three fix rounds
+before a HALT, and a red gate with nine freshly-merged lanes gives those three rounds nine suspects
+instead of four or five. The batches are also a natural seam — 4a is the volunteer/driver path a real
+user walks end to end, so a green 4a is a demonstrable slice rather than half a screen set.
 
-1. **The I27 amendment** to the locked `domain-modeling.md` (authorized by the human). The lead synced
-   §3.1's gate bullet alongside it, but the last time a locked-doc amendment happened, the lead's
-   cross-doc sync was **incomplete and `doc-qa` caught it** — `data-model.md §6` and the PRD are the
-   places to check for a restated two-element I27 gate.
-2. **Migration 0009**, which changed a tier-1 index, and the inverted assertion in
-   `coverage-release.test.ts` that goes with it.
-3. **The job registry assertion** widened from 2 jobs to 5. That is a wave-scoped fact expiring, not
-   a constraint relaxed to pass — but it is the shape of edit §5.5 forbids, so it should be looked at
-   by something other than the person who made it.
+- **4a — the rescue loop as a user walks it:** S1.1 login, S1.2 board, S1.4 my shifts + availability,
+  S1.5 driver pickup, S1.9 inbox.
+- **4b — the staff and admin path:** S1.3 shift detail, S1.6 scheduling, S1.7 reschedule, S1.8 admin.
 
-Worktrees still on disk, deliberately: `agent-a0d3f9b26e700d0fc`, `agent-ae8393a4467fb460d`,
-`agent-a95dba7531295b943`, `agent-aac3964bdc1925e97` (the stopped lane, now merged in via the
-continuation). Remove all four **after** `doc-qa` is clean, not before.
+**The Wave-4 seam is `client/src/main.tsx`'s `SCREENS` registry, and it is LEAD-OWNED.** Every lane
+builds its screen under its own folder in `client/src/screens/s1-rescue/` and wires nothing; the lead
+adds one import + one registry line per screen at merge. No lane may edit `main.tsx`,
+`app/routes.ts`, `components/`, `tokens/`, or `api/index.ts` — those are the §3 single-owner files and
+the whole reason nine screens can be built at once. A lane needing a new shared component builds it
+inside its own folder and says so under `Assumed:`; the lead promotes it to `components/` later if two
+lanes turn out to want it.
+
+Two carried-over items the lead owns, neither blocking 4a:
+
+1. **A66 — `apple-touch-icon` is still missing.** The manifest `<link>` is now static in
+   `client/index.html`, but iOS reads a PNG for the home-screen icon and `client/public/` holds only
+   SVGs. Until one exists the installed iOS icon is the browser's screenshot fallback. Needs a binary
+   asset, which is why no agent has produced it.
+2. **A67 — `client/public/` ownership.** Created by Wave 2's pwa lane as a declared exception. Still
+   unratified. It has caused no conflict since; ratify it or re-partition before 4b.
 
 ## Halt
 
