@@ -475,8 +475,16 @@ describe('I23 / I24 — the pattern changes only by an explicit pattern-level ed
     // a pattern edit leaves them exactly where they were and hands them back.
     expect(result.moved).toBe(0);
     expect(result.ownedInstances.length).toBe(instances.length);
-    for (const instance of await instancesOf(pattern.id)) {
-      const original = instances.find((row) => row.id === instance.id)!;
+    // Iterate the ORIGINALS and look each up in the current set, never the reverse.
+    // Moving the window later in the day legitimately MINTS an occurrence that did not
+    // exist before: today's 09:00 slot is already past and so was never materialized
+    // (§5.3's loop runs over [now, horizon]), while today's new 13:00 slot is still in
+    // the future and is. The reverse direction therefore hits a current row with no
+    // original and dies on the `!` — but only when pantry-local now sits between the
+    // two windows, which is why this passed every run outside 09:00–13:00.
+    const current = await instancesOf(pattern.id);
+    for (const original of instances) {
+      const instance = current.find((row) => row.id === original.id)!;
       expect(instance.status).toBe('CLAIMED');
       expect(instance.starts_at.getTime()).toBe(original.starts_at.getTime());
       expect(instance.ends_at.getTime()).toBe(original.ends_at.getTime());
@@ -496,10 +504,12 @@ describe('I23 / I24 — the pattern changes only by an explicit pattern-level ed
 
     expect(result.moved).toBe(before.length);
     expect(result.ownedInstances).toEqual([]);
+    // Originals first, for the reason given on the I24 test above: the edit can mint a
+    // row `before` never held, and `after`-first would assert against `undefined`.
     const after = await instancesOf(pattern.id);
-    for (const instance of after) {
-      const moved = before.find((row) => row.id === instance.id)!;
-      expect(instance.starts_at.getTime()).not.toBe(moved.starts_at.getTime());
+    for (const original of before) {
+      const moved = after.find((row) => row.id === original.id)!;
+      expect(moved.starts_at.getTime()).not.toBe(original.starts_at.getTime());
     }
   });
 
