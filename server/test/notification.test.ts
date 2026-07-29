@@ -500,8 +500,12 @@ describe('banner copy obeys ui-ux-spec.md §7', () => {
 // --- the scheduler --------------------------------------------------------
 
 describe('the scheduler runs catch-up sweeps', () => {
-  it('registers exactly one job in Wave 1', () => {
-    expect(JOBS.map((j) => j.name)).toEqual(['push-dispatch']);
+  // The registry is the one list of what runs, so it is asserted exactly rather
+  // than loosely: a job that appears here without a wave deciding to add it is the
+  // failure this guards against. Wave 2 added session-cleanup, which registry.ts's
+  // own table had already scheduled for this wave.
+  it('registers the jobs waves 1 and 2 added, and no others', () => {
+    expect(JOBS.map((j) => j.name)).toEqual(['push-dispatch', 'session-cleanup']);
     expect(JOBS.every((j) => j.intervalMs > 0)).toBe(true);
   });
 

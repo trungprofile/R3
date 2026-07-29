@@ -15,6 +15,13 @@
 // Phase-1 enums only. `donation_status` is Phase 2 (build-plan D3), absent from the
 // migrations, and therefore absent here.
 
+// Wave-2 API shapes live in their own files and are re-exported here by the lead.
+// Server lanes import their own file by relative path (A34) — the package entry is
+// the client's only door, so anything the client needs must appear below.
+export * from './masters.js';
+export * from './routes.js';
+export * from './availability.js';
+
 /** `tier` — I1. Hierarchical: VOLUNTEER ⊂ STAFF ⊂ ADMIN. Compare by rank with `>=`,
  *  never by equality. */
 export const TIERS = ['VOLUNTEER', 'STAFF', 'ADMIN'] as const;

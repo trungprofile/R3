@@ -8,6 +8,15 @@
     <meta name="theme-color" content="#363839" />
     <!-- Light only, no dark mode (§1.8). -->
     <meta name="color-scheme" content="light" />
+    <!-- Declared statically rather than injected at runtime (wave-2 A66). The pwa
+         lane could not touch this file, so `linkManifest()` added the link from
+         main.tsx; that call is idempotent and is now a no-op. A browser that reads
+         the head before scripts run sees the manifest either way.
+         STILL MISSING: <link rel="apple-touch-icon">, which iOS uses for the
+         home-screen icon instead of the manifest. It needs a PNG — the only icons
+         in client/public/ are SVG, which iOS will not accept — so the installed
+         icon on iOS is the browser's screenshot fallback until one is added. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>R3 — Amazing Grace Food Pantry</title>
   </head>
   <body>
