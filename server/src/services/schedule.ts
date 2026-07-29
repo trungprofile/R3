@@ -39,7 +39,6 @@ import type { DB } from '../db/types.js';
 import { writeTransaction, type Tx } from '../db/transaction.js';
 import { badRequest, conflict, notFound } from '../middleware/error.js';
 import {
-  addDays,
   formatRange,
   localToInstant,
   parseDate,
@@ -838,10 +837,4 @@ export async function bulkTerminate(
 
     return Number(updated.numUpdatedRows);
   });
-}
-
-/** Tomorrow, pantry-local — the first date a pattern edit may rewrite. Exported so
- *  the recurrence service and its tests agree on where "future" starts. */
-export function nextDay(date: CalendarDate): CalendarDate {
-  return addDays(date, 1);
 }

@@ -394,8 +394,6 @@ export interface CreatePatternParams {
   startTime: string;
   endTime: string;
   endDate?: string | null;
-  /** First date the series generates from. Defaults to today, pantry-local. */
-  startDate?: string | null;
 }
 
 export interface CreatePatternResult {
@@ -417,6 +415,11 @@ export interface CreatePatternResult {
  * confirmation in the staff case, with the resulting shift flagged. A new pattern
  * therefore mints `OPEN` instances, and I25's born-CLAIMED path opens up once an
  * owner default exists.
+ *
+ * A series begins TODAY. §5.3's loop is `for each occurrence date D in [now, horizon]`
+ * and the rule it iterates has no start date; `data-model.md §5.2` has no column for
+ * one. See `shared/src/schedule.ts` `CreatePatternRequest` for why accepting one here
+ * would be undone by the next sweep.
  */
 export async function createPattern(
   actor: ScheduleActor,
@@ -432,10 +435,6 @@ export async function createPattern(
   const created = await writeTransaction(async (tx) => {
     const config = await readConfig(tx);
     const today = await pantryToday(tx, config.timezone);
-    const from =
-      params.startDate === undefined || params.startDate === null
-        ? today
-        : parseDate(params.startDate, 'startDate');
 
     // Validates the intra-day rule (`ck_rp_window`, §5.3) before anything is written.
     resolveWindow(today, params.startTime, params.endTime, config.timezone);
@@ -470,21 +469,16 @@ export async function createPattern(
 
     // The soft duplicate-run check (`data-model.md §5.3`), surfaced only here where
     // staff is present. Never blocks, and the rolling job never runs it.
-    const candidates: DuplicateCandidate[] = patternWindows(
-      { weekdays, startTime: params.startTime, endTime: params.endTime, endDate },
-      config.timezone,
-      from,
-      config.horizon_days,
-    ).map((window) => ({ ...window, routeId: route.id }));
-    const duplicates = await findDuplicateRuns(tx, candidates, pattern.id);
-
-    const materialized = await materializeIn(
+    const duplicates = await findDuplicates(
       tx,
+      { weekdays, startTime: params.startTime, endTime: params.endTime, endDate },
+      route.id,
       pattern.id,
-      // A pattern that starts in the future materializes from its own start date, so
-      // the lower bound is the later of "now" and that date's first instant.
-      laterOf(new Date(), candidates[0]?.startsAt),
+      config,
+      today,
     );
+
+    const materialized = await materializeIn(tx, pattern.id, new Date());
 
     return {
       pattern: await readPattern(tx, pattern.id),
@@ -496,9 +490,26 @@ export async function createPattern(
   return created;
 }
 
-function laterOf(now: Date, other: Date | undefined): Date {
-  if (other === undefined) return now;
-  return other.getTime() > now.getTime() ? other : now;
+/**
+ * The soft duplicate-run check (`data-model.md §5.3`), surfaced at pattern create and
+ * pattern edit — the two moments a staff member is standing there to judge it. Never
+ * blocks, and the rolling job never calls it.
+ */
+async function findDuplicates(
+  tx: Tx,
+  rule: PatternRule,
+  routeId: string,
+  patternId: string,
+  config: { timezone: string; horizon_days: number },
+  from: CalendarDate,
+): Promise<DuplicateRun[]> {
+  const candidates: DuplicateCandidate[] = patternWindows(
+    rule,
+    config.timezone,
+    from,
+    config.horizon_days,
+  ).map((window) => ({ ...window, routeId }));
+  return findDuplicateRuns(tx, candidates, patternId);
 }
 
 export interface UpdatePatternParams {
@@ -517,6 +528,8 @@ export interface UpdatePatternResult {
   ownedInstances: ShiftRecord[];
   offPatternInstances: ShiftRecord[];
   materialized: number;
+  /** `data-model.md §5.3` surfaces `real_conflict` at pattern create AND edit. */
+  duplicates: DuplicateRun[];
 }
 
 /**
@@ -608,6 +621,15 @@ export async function updatePattern(
       actor,
     );
 
+    const duplicates = await findDuplicates(
+      tx,
+      { weekdays, startTime, endTime, endDate },
+      routeId,
+      patternId,
+      config,
+      today,
+    );
+
     const materialized = await materializeIn(tx, patternId, new Date());
 
     return {
@@ -616,6 +638,7 @@ export async function updatePattern(
       ownedInstances,
       offPatternInstances,
       materialized: materialized.created,
+      duplicates,
     };
   });
 }
@@ -673,7 +696,7 @@ async function applyToFutureInstances(
     }
 
     const window = resolveWindow(date, rule.startTime, rule.endTime, timeZone);
-    await tx
+    const result = await tx
       .updateTable('shift')
       .set({
         route_id: rule.routeId,
@@ -684,10 +707,15 @@ async function applyToFutureInstances(
       })
       .where('id', '=', instance.id)
       // Still OPEN when the write lands, or it belongs to the owned list instead.
-      // The predicate is the optimistic check (`data-model.md §9`).
+      // The predicate is the optimistic check (`data-model.md §9`), so the count
+      // has to come from the statement rather than from the loop — a row claimed
+      // between the read and this write was not moved, and must not be reported as
+      // though it had been.
       .where('status', '=', 'OPEN')
-      .execute();
-    moved++;
+      .executeTakeFirst();
+
+    if (Number(result.numUpdatedRows) === 0) ownedIds.push(instance.id);
+    else moved++;
   }
 
   return {

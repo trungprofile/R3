@@ -209,6 +209,17 @@ export interface RecurrencePatternSummary {
  * Create a weekly pattern (`S1.6`: "Every Tuesday, starting __, no end" or an end
  * date). Materialization is eager to the horizon, so creating one immediately mints
  * every instance in range (`domain-modeling.md §5.3`).
+ *
+ * **There is no `startDate`.** A series begins when it is created. `domain-modeling.md
+ * §5.3` gives the rule exactly three parts — weekly on {days}, time-of-day, route —
+ * plus `ownerDefault` and `endDate`, and states one stop condition and one lower bound
+ * (`for each occurrence date D in [now, horizon]`). `data-model.md §5.2` has no
+ * `start_date` column to hold one. A start date accepted here could therefore only be
+ * honoured by the create call: the rolling sweep asks the database "which occurrences
+ * in range have no row?" (`architecture.md §4.4`), has nothing to read a start date
+ * from, and would back-fill every skipped date on its next pass. S1.6's "starting __"
+ * is the sentence naming when the series begins, which for an eagerly-materialized
+ * pattern created now is today.
  */
 export interface CreatePatternRequest {
   routeId: string;
@@ -217,8 +228,6 @@ export interface CreatePatternRequest {
   endTime: string;
   /** Omitted or null = open-ended. */
   endDate?: string | null;
-  /** Optional first date; defaults to today. Occurrences before it are not minted. */
-  startDate?: string | null;
 }
 
 export interface CreatePatternResponse {
@@ -243,6 +252,10 @@ export interface UpdatePatternRequest {
 
 export interface UpdatePatternResponse {
   pattern: RecurrencePatternSummary;
+  /** The same soft check as create: `data-model.md §5.3` surfaces `real_conflict` at
+   *  pattern create **and edit**, both being the moments a staff member is standing
+   *  there to judge it. Never blocks. */
+  duplicates: DuplicateRunWarning[];
   /** Future unclaimed instances moved onto the new window. */
   moved: number;
   /**
