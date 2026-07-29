@@ -67,7 +67,7 @@ ground truth left.
 | `s1-1-login` | S1.1 Login | `worktree-agent-afcbdae24cb485037` | **merged** (clean, no conflict) |
 | `s1-2-board` | S1.2 Shared shift board | `worktree-agent-a172e7e5324aeb522` | **merged** (resumed after the stop, then complete) |
 | `s1-4-my-shifts` | S1.4 My shifts + availability | `worktree-agent-a2aabbb6c854a3d9d` | **merged** (resumed after the stop, then complete) |
-| `s1-5-pickup` | S1.5 Driver pickup execution | `worktree-agent-a11efe9ea96dde6d6` | **resumed, still running** — partial work was preserved at `925d6a6` |
+| `s1-5-pickup` | S1.5 Driver pickup execution | `worktree-agent-a11efe9ea96dde6d6` | **merged** (resumed after the stop, then complete) |
 | `s1-9-inbox` | S1.9 Notification inbox **+ its server surface** | `worktree-agent-ae61c199995723b58` | **merged** (resumed after the stop, then complete) |
 
 Worktree paths are `.claude/worktrees/agent-<id>` for the same `<id>`.
@@ -906,6 +906,35 @@ the cap-9 release.
 | A114 | 3 | **Reschedule checks I20's two temporal clauses rather than full `eligible()`.** Inherited, kept. | open, non-blocking |
 | A115 | 3 | **`createShift` surfaces `real_conflict` for one-offs**, not only for pattern instances. Inherited, kept. | open, non-blocking |
 | A116 | 3 | **Occurrences whose window has already begun are not minted** by the sweep. Inherited, kept; §5.3's `[now, horizon]` does not say which side of `now` a partially-elapsed occurrence falls. | open, non-blocking |
+
+## Open assumptions — Wave 4a
+
+All five lanes reported `complete`. Full `Assumed:` lists are in `reports/4a-*.md`; recorded here per
+§5.3, with the entries that need a human eye called out. **Three were escalated and answered during
+the wave** (A117, A118, A119) — the rest are open and non-blocking.
+
+### Answered by the human, 2026-07-29
+
+| # | Assumption | Resolved? |
+| :---- | :---- | :---- |
+| **A117** | **S1.5 reorders stops with large "Move up" / "Move down" buttons, not the spec's "drag handle, large".** The lane's reasoning: HTML drag-and-drop does not fire on touch, so a drag handle would work on the staff desktop and silently fail on the phone this screen exists for; a hand-rolled touch drag is the fragile control §1.5 rules out; a drag library is a dependency §3/D5 forbids a lane to add. | **RESOLVED — buttons stay, `ui-ux-spec.md` S1.5 amended** to specify them and record why drag was rejected, so the next reader cannot re-derive the contradiction. No code change |
+| **A118** | **Staff may open a Claimed-by-other or In-progress row into S1.3; a driver may not.** S1.2's states table says those rows have "no action" unconditionally, but S1.3 names staff as one of its two users and the board is its primary entry point — the literal reading leaves the staff half of S1.3 unreachable. Raised independently by the board lane *and* by `doc-qa`. | **RESOLVED — staff can open them, `ui-ux-spec.md` S1.2 amended** with a per-viewer note, scoped the same way At-risk already was. Navigation only; no board action added, and S1.3 re-authorizes everything anyway. No code change |
+| **A119** | **`ui-ux-spec.md` S1.5 described the truck-inbound push as Phase-1 behaviour** ("Confirming … fires the truck-inbound push to the receiver tablet"), while PRD §5 scopes Phase 1 as caps 1–11, 13 *minus* truck-inbound, the receiver tablet's registration is Phase 2, and the server deliberately enqueues nothing. Found by the pickup lane's own doc-check. | **RESOLVED — clause marked Phase 2.** Left alone it would have had a Phase-1 screen telling a driver the pantry was notified when nothing was sent |
+
+### Open, non-blocking — worth a read before Wave 4b
+
+| # | Assumption | Note |
+| :---- | :---- | :---- |
+| **A120** | **Times are rendered in the DEVICE's timezone, on every screen that shows one.** No endpoint exposes `app_config.timezone`. Run *dates* cannot drift (they come from the server-resolved `occurrenceDate`), but a driver in another zone sees their own clock for run times, and S1.4's `DATES` block loses its "All day" wording. Raised by `s1-4-my-shifts`, hit independently by `s1-5-pickup` (A11) for `pickup_completed_at`. | **The fix is one field on an existing response** and it is lead-owned. Two lanes hit it; a third almost certainly will in 4b. Worth doing before 4b spawns |
+| A121 | **The board is bounded to today forward** (`?from=<today>`, no `to`). S1.2 says "see every shift" without naming a window. | non-blocking |
+| A122 | **The inbox polls unread count every 60s and on `visibilitychange`.** No doc gives an interval. | non-blocking |
+| A123 | **Inbox endpoint shapes are entirely the lane's** — `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/read-all`, `POST /notifications/:id/read`, all `{ tier: 'VOLUNTEER' }` with no duty, no `?userId=` and so no staff view of another person's inbox, and 404 (never 403) for another user's row, an unknown id and a malformed uuid alike so the inbox cannot be probed. 26 entries in that lane's report. | non-blocking; `doc-qa` checked these against §4.1/§4.3 and found them clean |
+| A124 | **Mark-all-read exists** though S1.9 does not mention it — tapping a row navigates away, so a coordinator fanned out to a dozen runs would otherwise clear the bell one round trip at a time. | non-blocking |
+| A125 | **Notification arrival time is formatted server-side** in `app_config.timezone` (following A7's `payload.when` precedent): under 7 days → `"Tue 9:00 AM"`, older → `"Aug 4"`. The cut and both formats are the lane's. | non-blocking; note this is the *opposite* choice to A120's client-side rendering, and deliberately so |
+| A126 | **S1.5 starting is pick-then-confirm**, not one tap per truck row: a started run cannot be un-started and its truck cannot be changed (I8), so a single mis-tap in a moving truck would be unrecoverable. | non-blocking |
+| A127 | **A `REASSIGNED` stop stays visible on S1.5, struck-through**, rather than vanishing from a list someone is reading while driving. | non-blocking |
+| A128 | **Wire types are declared twice** for the inbox, server-side and client-side, because `shared/src/` was outside that lane's ownership. | non-blocking; a candidate for consolidation when `shared/` next has an owner |
+| A129 | **All user-visible copy on all five screens is the lane's**, unread by a human — same standing as A6/A45/A70/A92/A107. S1.5's set is pinned by a test against §7's forbidden words, against any sentence saying the run is over, and against any promising a notification. | non-blocking, but this is now five screens of unreviewed copy |
 
 ## Blocked
 
