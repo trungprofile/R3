@@ -13,7 +13,7 @@ import { atLeastTier, canSee, hasAnyDuty, hasDuty, tierRank } from './access.ts'
 import { navItemsFor } from './nav.tsx';
 import { buildPath, matchPath, resolvePath, ROUTES } from './routes.ts';
 import type { CurrentUser } from '../api/session.ts';
-import type { Duty, Tier } from '@r3/shared';
+import type { Duty, Tier } from '../api/shared.ts';
 
 function user(tier: Tier, duties: Duty[]): CurrentUser {
   return {

@@ -8,7 +8,7 @@
 // route (`architecture.md §4.3`). Repeating it here hides pages a user cannot
 // use; it decides nothing. Every rule is enforced again server-side (§4.5).
 
-import type { Duty, Tier } from '@r3/shared';
+import type { Duty, Tier } from '../api/shared.ts';
 
 export type ScreenId =
   | 'login' // S1.1

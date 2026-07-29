@@ -12,8 +12,8 @@
 // refused. The server checks the same rule again on every request, and that
 // check is the one that matters.
 
-import { TIERS } from '@r3/shared';
-import type { Duty, Tier } from '@r3/shared';
+import { TIERS } from '../api/shared.ts';
+import type { Duty, Tier } from '../api/shared.ts';
 import type { Access } from './routes.ts';
 import type { CurrentUser } from '../api/session.ts';
 

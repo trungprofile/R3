@@ -200,3 +200,49 @@ export interface ApiError {
   message: string;
   correlationId?: string;
 }
+
+// ---------------------------------------------------------------------------
+// API shapes — alerts (web push)
+//
+// The word the UI uses is "alerts" (`ui-ux-spec.md §7` forbids the vocabulary
+// this subsystem is built out of). These identifiers are internal, never copy.
+// ---------------------------------------------------------------------------
+
+/**
+ * Who a registration belongs to. `push_subscription`'s `ck_push_owner` allows
+ * exactly one of `user_id` / `device_id`, so this is a closed pair rather than a
+ * pair of optional fields.
+ *
+ * `DEVICE` is the receiver tablet's endpoint: `product-requirement.md §2` gives
+ * it "a device-level push subscription used only for the truck-inbound alert…
+ * not a login", and `architecture.md §4.2` binds it to the `device` row so that
+ * losing the shared-device marker also stops the alerts and therefore announces
+ * itself.
+ */
+export const PUSH_SCOPES = ['USER', 'DEVICE'] as const;
+export type PushScope = (typeof PUSH_SCOPES)[number];
+
+/**
+ * What the browser needs before it can register for alerts.
+ *
+ * `publicKey` is null when the box has no VAPID configured (`architecture.md
+ * §5.1` makes those deploy configuration). That is not an error: the in-app
+ * inbox is the source of truth (PRD channel strategy), so an unconfigured box
+ * loses the alerting layer and nothing else.
+ */
+export interface PushConfigResponse {
+  publicKey: string | null;
+}
+
+/** Exactly the browser's own registration, plus a human label for the admin. */
+export interface PushRegistrationRequest {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  label?: string | null;
+}
+
+export interface PushRegistrationResponse {
+  id: string;
+  /** Decided by the server from the device marker, never asked for by the client. */
+  scope: PushScope;
+}
