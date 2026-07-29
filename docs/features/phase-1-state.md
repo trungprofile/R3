@@ -143,7 +143,7 @@ attempt 1 — the partition was never the problem; see H3.
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
 | **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-aeb37364caf59ac1f` | `worktree-agent-aeb37364caf59ac1f` | **yes** | **complete** (`dcf7a78`, 180 tests) | — |
 | **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a6ede00f689f72ad6` | `worktree-agent-a6ede00f689f72ad6` | **yes** | **complete** (`c752a45`, 171 tests) | — |
-| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a82503cec27dc11c9` | `worktree-agent-a82503cec27dc11c9` | **yes** | — | — |
+| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a82503cec27dc11c9` | `worktree-agent-a82503cec27dc11c9` | **yes** | **complete** (`60851e1`, 187 tests, own `gate.sh` green) | — |
 | **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-adb1d6c0b0ea86d28` | `worktree-agent-adb1d6c0b0ea86d28` | **yes** | — | — |
 
 All four spawned 2026-07-28 and branched from **`0a6fa3e`**, verified against `git worktree list`
@@ -177,6 +177,9 @@ needs `services/session.ts` and `jobs/` in the same tree, which first happens no
 - `masters` — **three** route spreads in `server/src/routes/index.ts`; `export * from './masters.js';`
   in `shared/src/index.ts`. Without both, the 15 routes stay unmounted and their tests still pass,
   because lanes test via `buildRouter(myRoutes)` — so nothing fails loudly if this is forgotten.
+- `eligible` — `...availabilityRoutes` in `server/src/routes/index.ts`; `export * from
+  './availability.js';` in `shared/src/index.ts`. Then **A56**: hoist the local-to-instant conversion
+  out of `services/availability.ts` into a shared module before Wave 3 needs the same arithmetic.
 
 ### The lead owes a migration before Wave 3 spawns
 
@@ -333,6 +336,27 @@ one question would cost more than it saves.
 | A51 | 2 | **Blank / whitespace-only optional text (`address`, `contact`, `note`, `plate`) is stored as `NULL`**, and a whitespace-only *name* is a 400. The columns are nullable with no CHECK and no doc distinguishes `''` from `NULL`; collapsing them keeps "nothing on file" a single state. | open, non-blocking |
 | A52 | 2 | **`PATCH` with no recognised field is a 400** ("Nothing to change."), not a no-op 200. | open, non-blocking |
 | A53 | 2 | **Re-deactivating an already-deactivated master does not restamp `deactivated_at`** — the original instant is kept. Same for a `DELETE` that lands on the soft branch. | open, non-blocking |
+
+### Wave 2 — eligible lane
+
+Reported `complete`, 187/187, and the only lane to run `scripts/gate.sh` green in its own worktree.
+**Read A54, A58 and A56 first.** A54 adds a clause to an algorithm the **locked** doc specifies; A58
+is a stored shape; A56 is timezone arithmetic that Wave 3 will need again and must not re-derive.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| **A54** | 2 | **A deactivated account is ineligible — a clause `domain-modeling.md §5.2` does not contain.** §5.2's predicate names only the Drive duty, so this is the lane's addition, justified from I21 ("hidden from new use") and from the consequence that fan-out would otherwise alert a removed account. Isolated behind its own reason code (`DEACTIVATED`), so it is one line to drop if §5.2 is meant literally. **Notable because it extends a locked doc rather than interpreting a silent one** — the right call needs a human, but the lane made it visible instead of burying it. | open — confirm the locked doc is meant to be read literally |
+| A55 | 2 | **Availability is declared as pantry-local calendar dates and clock times; the server converts.** §5.2 says the window is "pantry-local", `app_config.timezone` holds the pantry's zone, and a driver's phone may be in another. API takes `fromDate`/`toDate` (`YYYY-MM-DD`) and optional `startTime`/`endTime` (`HH:MM`), never instants. No doc states the request shape. | open, non-blocking |
+| **A56** | 2 | **Local-to-instant conversion is `Intl.DateTimeFormat` with a two-pass offset correction**, because D5 forbids adding a dependency. DST edges: a local time that does not exist (spring-forward gap) resolves to the instant the clock jumped to; one that happens twice resolves to the first. No doc states either behaviour. **Wave 3's recurrence materialization needs the identical conversion**, and it currently lives inside `services/availability.ts` — the lead should hoist it to a shared module before Wave 3, or it gets written twice and the two copies drift at exactly the edges no test covers. | open — hoist before Wave 3 spawns |
+| A57 | 2 | **A `WINDOW` declaration must be intra-day** (`endTime` strictly after `startTime`); an overnight absence is expressed as a `DATES` range. §5.3 states intra-day for *recurrence* windows, not for availability; the same reading was applied. | open, non-blocking |
+| **A58** | 2 | **A `DATES` declaration is stored as ONE contiguous block** — local midnight on `fromDate` to local midnight on the day after `toDate` — not one row per day. `WINDOW` is one row per date. No doc says which. **Stored shape**, same class as A5/A7/A36: changing it after real rows exist is a data migration. | open — decide before Wave 3 writes real rows |
+| A59 | 2 | **A single declaration may span at most `app_config.horizon_days`** (365 by default). No doc bounds it. | open, non-blocking |
+| A60 | 2 | **Duplicate and overlapping blocks for the same driver are allowed and never merged**, and **past-dated blocks are accepted**. | open, non-blocking |
+| A61 | 2 | **Withdrawal is a hard delete and owner-only.** I21's soft-delete rule enumerates Donor / Category / Truck / User and nothing references `availability_block`. No doc gives Staff a declare-on-behalf or withdraw-on-behalf action, so neither exists. | open, non-blocking |
+| A62 | 2 | **Reading another user's availability requires tier >= `STAFF`** (PRD §2), enforced in the service. Declaring and withdrawing require the `DRIVE` duty at the route layer. | open, non-blocking |
+| A63 | 2 | **`UNAVAILABILITY_DECLARED` goes to every active user with tier >= `STAFF`, one row per declaration** — not per block, and with no subject shift. There is no single named "the coordinator" in the schema. Builds on A5's event taxonomy, itself still open. | open, non-blocking |
+| A64 | 2 | **Withdrawing availability sends nothing.** The PRD §4 matrix has a row for *setting* unavailability and none for clearing it; the matrix was read as closed rather than illustrative. | open, non-blocking |
+| A65 | 2 | **HTTP shapes are the lane's** — `POST /api/availability` → 201, `GET /api/availability?userId=`, `DELETE /api/availability/:id` → 204, and 409 `AVAILABILITY_CONFLICT` carrying S1.4's sentence as `message`. No doc specifies endpoints. | open, non-blocking |
 
 ## Blocked
 
