@@ -309,7 +309,7 @@ large it looks next to the others.
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
 | **schedule** | `server/src/services/{schedule,recurrence}.ts`, `server/src/routes/shifts.ts`, `server/src/jobs/materialization.ts`, `shared/src/schedule.ts`, own tests | `.claude/worktrees/agent-a95dba7531295b943` (continuation) | `worktree-agent-a95dba7531295b943` | **yes** — 2nd attempt, continuing | — | — |
 | **coverage** | `server/src/services/coverage.ts`, `server/src/routes/coverage.ts`, `server/src/jobs/at-risk.ts`, `shared/src/coverage.ts`, own tests | `.claude/worktrees/agent-ae8393a4467fb460d` | `worktree-agent-ae8393a4467fb460d` | **yes** | — | — |
-| **execution** | `server/src/services/execution.ts`, `server/src/routes/execution.ts`, `server/src/jobs/reminder.ts`, `shared/src/execution.ts`, own tests | `.claude/worktrees/agent-a0d3f9b26e700d0fc` | `worktree-agent-a0d3f9b26e700d0fc` | **yes** | — | — |
+| **execution** | `server/src/services/execution.ts`, `server/src/routes/execution.ts`, `server/src/jobs/reminder.ts`, `shared/src/execution.ts`, own tests | `.claude/worktrees/agent-a0d3f9b26e700d0fc` | `worktree-agent-a0d3f9b26e700d0fc` | **yes** | **complete** (`1198753`, 58 lane tests, own `gate.sh` green at 348) | — |
 
 All three spawned 2026-07-28 and branched from **`4c10428`**, verified against `git worktree
 list` rather than constructed from the lane name (§5.6 step 1).
@@ -331,6 +331,11 @@ it finds wrong and any `Assumed:` the original code *implies* but never stated �
 assumption inherited from a dead agent is exactly the kind the report contract exists to catch.
 
 The original worktree and branch are kept until the continuation merges, then removed with the rest.
+
+**Merge chores accumulating as lanes report** (all the lead's):
+
+- `execution` — `...executionRoutes` in `routes/index.ts`; `export * from './execution.js';` in
+  `shared/src/index.ts`; `shiftReminderJob` in `jobs/registry.ts`.
 
 **Seams the lead owns, as in every wave:** `server/src/routes/index.ts` (three spreads),
 `shared/src/index.ts` (three re-exports), and now **`server/src/jobs/registry.ts`** — each lane writes
@@ -623,6 +628,38 @@ A34**: the `@r3/shared` hazard is real on the client too, and it was *proven* wi
 | A76 | 2 | **`GET /api/push/config` returns `{ publicKey: null }` on a box with no VAPID** rather than failing — the same degradation A12 chose for dispatch. | open, non-blocking |
 | A77 | 2 | **The phone breakpoint is repeated as a literal `767px` in `pwa.css`** — the card is a sibling of the shell, and a custom property cannot appear in a media query. Drift risk against A16's breakpoints. | open, non-blocking |
 | **A78** | 2 | **Five existing client files that imported `@r3/shared` were repointed to `client/src/api/shared.ts`.** A34's hazard, **confirmed on the client with `tsc --traceResolution`**: from inside a worktree `@r3/shared` resolves to the *main checkout's* `shared/src`, so this lane's own additions were invisible to its own client typecheck. A34 asked for this to be made structural in Wave 2 — this is evidence it must be, not a preference. | open — make structural before Wave 3 |
+
+### Wave 3 — execution lane
+
+Reported `complete`, 58 lane tests, own `gate.sh` green (348 total). **A79 and A80 are the two to
+read first**: A79 is a *scope* call that contradicts the lead's own brief, and A80 is a **locked doc
+disagreeing with itself** about I27's gate.
+
+**The lane also corrected the lead, and was right.** The brief asserted that `shift_stop` carries
+`donor_label` and copied donor details "for I5's sake". It does not: I5 keeps a **live Donor FK** and
+`domain-modeling.md §2.3` explicitly says not to copy donor name/address; `donor_label` belongs to
+`unscheduled_donation`, a Phase-2 table (D3). Verified by the lead against `0005`'s DDL — `shift_stop`
+is `(id, shift_id, donor_id, position, disposition, note)`. The snapshot freezes **membership and
+order**, nothing else. A lane that had believed the brief would have invented columns; this one
+checked the doc and wrote a test asserting the row's exact column set.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| **A79** | 3 | **I27's Receiver notification is NOT enqueued.** I27 says setting `pickup_completed_at` "triggers a Receiver notification" and the lead's brief said to enqueue it. The lane declined, on scope: PRD cap 10 and `ui-ux-spec.md S1.5` both identify that alert as the **truck-inbound** one, and PRD §5 scopes Phase 1 as "caps 1–11, 13 **minus truck-inbound**". Enqueuing it would also need a new event string in another lane's file and a device-scoped recipient (the receiver tablet) whose registration is Phase 2. **The milestone write itself is unaffected.** | open — **escalate**: the lane overrode the lead's brief on a documented scope boundary, and it reads correct |
+| **A80** | 3 | **I27's gate: `{COLLECTED, SKIPPED}` or `{COLLECTED, SKIPPED, REASSIGNED}`?** I27 states the first; `domain-modeling.md §3.2`'s final bullet states the second, and `data-model.md §6` agrees with §3.2. **Both readings sit inside the locked doc**, so the authority order cannot break the tie — the same shape as H2. The lane implemented the §3.2 reading (a `REASSIGNED` stop counts as resolved, being terminal and "excluded from this shift's completion gate"), which is 2-to-1 on the documents and internally coherent. | open — **`doc-qa` to rule**; possible §5.5 doc-contradiction |
+| A81 | 3 | **The reminder sweep is bounded on both sides of now** — a run that already started gets no reminder. No doc says whether a missed window should fire late; "your run starts in an hour" about a run that began two hours ago is false. | open, non-blocking |
+| A82 | 3 | **The reminder sweep considers only `CLAIMED` shifts with an active owner.** The matrix names "the owning driver"; an `IN_PROGRESS` run's driver is already on it, and a deactivated account cannot read an inbox (I21). Neither exclusion is stated. | open, non-blocking |
+| A83 | 3 | **`resolveStop` is idempotent, refuses `COLLECTED → SKIPPED`** (§3.2 gives that edge to the receiver), **and offers no un-check** — the ShiftStop machine has no edge back to `PENDING`. No doc addresses an undo. Idempotence is deliberate: a double-tap on a flaky phone must not error. | open, non-blocking |
+| A84 | 3 | **`reorderStops` requires `stopIds` to name every non-`REASSIGNED` stop exactly once**, and pushes `REASSIGNED` rows to the end of the numbering. S1.5 does not show a moved stop, so the driver's drag list cannot name it. | open, non-blocking |
+| **A85** | 3 | **A reassignment's destination must already be `IN_PROGRESS`.** §3.2 says "another driver's shift already running **or about to run**" and S1.3's picker offers "open or in-progress", but **I5 forbids `ShiftStop` rows before `IN_PROGRESS`** — a stop appended to a not-yet-started run would be destroyed by that run's own snapshot at start. Refused with "That run has not started, so it has no stop list yet." A real tension between I5 and §3.2's wording, resolved toward the invariant. | open — worth a human eye |
+| A86 | 3 | **A reassignment does not require the destination's owner to differ from the source's.** §3.2 says "another driver's shift"; nothing forbids two runs of one driver, and enforcing it would block a legitimate move. | open, non-blocking |
+| A87 | 3 | **The destination stop does not carry the source stop's note.** I30 specifies only "fresh `position`, `PENDING`"; the note describes a visit that did not happen. | open, non-blocking |
+| A88 | 3 | **Stop-only writes do not stamp `shift.updated_by`.** `shift_stop` has no provenance columns and I26's last-writer is the `shift` row's; only writes touching `shift` itself stamp it. | open, non-blocking |
+| A89 | 3 | **`completePickup` is idempotent** — a second confirm keeps the first timestamp and applies only the note. The milestone is the moment the driver said they were heading back, and there is one of those. | open, non-blocking |
+| A90 | 3 | **`Shift.note` is writable only while `IN_PROGRESS`** (S1.5 and its review screen are the only places the doc puts it). Nothing says whether a driver may write it before start or after. | open, non-blocking |
+| A91 | 3 | **`getRun` is readable by the run's owner or Staff-and-above.** S1.3 is a staff screen and PRD §2 gives Staff operational status across volunteers. No doc enumerates who may read a run. | open, non-blocking |
+| A92 | 3 | **Endpoint paths and refusal copy are the lane's.** `PICKUP_INCOMPLETE_MESSAGE` is "Finish or skip every stop before you head back." — written to §7's rules, unread by a human. Same standing as A6, A45, A70. | open, non-blocking |
+| A93 | 3 | **Starting a run whose route has zero stops is permitted** and produces an empty snapshot. §2.2 says a route has 1..N stops, so it should be unreachable; no rule was invented to block it. | open, non-blocking |
 
 ## Blocked
 
