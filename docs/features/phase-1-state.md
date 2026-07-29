@@ -144,7 +144,7 @@ attempt 1 — the partition was never the problem; see H3.
 | **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-aeb37364caf59ac1f` | `worktree-agent-aeb37364caf59ac1f` | **yes** | **complete** (`dcf7a78`, 180 tests) | — |
 | **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a6ede00f689f72ad6` | `worktree-agent-a6ede00f689f72ad6` | **yes** | **complete** (`c752a45`, 171 tests) | — |
 | **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a82503cec27dc11c9` | `worktree-agent-a82503cec27dc11c9` | **yes** | **complete** (`60851e1`, 187 tests, own `gate.sh` green) | — |
-| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-adb1d6c0b0ea86d28` | `worktree-agent-adb1d6c0b0ea86d28` | **yes** | — | — |
+| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-adb1d6c0b0ea86d28` | `worktree-agent-adb1d6c0b0ea86d28` | **yes** | **complete** (`42ea848`, 205 tests, own `gate.sh` green) | — |
 
 All four spawned 2026-07-28 and branched from **`0a6fa3e`**, verified against `git worktree list`
 rather than constructed from the lane name (§5.6 step 1). Attempt 1's ids are dead — if you find a
@@ -180,6 +180,9 @@ needs `services/session.ts` and `jobs/` in the same tree, which first happens no
 - `eligible` — `...availabilityRoutes` in `server/src/routes/index.ts`; `export * from
   './availability.js';` in `shared/src/index.ts`. Then **A56**: hoist the local-to-instant conversion
   out of `services/availability.ts` into a shared module before Wave 3 needs the same arithmetic.
+- `pwa` — `...pushRoutes` (from `./push.js`) in `server/src/routes/index.ts`. Then **A66**: put a
+  static `<link rel="manifest">` and an `<link rel="apple-touch-icon">` in `client/index.html`, which
+  no lane owns.
 
 ### The lead owes a migration before Wave 3 spawns
 
@@ -357,6 +360,29 @@ is a stored shape; A56 is timezone arithmetic that Wave 3 will need again and mu
 | A63 | 2 | **`UNAVAILABILITY_DECLARED` goes to every active user with tier >= `STAFF`, one row per declaration** — not per block, and with no subject shift. There is no single named "the coordinator" in the schema. Builds on A5's event taxonomy, itself still open. | open, non-blocking |
 | A64 | 2 | **Withdrawing availability sends nothing.** The PRD §4 matrix has a row for *setting* unavailability and none for clearing it; the matrix was read as closed rather than illustrative. | open, non-blocking |
 | A65 | 2 | **HTTP shapes are the lane's** — `POST /api/availability` → 201, `GET /api/availability?userId=`, `DELETE /api/availability/:id` → 204, and 409 `AVAILABILITY_CONFLICT` carrying S1.4's sentence as `message`. No doc specifies endpoints. | open, non-blocking |
+
+### Wave 2 — pwa lane
+
+Reported `complete`, 205 tests (155 server / 50 client), own `gate.sh` green. **A67 is an ownership
+exception the lane took deliberately and declared** — read it first. **A78 is the one that vindicates
+A34**: the `@r3/shared` hazard is real on the client too, and it was *proven* with
+`tsc --traceResolution`, not assumed.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| **A66** | 2 | **The manifest `<link>` is injected at runtime from `main.tsx`** rather than declared in `client/index.html`, which is outside this lane's ownership. Chromium honours a runtime-added manifest link, but a static `<link rel="manifest">` in the document is the correct end state — **a one-line change the lead owns**. The same file is where `<link rel="apple-touch-icon">` belongs: iOS ignores the manifest for the home-screen icon, so **on iOS the installed icon is currently the browser's screenshot fallback**. | open — lead's one-liner in `client/index.html` |
+| **A67** | 2 | **`client/public/` was created although this lane's ownership says `client/src/**`.** A manifest and its icons cannot be served from `src` at a stable URL. Mitigating: new files, no existing owner, and no other lane was working under `client/` this wave. Revert is `rm -r client/public` plus dropping `linkManifest()`. **A declared ownership exception, not a silent one** — which is the behaviour §3 wants when the partition has no right answer. | open — ratify or re-partition before Wave 4 |
+| A68 | 2 | **Onboarding runs only once someone is signed in.** §5 says "First visit on phone shows a one-card guide" and does not say whether that precedes or follows login. | open, non-blocking |
+| A69 | 2 | **§5's "matching 2-step illustration" is rendered as two large numbered text steps, not artwork.** | open, non-blocking |
+| A70 | 2 | **All onboarding copy is the lane's** — asserted against §7's forbidden-word list, but no human has read it. Same class as A6 and A45. | open, non-blocking |
+| A71 | 2 | **Dismissal is remembered per browser in `localStorage`**, under `r3.alerts.dismissed`. | open, non-blocking |
+| **A72** | 2 | **A browser presenting a valid `r3_device` marker registers device-scoped, never user-scoped.** The docs never say what happens when a driver enables alerts while signed in at the shared tablet; the alternative **leaks one person's alerts onto a shared machine**. Builds on A1's resolved `device` table and A28's cookie. | open — a privacy-shaped default, worth ratifying |
+| A73 | 2 | **Re-offering an endpoint clears `revoked_at`.** `uq_push_endpoint` makes a second live row impossible, so it is the only route back to live after A4's soft-revoke. | open, non-blocking |
+| A74 | 2 | **An endpoint must be an absolute `https` URL and each key base64url; nothing else is validated.** | open, non-blocking |
+| A75 | 2 | **`push_subscription.label` carries a client-supplied device description.** | open, non-blocking |
+| A76 | 2 | **`GET /api/push/config` returns `{ publicKey: null }` on a box with no VAPID** rather than failing — the same degradation A12 chose for dispatch. | open, non-blocking |
+| A77 | 2 | **The phone breakpoint is repeated as a literal `767px` in `pwa.css`** — the card is a sibling of the shell, and a custom property cannot appear in a media query. Drift risk against A16's breakpoints. | open, non-blocking |
+| **A78** | 2 | **Five existing client files that imported `@r3/shared` were repointed to `client/src/api/shared.ts`.** A34's hazard, **confirmed on the client with `tsc --traceResolution`**: from inside a worktree `@r3/shared` resolves to the *main checkout's* `shared/src`, so this lane's own additions were invisible to its own client typecheck. A34 asked for this to be made structural in Wave 2 — this is evidence it must be, not a preference. | open — make structural before Wave 3 |
 
 ## Blocked
 
