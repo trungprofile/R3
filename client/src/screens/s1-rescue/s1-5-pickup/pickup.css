@@ -1,0 +1,289 @@
+/* S1.5 driver pickup execution.
+ *
+ * Every colour, type step, spacing step, radius and target size is a token
+ * (`tokens/tokens.css`) — no hex and no literal from those scales anywhere in
+ * this file. Hairline borders and one-off ornament sizes are written as literals,
+ * the same way `components.css` writes them; this lane does not own `tokens/`.
+ *
+ * The constraints this screen is styled against are not decoration:
+ *   - one hand, in a truck, phone canonical (responsive matrix)
+ *   - 44px minimum target, 8px minimum gap between adjacent targets (§1.2)
+ *   - orange is fill-or-accent and NEVER text (§2)
+ *   - 18px body, relative units, survives 200% zoom (§1.3)
+ */
+
+.r3-pickup {
+  /* The takeover is one column: a driver reads down it, never across. On a
+     tablet (degraded, per the responsive matrix) it stays a phone-width column
+     rather than stretching a stop list to 1024px. */
+  max-width: 34rem;
+  margin: 0 auto;
+  padding-bottom: var(--space-7);
+}
+
+.r3-pickup__head {
+  margin-bottom: var(--space-4);
+}
+
+.r3-pickup__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+.r3-pickup__label {
+  display: inline-block;
+  color: var(--text-muted);
+  font-size: var(--font-label);
+  font-weight: 600;
+}
+
+.r3-pickup__hint {
+  margin: var(--space-2) 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+/* Coordinator → driver (cap 11, channel 1). Read-only here. */
+.r3-pickup__staff-note {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-paper);
+}
+
+.r3-pickup__staff-note p {
+  margin: 0;
+}
+
+.r3-pickup__primary {
+  display: flex;
+  flex-direction: column;
+  /* §1.2: 8px minimum between adjacent targets. */
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+/* --- The start step: truck picker ----------------------------------------- */
+
+.r3-truck-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.r3-truck {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  /* Big list row (§3): >=56px, the whole row is the target. */
+  min-height: var(--row-min);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Selected: an orange bar and an orange dot — accent, never text (§2). */
+.r3-truck--chosen {
+  border-color: var(--brand-orange);
+  box-shadow: inset var(--space-1) 0 0 0 var(--brand-orange);
+}
+
+.r3-truck__name {
+  font-weight: 600;
+}
+
+.r3-truck__mark {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.r3-truck--chosen .r3-truck__mark {
+  border-color: var(--brand-orange);
+  background: var(--brand-orange);
+}
+
+/* --- The stop list -------------------------------------------------------- */
+
+.r3-stops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.r3-stop {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+/* "The next unchecked stop is visually the focus" (S1.5). */
+.r3-stop--focus {
+  border-color: var(--brand-orange);
+  box-shadow: inset var(--space-1) 0 0 0 var(--brand-orange);
+  background: var(--surface-paper);
+}
+
+.r3-stop--done {
+  background: var(--surface-paper);
+}
+
+/* Moved off this run by staff (I30). Struck through so a stop never silently
+   vanishes from a list someone is reading while driving; excluded from every
+   action and from the count. */
+.r3-stop--moved .r3-stop__name {
+  text-decoration: line-through;
+}
+
+.r3-stop--moved {
+  color: var(--text-muted);
+}
+
+.r3-stop__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.r3-stop__number {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--font-label);
+  font-weight: 700;
+}
+
+.r3-stop__name {
+  flex: 1;
+  font-size: var(--font-h3);
+  font-weight: 700;
+}
+
+.r3-stop__status {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--font-label);
+  text-align: right;
+}
+
+.r3-stop__address,
+.r3-stop__store-note,
+.r3-stop__note,
+.r3-stop__hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-label);
+}
+
+.r3-stop__address {
+  color: var(--text);
+}
+
+.r3-stop__store-note,
+.r3-stop__note {
+  color: var(--text);
+}
+
+.r3-stop__hint {
+  color: var(--text-muted);
+}
+
+.r3-stop__note-editor {
+  margin-top: var(--space-3);
+}
+
+.r3-stop__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* Column, not a row: two full-width targets are easier to hit with a thumb than
+   two half-width ones, and it removes any chance of tapping Skip while reaching
+   for Picked up. */
+.r3-stop__actions--resolve {
+  flex-direction: column;
+}
+
+/* `.r3-btn + .r3-btn` adds a left margin for side-by-side buttons; the flex gap
+   already spaces these, and in a column the margin only shifts them off-axis. */
+.r3-stop__actions .r3-btn + .r3-btn {
+  margin-left: 0;
+}
+
+.r3-stop__actions--order .r3-btn {
+  flex: 1;
+}
+
+/* --- Heading back (I27) --------------------------------------------------- */
+
+.r3-pickup__handoff {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+/* A milestone, not a completion: --success reads as "recorded", and the run
+   itself carries no Done chip because it is still IN_PROGRESS (I27, D1). */
+.r3-pickup__confirmed {
+  margin: 0 0 var(--space-3);
+  color: var(--success);
+}
+
+.r3-pickup__confirmed .r3-pickup__hint {
+  color: var(--text-muted);
+}
+
+/* --- The review screen ---------------------------------------------------- */
+
+.r3-review {
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-paper);
+}
+
+.r3-review__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.r3-review__line + .r3-review__line {
+  border-top: 1px solid var(--border);
+}
+
+.r3-review__name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.r3-review__status {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+.r3-review__note {
+  flex-basis: 100%;
+  color: var(--text);
+  font-size: var(--font-label);
+}
