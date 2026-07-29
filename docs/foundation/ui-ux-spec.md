@@ -210,7 +210,7 @@ Caps 1–11, 13 (minus truck-inbound). Canonical devices: phone (driver) + deskt
 - Accounts: list of users; create (first/last → auto username shown read-only), assign tier (Volunteer/Staff/Admin) and duties (drive/receive/report as toggles), set/reset PIN or password. Delete non-admin. Username immutable once set (PRD §2).  
 - Donors: list of permanent stores (master data), add/edit/delete, attach permanent per-store note.  
 - Trucks: simple list, add/edit/delete. Identity + attribution only (no telemetry).  
-- Categories: simple list (name only), add, archive (no hard delete — archived categories are hidden from the S2.2 weight-entry keypad but preserved in history/reports, PRD "Category management"). Seeded with the 11 AGFP categories at launch.  
+- Categories: simple list (name only), add, archive, delete. **Removal follows I21 like every other master record**: a category with referencing history is archived (deactivated), never destroyed — it stays hidden from the S2.2 weight-entry keypad while history and reports keep resolving it — but one with no referencing history at all may be hard-deleted, which is how a category added by mistake is undone. The UI does not make the user choose: *Delete* asks the domain, and the domain decides which of the two happened (PRD "Category management"). Seeded with the 11 AGFP categories at launch.  
 - Primary action varies per sub-screen (Save).
 
 ### S1.9 Notification inbox

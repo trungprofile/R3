@@ -18,21 +18,42 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 | Branch | `phase-1` — pushed at the halt, see H4 |
 | Loop armed | **no** — the loop stopped itself at H4 (§5.5) |
 | Consecutive gate failures | 1 `doc-qa` round. **Not counted toward §5.5's max-3**: no fixer was spawned, because neither finding is fixable without a human deciding a locked-doc question |
-| Halted | **YES — H4.** Two questions, both one line of code either way: **A46** (may a category be hard-deleted?) and **A54** (may `eligible()` have a fourth clause?) |
+| Halted | **YES — H4, now one question.** A46 resolved by the human 2026-07-28 (docs corrected, no code change). Outstanding: **A54** — may `eligible()` have a fourth clause? |
 
 ## Halt
 
-### H4 — HALTED 2026-07-28: wave 2's gate is red on two questions only a human can answer
+### H4 — HALTED 2026-07-28: wave 2's gate is red. **A46 resolved; A54 outstanding.**
 
 **Wave 2 is built, merged and mechanically green. It is not promoted.** `scripts/gate.sh` exits 0 at
 `2203333` (285 server tests + the client suite, migrations apply clean, no stubs, `db/types.ts` in
 sync). `doc-qa` — gate part 2, and §5.2 says **the gate decides pass/fail, the lead never does** —
 returned **two findings**. Both are spec questions, not defects, and both turn on a **locked** doc.
+**A46 has since been answered by the human — see below. A54 is the one still open**, and until it is
+answered the gate stays red and Wave 3 does not spawn.
 
 Neither can be resolved by a fixer agent, so §5.5's "spawn a fixer, max 3 rounds" does not apply:
 there is nothing to converge on. A fourth attempt at a question is not a fix.
 
 ---
+
+#### A46 — **RESOLVED 2026-07-28 by the human: I21 governs. No code change.**
+
+> "may a category ever be hard-deleted -> yes if nothing reference, else soft-delete for future only
+> so history record isn't dangling"
+
+That is I21 restated, including its *reason*: the soft branch exists so a history row never points at
+a destroyed category. The code was already right — `removeCategory()` asks `categoryHasHistory()` and
+branches — so **nothing in `server/` changed.** The stale doc was corrected instead:
+
+- `ui-ux-spec.md S1.8`'s Categories bullet no longer says "no hard delete". It now states I21's two
+  branches, keeps the reason the original parenthetical gave (archived categories stay hidden from
+  the S2.2 keypad while history and reports keep resolving them), and notes that the UI does not make
+  the user choose — *Delete* asks the domain, which decides which branch happened.
+- `product-requirement.md` cap 17 gained the same clause, because it listed only "add / archive" and
+  its silence is what let S1.8's reading look supported. Naming I21 there stops the next reader
+  re-deriving the contradiction — the same fix H2 applied.
+
+<details><summary>The contradiction as found</summary>
 
 #### The question — **A46**: may a category ever be hard-deleted?
 
@@ -60,6 +81,8 @@ order can pick which doc wins; it cannot tell you whether the **doc** or the **c
 - **If S1.8 governs** — drop the `DELETE /categories/:id` route and `removeCategory()` (one file),
   leaving `PATCH { active: false }` as the only removal. `domain-modeling.md` is locked, so **only a
   human may carve Category out of I21.**
+
+</details>
 
 ---
 
@@ -439,7 +462,7 @@ one question would cost more than it saves.
 
 | # | Wave | Assumption | Resolved? |
 | :---- | :---- | :---- | :---- |
-| **A46** | 2 | **May a category ever be hard-deleted? Two foundation docs disagree.** `domain-modeling.md` I21 (**locked**) — "Donor / Category / Truck / User: soft-delete (deactivate) if any referencing history, else hard-delete OK". `ui-ux-spec.md S1.8` — categories are "add, archive (**no hard delete** — archived categories are hidden from the S2.2 weight-entry keypad but preserved in history/reports)". The lane followed the authority order and implemented I21, exposing `DELETE /categories/:id`. **Consequence: in Phase 1 no table references `category` at all, so that endpoint hard-deletes every time** — the two readings diverge immediately, not eventually. If S1.8's intent governs, drop the `DELETE` route and `removeCategory()` (one file) and let `PATCH { active: false }` be the only removal. Note S1.8's parenthetical is specific and gives a *reason*, so it reads as a deliberate category-specific rule rather than loose prose — which is why the authority order resolving it cleanly does not settle whether the **doc** or the **code** is wrong. | **HALT CANDIDATE** — raise before Wave 3 |
+| **A46** | 2 | **RESOLVED 2026-07-28 (human): I21 governs — hard-delete when nothing references it, otherwise soft-delete so no history row dangles.** No code change; `ui-ux-spec.md S1.8` and `product-requirement.md` cap 17 were corrected. Original finding: **may a category ever be hard-deleted? Two foundation docs disagree.** `domain-modeling.md` I21 (**locked**) — "Donor / Category / Truck / User: soft-delete (deactivate) if any referencing history, else hard-delete OK". `ui-ux-spec.md S1.8` — categories are "add, archive (**no hard delete** — archived categories are hidden from the S2.2 weight-entry keypad but preserved in history/reports)". The lane followed the authority order and implemented I21, exposing `DELETE /categories/:id`. **Consequence: in Phase 1 no table references `category` at all, so that endpoint hard-deletes every time** — the two readings diverge immediately, not eventually. If S1.8's intent governs, drop the `DELETE` route and `removeCategory()` (one file) and let `PATCH { active: false }` be the only removal. Note S1.8's parenthetical is specific and gives a *reason*, so it reads as a deliberate category-specific rule rather than loose prose — which is why the authority order resolving it cleanly does not settle whether the **doc** or the **code** is wrong. | **HALT CANDIDATE** — raise before Wave 3 |
 | A47 | 2 | **`active` is a field on `PATCH`, not a pair of endpoints.** `domain-modeling.md §3.3` gives each master a two-way toggle (ACTIVE ⇄ DEACTIVATED / INACTIVE / ARCHIVED) but no doc says which endpoint performs it or that a restore exists. Archive is `{ active: false }`, restore `{ active: true }`, on the reading that "⇄" means the return trip is reachable. No separate deactivate endpoint: `DELETE` is the removal verb and I21 decides what removal means. | open, non-blocking |
 | A48 | 2 | **Reading donors / trucks / categories requires only `VOLUNTEER`** (any signed-in user). `product-requirement.md §2` states only what Volunteers *cannot* do — "create/delete donors" — and drivers need the donor address and contact and the truck picker, so the write-side prohibition was read as not implying a read-side one. Categories have no Phase-1 reader at all and were **not** gated on the `RECEIVE` duty, which would be a rule invented for a caller that does not exist until Phase 2. | open, non-blocking |
 | A49 | 2 | **Writing donors / trucks / categories requires `ADMIN`**, from §2's Admin-only delta ("donor & truck master data") plus cap 17's "Admin maintains the list". §2 does not name categories in the Staff *cannot* column; cap 17's wording was treated as decisive. | open, non-blocking |
