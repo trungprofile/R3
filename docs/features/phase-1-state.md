@@ -307,12 +307,23 @@ large it looks next to the others.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **schedule** | `server/src/services/{schedule,recurrence}.ts`, `server/src/routes/shifts.ts`, `server/src/jobs/materialization.ts`, `shared/src/schedule.ts`, own tests | `.claude/worktrees/agent-aac3964bdc1925e97` | `worktree-agent-aac3964bdc1925e97` | **yes** | — | — |
+| **schedule** | `server/src/services/{schedule,recurrence}.ts`, `server/src/routes/shifts.ts`, `server/src/jobs/materialization.ts`, `shared/src/schedule.ts`, own tests | `.claude/worktrees/agent-aac3964bdc1925e97` | `worktree-agent-aac3964bdc1925e97` | **yes** | **STOPPED BY THE HUMAN mid-run** — no report | — |
 | **coverage** | `server/src/services/coverage.ts`, `server/src/routes/coverage.ts`, `server/src/jobs/at-risk.ts`, `shared/src/coverage.ts`, own tests | `.claude/worktrees/agent-ae8393a4467fb460d` | `worktree-agent-ae8393a4467fb460d` | **yes** | — | — |
 | **execution** | `server/src/services/execution.ts`, `server/src/routes/execution.ts`, `server/src/jobs/reminder.ts`, `shared/src/execution.ts`, own tests | `.claude/worktrees/agent-a0d3f9b26e700d0fc` | `worktree-agent-a0d3f9b26e700d0fc` | **yes** | — | — |
 
 All three spawned 2026-07-28 and branched from **`4c10428`**, verified against `git worktree
 list` rather than constructed from the lane name (§5.6 step 1).
+
+**The `schedule` lane was stopped by the human mid-run** (2026-07-28), before it wrote its routes,
+tests or report. Its worktree is **untouched and preserved** at `4c10428` with four uncommitted files:
+`services/schedule.ts`, `services/recurrence.ts`, `jobs/materialization.ts`, `shared/src/schedule.ts`
+— missing `routes/shifts.ts` and every test.
+
+**Not merged, and not re-spawned.** §5.3 fails on "every lane wrote a report", so the wave cannot be
+promoted with it in this state; and a lane the human deliberately stopped is not one the lead
+restarts on its own initiative. `coverage` and `execution` were left running — nothing about the stop
+implicated them, and killing sibling lanes to be tidy would throw away work the human did not ask to
+lose. **Awaiting a decision: resume, re-spawn fresh, take it over, or drop it from the wave.**
 
 **Seams the lead owns, as in every wave:** `server/src/routes/index.ts` (three spreads),
 `shared/src/index.ts` (three re-exports), and now **`server/src/jobs/registry.ts`** — each lane writes
