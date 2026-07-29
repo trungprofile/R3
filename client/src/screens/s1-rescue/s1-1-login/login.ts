@@ -48,12 +48,13 @@ export const COPY = {
 export const LOCKED_TEXT = 'Too many tries. Try again in 15 minutes.';
 
 /**
- * Failures the account gets before the lock (`architecture.md §4.2`'s per-account
- * counter, `server/src/services/auth.ts` `ACCOUNT_MAX_FAILURES`). Mirrored here
- * ONLY to render S1.1's inline count: the throttle is enforced server-side before
- * the credential comparison, and this number decides nothing. See the report's
- * `Assumed:` — the server sends `triesLeft` on the 401, but `api/errors.ts` keeps
- * only the message, so the count is recomputed rather than read.
+ * Fallback only, for a 401 that somehow arrives without `triesLeft`.
+ *
+ * The count now comes from the server's own 401 (`services/auth.ts`, derived from
+ * `ACCOUNT_MAX_FAILURES`) and is carried through by `api/errors.ts`. This constant
+ * used to be the sole source and mirrored that server-side one, which was a
+ * silent-drift hazard: nothing would have caught the two disagreeing, and the
+ * number a volunteer reads before a lockout would simply have been wrong.
  */
 export const MAX_TRIES = 4;
 
@@ -110,7 +111,11 @@ export function afterFailure(state: AttemptState, cause: unknown): AttemptState 
 
   if (error.status === REJECTED_STATUS) {
     const failures = state.failures + 1;
-    return { failures, locked: false, message: wrongCredentialText(triesLeftAfter(failures)) };
+    // The server's own number when it sent one — it owns the counter that actually
+    // locks the account, so its count is the true one. `triesLeftAfter` is only the
+    // fallback for a 401 without the field.
+    const triesLeft = error.triesLeft ?? triesLeftAfter(failures);
+    return { failures, locked: false, message: wrongCredentialText(triesLeft) };
   }
 
   // Anything else speaks for itself: the server's own explanation when it had one

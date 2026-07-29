@@ -31,6 +31,10 @@ export interface RequestOptions {
 interface ErrorBody {
   message?: unknown;
   correlationId?: unknown;
+  /** `middleware/error.ts` puts the code here and spreads `AppError.details`
+   *  alongside it, so anything a service attached to a refusal arrives here too. */
+  error?: unknown;
+  triesLeft?: unknown;
 }
 
 function buildUrl(path: string, query: RequestOptions['query']): string {
@@ -91,6 +95,8 @@ async function send<T>(method: string, path: string, options: RequestOptions): P
       status: response.status,
       ...(typeof body.correlationId === 'string' ? { correlationId: body.correlationId } : {}),
       ...(typeof body.message === 'string' ? { detail: body.message } : {}),
+      ...(typeof body.error === 'string' ? { code: body.error } : {}),
+      ...(typeof body.triesLeft === 'number' ? { triesLeft: body.triesLeft } : {}),
     });
   }
 

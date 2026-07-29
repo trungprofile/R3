@@ -21,13 +21,21 @@ import { createRoot } from 'react-dom/client';
 import { App } from './app/App.tsx';
 import type { ScreenRegistry } from './app/AppShell.tsx';
 import { linkManifest, watchForInstallPrompt } from './pwa/index.ts';
+import { LoginScreen } from './screens/s1-rescue/s1-1-login/index.ts';
+import { BoardScreen } from './screens/s1-rescue/s1-2-board/index.ts';
+import { MyShiftsScreen } from './screens/s1-rescue/s1-4-my-shifts/index.ts';
+import { PickupScreen } from './screens/s1-rescue/s1-5-pickup/index.ts';
+import { InboxScreen, useUnreadCount } from './screens/s1-rescue/s1-9-inbox/index.ts';
 import './tokens/tokens.css';
 
 const SCREENS: ScreenRegistry = {
-  // login: LoginScreen,        S1.1
-  // board: BoardScreen,        S1.2
-  // shift: ShiftDetailScreen,  S1.3
-  // …one entry per screen, from `client/src/screens/s1-rescue/`.
+  login: LoginScreen, // S1.1
+  board: BoardScreen, // S1.2
+  // shift: S1.3 — wave 4b
+  'my-shifts': MyShiftsScreen, // S1.4
+  pickup: PickupScreen, // S1.5
+  // schedule / reschedule / admin: S1.6–S1.8 — wave 4b
+  inbox: InboxScreen, // S1.9
 };
 
 linkManifest();
@@ -38,6 +46,8 @@ if (!container) throw new Error('No #root element in index.html');
 
 createRoot(container).render(
   <StrictMode>
-    <App screens={SCREENS} />
+    {/* `useUnreadCount` is injected for the same reason as `SCREENS`: it is a
+        screen's export, and `app/` must not import from `screens/`. */}
+    <App screens={SCREENS} useUnreadCount={useUnreadCount} />
   </StrictMode>,
 );

@@ -49,10 +49,27 @@ export class ApiError extends Error {
    *  (e.g. "You own a run in this window"). A screen may render this in place of
    *  `message`; the default stays the plain text above. */
   readonly detail: string | undefined;
+  /** The server's own discriminator — the `error` field every `AppError` body
+   *  carries (`middleware/error.ts`), e.g. `SHIFT_TAKEN`, `AVAILABILITY_CONFLICT`.
+   *  Screens that must branch on *which* 409 they got read this. Without it the
+   *  only discriminator is `detail`'s prose, and branching on a sentence breaks
+   *  the moment someone rewords it. */
+  readonly code: string | undefined;
+  /** Attempts left before the account locks, on a 401 from login
+   *  (`services/auth.ts`, from `ACCOUNT_MAX_FAILURES`). Carried through rather
+   *  than recomputed: S1.1 mirroring that constant is a silent-drift hazard, and
+   *  the number it would drift into is one a volunteer reads and acts on. */
+  readonly triesLeft: number | undefined;
 
   constructor(
     kind: ApiErrorKind,
-    options: { status?: number; correlationId?: string; detail?: string } = {},
+    options: {
+      status?: number;
+      correlationId?: string;
+      detail?: string;
+      code?: string;
+      triesLeft?: number;
+    } = {},
   ) {
     super(MESSAGES[kind]);
     this.name = 'ApiError';
@@ -61,6 +78,8 @@ export class ApiError extends Error {
     this.status = options.status;
     this.correlationId = options.correlationId;
     this.detail = options.detail;
+    this.code = options.code;
+    this.triesLeft = options.triesLeft;
   }
 }
 
