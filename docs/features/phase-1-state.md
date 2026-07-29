@@ -112,6 +112,13 @@ Depth at the stop, from the preserved diffs:
   in `routes/index.ts`, and the screen folder.
 - **`s1-4-my-shifts`**, **`s1-5-pickup`** — screen folders only, earliest at the stop.
 
+**All four were resumed 2026-07-29 once the limit reset — resumed from their own transcripts, not
+respawned.** `SendMessage` to a stopped agent revives it with its context intact, so each lane kept
+what it had already read and decided; a fresh spawn would have re-derived all of it and paid for the
+reading twice. Each was told its work had been committed for it, that the inherited code is untested,
+that `s1-1-login` has since merged into `phase-1` (nothing of theirs conflicts, and the lead owns the
+merge), and to commit partial work itself if the limit is hit again.
+
 **Resume, do not restart.** Wave 3's schedule lane is the precedent: a lane resumed from preserved
 work found four real defects in what it inherited, which is exactly the return a restart throws away.
 A resumed lane must be told the inherited code is untested and that reviewing it is part of the job.
