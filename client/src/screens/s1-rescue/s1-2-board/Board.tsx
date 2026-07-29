@@ -20,6 +20,7 @@ import {
   ListItem,
   ListRow,
   Modal,
+  Segmented,
   SkeletonRows,
   StatusChip,
 } from '../../../components/index.ts';
@@ -36,7 +37,6 @@ import { displayName } from '../../../api/index.ts';
 import { toApiError } from '../../../api/index.ts';
 import type { ClaimResult, ClaimScope, ShiftSummary } from '../../../api/shared.ts';
 import { claimRun, fetchBoard } from './api.ts';
-import { Segmented } from './Segmented.tsx';
 import {
   BOARD_FILTERS,
   COPY,

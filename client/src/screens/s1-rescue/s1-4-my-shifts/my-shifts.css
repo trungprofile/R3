@@ -27,33 +27,8 @@
   margin-top: var(--space-4);
 }
 
-/* --- Tabs ---------------------------------------------------------------- */
-
-.s14-tabs {
-  display: flex;
-  gap: var(--space-2); /* §1.2: 8px minimum between adjacent targets */
-}
-
-.s14-tab {
-  flex: 1 1 0;
-  min-height: var(--target-min);
-  padding: var(--space-3) var(--space-2);
-  font: inherit;
-  font-size: var(--font-body);
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  cursor: pointer;
-}
-
-/* Orange is a selected-state accent, never text and never carrying white text
- * (§2's hard rule) — so the active tab is marked by a bar, not a fill. */
-.s14-tab--active {
-  border-color: var(--brand-orange);
-  box-shadow: inset 0 -4px 0 0 var(--brand-orange);
-  font-weight: 600;
-}
+/* The two tabs are `components/Segmented.tsx` in `mode="tabs"` (§3) — their
+ * styling lives with the component, not here. */
 
 /* --- "When I'm away" ------------------------------------------------------ */
 

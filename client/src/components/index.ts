@@ -9,6 +9,9 @@ import './components.css';
 export { Button } from './Button.tsx';
 export type { ButtonProps, ButtonVariant } from './Button.tsx';
 
+export { Segmented, tabPanelProps, tabId, panelId } from './Segmented.tsx';
+export type { SegmentedOption, SegmentedProps } from './Segmented.tsx';
+
 export { ListRow, List, ListItem, Card } from './ListRow.tsx';
 export type { ListRowProps } from './ListRow.tsx';
 

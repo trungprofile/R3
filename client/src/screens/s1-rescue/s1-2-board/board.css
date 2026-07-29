@@ -25,36 +25,8 @@
   margin: 0;
 }
 
-/* --- Segmented filter (All · Open · Mine) -------------------------------- */
-
-.r3-segmented {
-  display: flex;
-  flex-wrap: wrap;
-  /* §1 principle 2: 8px minimum gap between adjacent targets. */
-  gap: var(--space-2);
-}
-
-.r3-segmented__item {
-  flex: 1 1 auto;
-  min-height: var(--target-min); /* 44px — §1 principle 2, not the 24px floor */
-  min-width: var(--target-min);
-  padding: 0 var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  color: var(--text);
-  font-size: var(--font-body);
-  cursor: pointer;
-}
-
-/* §2: orange is the accent for an active state, and never carries a text colour
- * that fails on it — the selected label is --text-on-brand (5.0:1). */
-.r3-segmented__item.is-selected {
-  background: var(--action-fill);
-  border-color: var(--action-fill);
-  color: var(--text-on-brand);
-  font-weight: 700;
-}
+/* The All · Open · Mine filter is `components/Segmented.tsx` (§3) — its styling
+ * lives with the component, not here. */
 
 /* --- Day groups ---------------------------------------------------------- */
 
@@ -156,14 +128,6 @@
     flex-direction: row;
     align-items: baseline;
     justify-content: space-between;
-  }
-
-  .r3-segmented {
-    flex: 0 0 auto;
-  }
-
-  .r3-segmented__item {
-    flex: 0 0 auto;
   }
 
   /* Room for a mouse pointer: the chip and the button sit side by side where the

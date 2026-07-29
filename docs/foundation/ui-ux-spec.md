@@ -67,6 +67,9 @@ Brand values are AGFP-faithful but contrast-corrected. Three brand colors fail a
 Each lists states: default / hover / active / disabled / loading where relevant.
 
 - **Button** — primary (orange fill, dark label), secondary (white, border), danger (red fill, white). Min 44px tall, 18px label. Disabled = greyed, but prefer hiding over disabling.  
+- **Segmented control** — one row of ≥44px buttons, exactly one chosen, all options visible without opening anything. This is the stand-in for the dropdown §1.5 rules out; use it wherever a screen offers a small, fixed set of choices. Selected = `--action-fill` with a `--text-on-brand` label, in every use. Two behaviors, and the difference is not cosmetic:
+  - **Filter** (default) — narrows a list that stays on screen (S1.2's All · Open · Mine). Toggle semantics; every option is reachable by keyboard directly, so a keyboard user does not change the filter twice on the way to the third one.
+  - **Tabs** — switches which panel is shown (S1.4's My runs / When I'm away; S1.8's four sub-screens). Tab semantics, which oblige the rest of the pattern: one stop in the tab order, arrow keys between tabs, Home/End to the ends, and each tab bound to the panel it controls. A screen using this behavior must render exactly one panel and bind it back. Declaring tabs without the keyboard behavior is worse than not declaring them, because it promises an interaction that is not there.  
 - **Big list row** — tappable row ≥56px, name/title left, status chip right, full row is the target. Used for shifts, names, stores.  
 - **Numeric keypad** — large 0–9 + decimal + backspace, ≥64px keys. The only weight/PIN input. No system keyboard.  
 - **Text input** — 48px tall, 18px text, visible label above (never placeholder-only). Used sparingly (notes, names in admin).  
@@ -208,6 +211,7 @@ Caps 1–11, 13 (minus truck-inbound). Canonical devices: phone (driver) + deskt
 ### S1.8 Admin — accounts, donors, trucks
 
 - User/device: admin (desktop).  
+- Layout: four sub-screens — Accounts, Donors, Trucks, Categories — selected by the §3 segmented control in its **tabs** behavior. One is shown at a time; §1.5 rules out putting them behind a dropdown, and four is small enough to show them all.  
 - Accounts: list of users; create (first/last → auto username shown read-only), assign tier (Volunteer/Staff/Admin) and duties (drive/receive/report as toggles), set/reset PIN or password. Delete non-admin. Username immutable once set (PRD §2).  
 - Donors: list of permanent stores (master data), add/edit/delete, attach permanent per-store note.  
 - Trucks: simple list, add/edit/delete. Identity + attribution only (no telemetry).  

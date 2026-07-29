@@ -68,6 +68,52 @@
   filter: none;
 }
 
+/* --- Segmented control (§3) — one row of big buttons, one chosen ----------- */
+
+/* One look for both ARIA modes (filter and tabs). §2 sanctions orange as a fill
+ * and as a selected bar; the fill is the house choice, because it is the one that
+ * reads at arm's length in a truck (§1 principle 1). */
+
+.r3-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  /* §1 principle 2: 8px minimum gap between adjacent targets. */
+  gap: var(--space-2);
+}
+
+.r3-segmented__item {
+  flex: 1 1 auto;
+  min-height: var(--target-min); /* 44px — §1 principle 2, not the 24px floor */
+  min-width: var(--target-min);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-body);
+  cursor: pointer;
+}
+
+/* §2: orange is the accent for an active state, and never carries a text colour
+ * that fails on it — the selected label is --text-on-brand (5.0:1). */
+.r3-segmented__item.is-selected {
+  background: var(--action-fill);
+  border-color: var(--action-fill);
+  color: var(--text-on-brand);
+  font-weight: 700;
+}
+
+/* 1024px is the desktop breakpoint `tokens/index.ts` fixes; a custom property
+ * cannot be used in a media query. The control stops stretching once there is
+ * width to spare — a full-bleed filter row reads as a toolbar, not a choice. */
+@media (min-width: 1024px) {
+  .r3-segmented,
+  .r3-segmented__item {
+    flex: 0 0 auto;
+  }
+}
+
 /* --- Big list row (§3) — >=56px, full row is the target -------------------- */
 
 .r3-row {
