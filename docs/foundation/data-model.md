@@ -417,10 +417,16 @@ CREATE TABLE notification (
 
 -- Send-idempotency for catch-up sweeps (Architecture §4.4): time-based jobs (1-hour reminder,
 -- at-risk-1-day) are written as "find what's due and unsent", so a delayed or repeated run must not
--- re-send. Enforced as a constraint, not by job discipline. Only shift-scoped, time-triggered events
--- need it; event-triggered notifications fire once by construction.
+-- re-send. Enforced as a constraint, not by job discipline. Only shift-scoped, TIME-TRIGGERED events
+-- may be covered, and the predicate must enumerate them -- an unfiltered index silently swallows the
+-- SECOND legitimate send of an event-triggered notification. Event-triggered events do NOT fire once
+-- by construction: release -> re-claim -> release fans SHIFT_OPENED out twice about the same run, and
+-- both sends are real. Migration 0009 added the `event IN (...)` clause for exactly that defect; the
+-- list is kept in lockstep with `TIME_TRIGGERED_EVENTS` in services/notification.ts.
 CREATE UNIQUE INDEX uq_notif_shift_event ON notification (event, shift_id, recipient_id)
-  WHERE shift_id IS NOT NULL AND recipient_id IS NOT NULL;
+  WHERE shift_id IS NOT NULL
+    AND recipient_id IS NOT NULL
+    AND event IN ('SHIFT_REMINDER', 'SHIFT_AT_RISK');
 
 -- The enumerated shared devices (Architecture §4.2). Membership IS the
 -- shared-device marker: an admin registers the receiver tablet and the reporter

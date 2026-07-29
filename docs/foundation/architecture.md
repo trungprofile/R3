@@ -252,7 +252,9 @@ The receiver edit window is a **derived condition** — `now < shift.starts_at +
 
 Every job asks "what is due and unhandled?", never "fire at time T." A one-shot timer for a 10:00 reminder is lost forever if the process is restarting at 09:00; a sweep catches it on the next tick, slightly late. **Missed ticks self-heal**, which is what demotes the trigger mechanism to a low-stakes choice.
 
-Catch-up requires knowing what was already sent. Per §4.1 that belongs at tier 1: the partial unique index `uq_notif_shift_event` on `(event, shift_id, recipient_id)` makes a duplicate send **impossible** rather than unlikely. Only shift-scoped, time-triggered events need it; event-triggered notifications fire once by construction.
+Catch-up requires knowing what was already sent. Per §4.1 that belongs at tier 1: the partial unique index `uq_notif_shift_event` on `(event, shift_id, recipient_id)` makes a duplicate send **impossible** rather than unlikely.
+
+**Its predicate must enumerate the covered events, and covers only the time-triggered ones** — currently `SHIFT_REMINDER` and `SHIFT_AT_RISK`, kept in lockstep with `TIME_TRIGGERED_EVENTS` in `services/notification.ts`. Event-triggered notifications do **not** "fire once by construction", which is what the index originally assumed: release → re-claim → release fans `SHIFT_OPENED` out twice about the same run, to the same drivers, and both sends are real. An index without the `event IN (...)` clause swallows the second one against the enqueue's `ON CONFLICT DO NOTHING` — silently, since a swallowed send looks exactly like a deduped one. Migration `0009` narrowed it for that defect; widening it again reintroduces the bug.
 
 #### Trigger mechanism: in-process interval
 
