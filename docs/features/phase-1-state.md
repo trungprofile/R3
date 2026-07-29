@@ -13,14 +13,56 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **2 — 4 lanes in flight** |
-| Wave status | wave 1 **passed** and pushed (`add4e13`); H2 resolved by the human 2026-07-28; wave 2 spawned, all 4 branched from `d6a4f91`, awaiting reports |
+| Current wave | **2 — attempt 2, re-spawned after H3** |
+| Wave status | wave 1 **passed** and pushed (`add4e13`); H2 resolved 2026-07-28; wave 2 **attempt 1 aborted** by H3 (environment lockout) with nothing committed and no lane report; worktrees archived and removed, baseline re-gated green at `0d91d12`; **attempt 2 spawning from `0d91d12`** |
 | Branch | `phase-1` |
-| Loop armed | **yes** — re-armed 2026-07-28 after H2 was resolved |
-| Consecutive gate failures | 0 (wave 1 passed on the first gate round) |
-| Halted | no |
+| Loop armed | **yes** — re-armed 2026-07-28 after H3 cleared |
+| Consecutive gate failures | 0 (no wave-2 gate has run; wave 1 passed on the first round) |
+| Halted | no — H3 cleared |
 
 ## Halt
+
+### H3 — CLEARED 2026-07-28: wave 2 attempt 1 aborted by a macOS TCC lockout
+
+**Environmental, not a spec or gate failure.** Mid-wave, every path under
+`/Users/user/Documents/**` began returning `EPERM` to both `Read` and `Bash`, including paths read
+successfully minutes earlier; `~/.claude` and `/tmp` stayed readable. That is the signature of a
+macOS Privacy & Security (Files and Folders / Full Disk Access) grant being revoked from the host
+process. Disabling the Claude Code sandbox did not help, confirming it was OS-level.
+
+**The halt could not be recorded here, because this file was inside the locked tree** — §5.5's own
+precondition failed. The reason was written to the lead's memory instead
+(`wave-2-halted-tcc-lockout`) and announced to the human rather than taken silently. This section is
+that record transcribed back, per the memory's own resume instructions.
+
+**What the lockout cost.** Nothing merged, and nothing was lost from `phase-1`:
+
+- No lane committed, none wrote `reports/2-<lane>.md`, and none ran `gate.sh`. §5.3 fails on "every
+  lane wrote a report", so **no lane was mergeable** and none was merged.
+- All four worktrees sat at `d6a4f91` holding untracked, untested files. Two lanes (**eligible**,
+  **pwa**) returned prose reports to the lead before dying, but their worktrees hold the *least* work
+  on disk — the lockout ate the writes those reports described. That mismatch is why the wave is
+  re-run rather than salvaged: a report that describes files which do not exist cannot be trusted
+  about the files that do.
+- The uncommitted work was committed on each lane branch and tagged **`wave2-aborted/<lane>`**
+  (`masters` 501e5f2, `routebuilder` b5648c3, `eligible` c7c9f26, `pwa` 5a201dd) before the worktrees
+  were removed. Recoverable, never merged, and **not to be merged** — it is unreviewed and ungated.
+  The tags exist so that discarding the attempt stayed reversible, not as a shortcut back into
+  `phase-1`. Delete them once wave 2 passes its gate.
+
+**Cleanup performed on resume** (the lanes could not do it themselves): four worktrees unlocked and
+removed, four `worktree-agent-*` branches deleted, and **six** stray `r3_test_agent_*` databases
+dropped — three from wave 2 and three left behind by wave 1's lanes, which §5.6 step 5 does not
+mention but which accumulate the same way. `git worktree list` now shows only the main checkout.
+`scripts/gate.sh` was re-run on `phase-1` at `0d91d12` and exits 0, so the lockout left wave 1's
+merged result intact.
+
+**Probe with a read, never a write, if this recurs.** Creating a *new* file under the locked tree
+succeeds and reads back (TCC lets a process touch what it created), so `touch` is a false all-clear —
+and the file then cannot be removed, because unlink needs the directory permission. Use `ls` or
+`cat README.md`. Two probe files stranded by the lockout were already gone by resume.
+
+### H2 — RESOLVED 2026-07-28 by the human: **Staff can see phone/address; only Admin can edit**
 
 ### H2 — RESOLVED 2026-07-28 by the human: **Staff can see phone/address; only Admin can edit**
 
@@ -92,16 +134,24 @@ else blocks them.
 *(H1 was cleared in wave 0. A1 and A4 were decided by the human on 2026-07-28; see Open
 assumptions.)*
 
-## Wave 2 — lanes in flight
+## Wave 2 — lanes in flight (attempt 2)
 
-Named before spawning (§5.6 step 1). Four lanes per build-plan §2.
+Named before spawning (§5.6 step 1). Four lanes per build-plan §2. Ownership is unchanged from
+attempt 1 — the partition was never the problem; see H3.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-a3eee541a08bde70b` | `worktree-agent-a3eee541a08bde70b` | **yes** | — | — |
-| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a44f61134bafee500` | `worktree-agent-a44f61134bafee500` | **yes** | — | — |
-| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a74ee818355adfd84` | `worktree-agent-a74ee818355adfd84` | **yes** | — | — |
-| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-add3568f76564bfb4` | `worktree-agent-add3568f76564bfb4` | **yes** | — | — |
+| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
+| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
+| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
+| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
+
+### Wave 2 — attempt 1 (aborted, nothing merged)
+
+Ran 2026-07-28, all four branched from `d6a4f91`, killed mid-flight by H3. Worktrees
+`agent-{a3eee541a08bde70b,a44f61134bafee500,a74ee818355adfd84,add3568f76564bfb4}` and their branches
+are **removed**; the work survives only as the `wave2-aborted/<lane>` tags listed in H3. Kept here so
+a future reader who finds those tags knows what they are and does not merge them.
 
 **The seam this wave is `server/src/routes/index.ts`** — it aggregates every route module into the
 one array the default-deny gate compiles from, and three lanes each need a line in it. Same
@@ -115,6 +165,15 @@ by relative path per A34; the lead adds re-exports at merge.
 
 Also for the lead at merge: register `purgeExpiredSessions()` as a job (carried from Wave 1) — it
 needs `services/session.ts` and `jobs/` in the same tree, which first happens now.
+
+### The lead owes a migration before Wave 3 spawns
+
+Surfaced by attempt 1's **eligible** lane and independent of H3, so it survives the re-run: I20's
+staff-assign path requires the shift be "flagged so the driver sees the conflict"
+(`ui-ux-spec.md S1.3`'s persistent banner), but migration `0004`'s `shift` table has **no
+conflict-flag column**. Wave 3 owns coverage and cannot store that flag without a migration, and
+`server/migrations/` is lead-owned (build-plan §3) — so no Wave-3 lane can add it. Write the
+migration between waves 2 and 3, not during either.
 
 ## Wave 1 — lanes (all merged, worktrees removed)
 
@@ -149,7 +208,7 @@ different worktrees. Registering it is a Wave-2 one-liner, not a gap.
 | :---- | :---- | :---- | :---- | :---- |
 | 0 — substrate | *(single-lane, lead-run)* | direct to `phase-1` | **pass** (round 3) | [report](../../reports/wave-0-substrate.md). 3 `doc-qa` findings, all real: A4 doc-vs-doc contradiction, A1 wrong inference, one incomplete doc edit |
 | 1 — identity / surface / signal | 3, file-disjoint | all 3, `--no-ff`, in report order: signal → surface → identity | **pass** (round 1) | Reports [identity](../../reports/1-identity.md), [surface](../../reports/1-surface.md), [signal](../../reports/1-signal.md). `doc-qa` zero findings. Pushed `add4e13`. Worktrees and branches removed, verified against `git worktree list`. **Halted after the wave on H2 (A24)** |
-| 2 — masters / routes / eligible / PWA | not started | — | — | |
+| 2 — masters / routes / eligible / PWA | attempt 1: 4 spawned, **0 merged** | none — no lane committed or reported | — | **Attempt 1 aborted by H3**, a macOS TCC lockout, not a gate or spec failure. Work preserved as `wave2-aborted/*` tags, worktrees and branches removed, baseline re-gated green at `0d91d12`. Attempt 2 re-spawned from `0d91d12` |
 | 3 — schedule+recurrence / execution | not started | — | — | Coverage stays single-owner |
 | 4 — screens S1.1–S1.9 | not started | — | — | one agent per screen folder |
 

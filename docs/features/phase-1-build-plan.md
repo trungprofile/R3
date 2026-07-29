@@ -6,7 +6,7 @@ doc only records decisions they left open and the order the work happens in.
 
 ## 1. Standing decisions
 
-Four questions the foundation docs do not answer, or answer inconsistently. Resolved once, here.
+Questions the foundation docs do not answer, or answer inconsistently. Resolved once, here.
 Do not re-litigate them mid-task; if one looks wrong, say so and stop.
 
 ### D1 — A Phase-1 run never reaches `COMPLETED`
@@ -63,6 +63,25 @@ every sibling's tree. That reason binds *lanes*, not the serial lead. The lead m
   carry open high-severity advisories, and the app is nine screens behind one nav. The Surface lane
   hand-rolls the router, consistent with §4.4's "jobs you do not have cannot fail."
 - A lane still reports rather than installs. `npm audit` must stay at zero before a wave spawns.
+
+### D6 — The lead is exempt from background-job worktree isolation
+
+When the lead runs as a background job, the harness refuses edits to the shared checkout until the
+session isolates itself into a worktree. That guard is right for an ordinary background job and
+**wrong for this lead**, because §5.6 defines the lead as the serial owner of `phase-1` in the main
+checkout: a lead inside a worktree cannot merge lane branches into `phase-1`, cannot fast-forward a
+branch that is checked out elsewhere, and would leave the main checkout's `phase-1` silently stale
+behind `origin`. The next resumed lead reads `git worktree list` and `phase-1` as ground truth
+(§5.6) and would be misled by both.
+
+Resolved by the guard's own documented opt-out: `.claude/settings.json` sets
+`worktree.bgIsolation: "none"`, alongside the `worktree.baseRef: "head"` that §5.6 already depends
+on. Isolation is not lost — it moves to where this plan always put it, the **lanes**, each of which
+still runs `isolation: worktree` (D4). The lead's blast radius is bounded instead by git: every step
+it takes is a commit on `phase-1`, and `phase-1` is pushed after every green gate (§5.6 step 4).
+
+Recorded 2026-07-28, during wave 2's re-spawn. Do not re-litigate per wave; if the guard fires
+again, the setting was reverted, not the decision.
 
 ## 2. Build order
 

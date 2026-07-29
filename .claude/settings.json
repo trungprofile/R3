@@ -39,6 +39,7 @@
     }
   },
   "worktree": {
+    "bgIsolation": "none",
     "baseRef": "head",
     "symlinkDirectories": [
       "node_modules"
