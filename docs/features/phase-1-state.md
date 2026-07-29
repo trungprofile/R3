@@ -13,27 +13,38 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **2 — built and merged, NOT promoted** |
-| Wave status | attempt 1 aborted by H3; attempt 2 built, all four lanes `complete`, all four merged `--no-ff` in report order **with no conflict**, seams wired. **`gate.sh` green at `2203333`; `doc-qa` red with 2 findings.** Halted on **H4** |
-| Branch | `phase-1` — pushed at the halt, see H4 |
-| Loop armed | **no** — stopped at H4. Ready to restart once the lead's three pre-Wave-3 chores are done |
-| Consecutive gate failures | 1 `doc-qa` round. **Not counted toward §5.5's max-3**: no fixer was spawned, because neither finding is fixable without a human deciding a locked-doc question |
+| Current wave | **2 — PASSED. Wave 3 not yet spawned** |
+| Wave status | **wave 2 passed and pushed.** All four §5.3 criteria hold: `gate.sh` exits 0, `doc-qa` **zero findings** on the third pass, all four lanes reported `complete`, and A36–A78 are all recorded below. H4 cleared by the human |
+| Branch | `phase-1` |
+| Loop armed | **no** — stopped at H4 and not yet restarted. **Wave 3 is unblocked**, but the lead owes three chores first (see below) |
+| Consecutive gate failures | 0 — reset by the pass. The wave took three `doc-qa` rounds: findings 1–2 were human decisions (H4), findings 3–4 were the lead's own incomplete doc sync after amending §5.2 |
 | Halted | **no — H4 cleared 2026-07-28.** Both questions answered by the human; see H4 for what each changed |
 
 ## Halt
 
 ### H4 — CLEARED 2026-07-28: both findings answered by the human
 
-**Wave 2 is built, merged and mechanically green. It is not promoted.** `scripts/gate.sh` exits 0 at
-`2203333` (285 server tests + the client suite, migrations apply clean, no stubs, `db/types.ts` in
-sync). `doc-qa` — gate part 2, and §5.2 says **the gate decides pass/fail, the lead never does** —
-returned **two findings**. Both are spec questions, not defects, and both turn on a **locked** doc.
-**Both have since been answered by the human.** A46: no code change, two docs corrected. A54: the
-clause stays and the **locked doc was amended by the human's explicit authorisation** — the one thing
-§5.5 forbids an agent to do on its own initiative.
+**Cleared. Wave 2 passed and is promoted.** The halt is kept as the record of what was decided and
+why, because both answers are now load-bearing for Wave 3.
 
-Neither can be resolved by a fixer agent, so §5.5's "spawn a fixer, max 3 rounds" does not apply:
-there is nothing to converge on. A fourth attempt at a question is not a fix.
+When raised, `scripts/gate.sh` exited 0 at `2203333` but `doc-qa` — gate part 2, and §5.2 says **the
+gate decides pass/fail, the lead never does** — returned **two findings**. Both were spec questions,
+not defects, and both turned on a **locked** doc, so neither was fixable by a fixer agent: §5.5's
+"spawn a fixer, max 3 rounds" had nothing to converge on. A fourth attempt at a question is not a fix.
+
+**Both were answered by the human.** A46: no code change, two docs corrected. A54: the clause stays
+and the **locked doc was amended under the human's explicit authorisation** — the one thing §5.5
+forbids an agent to do on its own initiative.
+
+**A postscript worth keeping, because it is the lead's own mistake and it recurs easily.** Amending
+`§5.2` obliged the lead to follow that doc's *Cross-doc dependencies*, and it did not. `doc-qa`'s
+second pass caught two survivors — `product-requirement.md §4` and `data-model.md §9` both still
+restated the pre-amendment three-clause predicate. The PRD one had teeth: it is the doc
+`eligibleDriverIds()` cites as its spec, so a reader working from it alone would have rebuilt the
+fan-out without the active clause and reopened exactly the I25 hole A54's ruling closed. Both now
+**cite `§5.2` instead of paraphrasing it** — a rule restated in four places is four things to keep in
+sync, and this wave proved it does not stay in sync. `doc-qa`'s third pass swept for any remaining
+restatement and found none.
 
 ---
 
@@ -200,7 +211,8 @@ that record transcribed back, per the memory's own resume instructions.
   (`masters` 501e5f2, `routebuilder` b5648c3, `eligible` c7c9f26, `pwa` 5a201dd) before the worktrees
   were removed. Recoverable, never merged, and **not to be merged** — it is unreviewed and ungated.
   The tags exist so that discarding the attempt stayed reversible, not as a shortcut back into
-  `phase-1`. Delete them once wave 2 passes its gate.
+  `phase-1`. **Deleted 2026-07-28 once wave 2 passed its gate**, as planned — attempt 2 supersedes
+  them and a stale tag pointing at unreviewed work is a trap for the next reader.
 
 **Cleanup performed on resume** (the lanes could not do it themselves): four worktrees unlocked and
 removed, four `worktree-agent-*` branches deleted, and **six** stray `r3_test_agent_*` databases
@@ -334,9 +346,21 @@ needs `services/session.ts` and `jobs/` in the same tree, which first happens no
   static `<link rel="manifest">` and an `<link rel="apple-touch-icon">` in `client/index.html`, which
   no lane owns.
 
-### The lead owes a migration before Wave 3 spawns
+### The lead owes three things before Wave 3 spawns
 
-Surfaced by attempt 1's **eligible** lane and independent of H3, so it survives the re-run: I20's
+None is a lane's to do — each touches a lead-owned file or would otherwise be written twice.
+
+1. **The `shift` conflict-flag migration** (below) — `server/migrations/` is lead-owned.
+2. **Hoist the local-to-instant timezone conversion (A56)** out of `services/availability.ts` into a
+   shared module. Wave 3's recurrence materialization needs the identical arithmetic; two copies
+   drift at exactly the DST edges no test covers.
+3. **Make the `@r3/shared` resolution structural (A34 / A78).** A78 proved with
+   `tsc --traceResolution` that inside a worktree the alias resolves to the **main checkout**, so a
+   lane can silently typecheck against another tree. Wave 2 worked around it twice — once per side —
+   which is the signal it should stop being a convention.
+
+**On (1), the migration.** Surfaced by attempt 1's **eligible** lane and independent of H3, so it
+survived the re-run: I20's
 staff-assign path requires the shift be "flagged so the driver sees the conflict"
 (`ui-ux-spec.md S1.3`'s persistent banner), but migration `0004`'s `shift` table has **no
 conflict-flag column**. Wave 3 owns coverage and cannot store that flag without a migration, and
@@ -376,7 +400,7 @@ different worktrees. Registering it is a Wave-2 one-liner, not a gap.
 | :---- | :---- | :---- | :---- | :---- |
 | 0 — substrate | *(single-lane, lead-run)* | direct to `phase-1` | **pass** (round 3) | [report](../../reports/wave-0-substrate.md). 3 `doc-qa` findings, all real: A4 doc-vs-doc contradiction, A1 wrong inference, one incomplete doc edit |
 | 1 — identity / surface / signal | 3, file-disjoint | all 3, `--no-ff`, in report order: signal → surface → identity | **pass** (round 1) | Reports [identity](../../reports/1-identity.md), [surface](../../reports/1-surface.md), [signal](../../reports/1-signal.md). `doc-qa` zero findings. Pushed `add4e13`. Worktrees and branches removed, verified against `git worktree list`. **Halted after the wave on H2 (A24)** |
-| 2 — masters / routes / eligible / PWA | attempt 2: 4, file-disjoint | all 4, `--no-ff`, in report order: routebuilder → masters → eligible → pwa, **no conflict** | **`gate.sh` pass / `doc-qa` RED (2)** | Reports [masters](../../reports/2-masters.md), [routebuilder](../../reports/2-routebuilder.md), [eligible](../../reports/2-eligible.md), [pwa](../../reports/2-pwa.md). Attempt 1 aborted by H3. **Halted on H4 before promotion** — A46 and A54, both locked-doc questions. A36–A78 recorded |
+| 2 — masters / routes / eligible / PWA | attempt 2: 4, file-disjoint | all 4, `--no-ff`, in report order: routebuilder → masters → eligible → pwa, **no conflict** | **pass** (`doc-qa` round 3) | Reports [masters](../../reports/2-masters.md), [routebuilder](../../reports/2-routebuilder.md), [eligible](../../reports/2-eligible.md), [pwa](../../reports/2-pwa.md). Attempt 1 aborted by H3. Halted on H4; **both questions answered by the human** — A46 (docs corrected) and A54 (locked `§5.2` amended). Rounds 1–2 of `doc-qa` were those decisions; round 2 also caught the lead's incomplete doc sync. A36–A78 recorded. Worktrees and branches removed |
 | 3 — schedule+recurrence / execution | not started | — | — | Coverage stays single-owner |
 | 4 — screens S1.1–S1.9 | not started | — | — | one agent per screen folder |
 
