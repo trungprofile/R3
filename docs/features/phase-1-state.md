@@ -64,7 +64,7 @@ ground truth left.
 
 | Lane | Screen | Worktree branch | Merged? |
 | :---- | :---- | :---- | :---- |
-| `s1-1-login` | S1.1 Login | `worktree-agent-afcbdae24cb485037` | not yet |
+| `s1-1-login` | S1.1 Login | `worktree-agent-afcbdae24cb485037` | **merged** (clean, no conflict) |
 | `s1-2-board` | S1.2 Shared shift board | `worktree-agent-a172e7e5324aeb522` | not yet |
 | `s1-4-my-shifts` | S1.4 My shifts + availability | `worktree-agent-a2aabbb6c854a3d9d` | not yet |
 | `s1-5-pickup` | S1.5 Driver pickup execution | `worktree-agent-a11efe9ea96dde6d6` | not yet |
@@ -87,6 +87,19 @@ construction, so a conflict means the partition was wrong.
 3. **Check for promoted components.** Any lane that needed a shared component built it inside its own
    folder and said so under `Assumed:`. Two lanes wanting the same one is the signal to promote it to
    `components/` — one lane wanting it is not.
+
+### Seam fixes the lead owes after 4a merges
+
+Collected as lanes report. All are in lead-owned files no lane may touch, so none is a lane defect.
+
+1. **`client/src/api/errors.ts` drops every 401 body field except `message` and `correlationId`** —
+   including `triesLeft`, which `shared/src/index.ts` defines on `LoginRejected` and the server
+   actually sends. The login lane could not touch that file, so it recomputes the count from a
+   mirrored `MAX_TRIES = 4` in its own folder. **This is a silent-drift hazard, not a style point:**
+   the server's `ACCOUNT_MAX_FAILURES` and the client's `MAX_TRIES` can diverge with nothing to
+   notice, and the screen would then tell a volunteer the wrong number of tries before a lockout.
+   The lane identified the fix precisely — carry `triesLeft` through `ApiError` — and it is one
+   field. Do it at seam-wiring, then delete the mirrored constant.
 
 ### The inbox lane is not like the others
 
