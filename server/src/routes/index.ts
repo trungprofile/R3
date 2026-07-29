@@ -13,6 +13,7 @@ import { coverageRoutes } from './coverage.js';
 import { deviceRoutes } from './devices.js';
 import { donorRoutes } from './donors.js';
 import { executionRoutes } from './execution.js';
+import { notificationRoutes } from './notifications.js';
 import { pickupRouteRoutes } from './pickup-routes.js';
 import { pushRoutes } from './push.js';
 import { shiftRoutes } from './shifts.js';
@@ -40,6 +41,10 @@ export const apiRoutes: RouteDefinition[] = [
   ...shiftRoutes,
   ...coverageRoutes,
   ...executionRoutes,
+  // Wave 4a. The read half of the notification outbox — S1.9's inbox and the top
+  // bar's bell. Mounted under `/notifications`, which no earlier module claims, so
+  // there is no method+path pair for Express to shadow (A108).
+  ...notificationRoutes,
 ];
 
 export function createApiRouter(): Router {

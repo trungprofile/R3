@@ -1,0 +1,41 @@
+/* S1.9 — notification inbox.
+ *
+ * Layout only. Every colour, size and step is a token (`ui-ux-spec.md §2`); the
+ * row itself is `InboxRow`, styled in `components.css`, and nothing here overrides
+ * it. Canonical on phone AND desktop (responsive matrix), so the single column just
+ * stops growing rather than becoming a second layout — a wide inbox is a line of
+ * text a metre long.
+ */
+
+.r3-inbox {
+  max-width: 44rem;
+}
+
+.r3-inbox__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.r3-inbox__title {
+  font-size: var(--font-h2);
+  margin: 0;
+}
+
+/* §1 principle 2: 8px is the minimum gap between adjacent targets, and both of
+ * these are targets — the chip is a button when alerts are off. */
+.r3-inbox__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.r3-inbox__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
