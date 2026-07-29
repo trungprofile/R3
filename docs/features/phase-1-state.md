@@ -65,10 +65,10 @@ ground truth left.
 | Lane | Screen | Worktree branch | Merged? |
 | :---- | :---- | :---- | :---- |
 | `s1-1-login` | S1.1 Login | `worktree-agent-afcbdae24cb485037` | **merged** (clean, no conflict) |
-| `s1-2-board` | S1.2 Shared shift board | `worktree-agent-a172e7e5324aeb522` | no — **stopped at spend limit**, partial work preserved at `3402a97` |
-| `s1-4-my-shifts` | S1.4 My shifts + availability | `worktree-agent-a2aabbb6c854a3d9d` | no — **stopped at spend limit**, partial work preserved at `fddf862` |
-| `s1-5-pickup` | S1.5 Driver pickup execution | `worktree-agent-a11efe9ea96dde6d6` | no — **stopped at spend limit**, partial work preserved at `925d6a6` |
-| `s1-9-inbox` | S1.9 Notification inbox **+ its server surface** | `worktree-agent-ae61c199995723b58` | no — **stopped at spend limit**, partial work preserved at `b96474b` |
+| `s1-2-board` | S1.2 Shared shift board | `worktree-agent-a172e7e5324aeb522` | **merged** (resumed after the stop, then complete) |
+| `s1-4-my-shifts` | S1.4 My shifts + availability | `worktree-agent-a2aabbb6c854a3d9d` | **merged** (resumed after the stop, then complete) |
+| `s1-5-pickup` | S1.5 Driver pickup execution | `worktree-agent-a11efe9ea96dde6d6` | **resumed, still running** — partial work was preserved at `925d6a6` |
+| `s1-9-inbox` | S1.9 Notification inbox **+ its server surface** | `worktree-agent-ae61c199995723b58` | **merged** (resumed after the stop, then complete) |
 
 Worktree paths are `.claude/worktrees/agent-<id>` for the same `<id>`.
 
@@ -123,6 +123,33 @@ merge), and to commit partial work itself if the limit is hit again.
 work found four real defects in what it inherited, which is exactly the return a restart throws away.
 A resumed lane must be told the inherited code is untested and that reviewing it is part of the job.
 
+### The clock-dependent gate — found by three lanes, fixed 2026-07-29
+
+**`server/test/recurrence-materialization.test.ts` had two tests that failed only between 09:00 and
+13:00 pantry-local**, and passed every other hour. **Wave 3 was promoted on it.** `gate.sh` ran at
+07:47 and the doc-qa re-gate at 07:52 — both outside the window — so the wave's green was luck of the
+clock, not evidence. This is the most important thing Wave 4a produced.
+
+Three lanes hit it independently and none of them owned the file; all three declined to touch it and
+reported it instead, which is the behaviour §3 wants. The lead reproduced it deterministically rather
+than accepting three concurring reports: setting the test DB's `app_config.timezone` so pantry-local
+`now` lands inside the window fails it on demand, and outside it passes.
+
+**The service was correct; the tests were wrong.** Moving a pattern's window later in the day
+legitimately *mints* an occurrence that did not exist before — today's 09:00 slot is already past and
+was never materialized (§5.3's loop runs `[now, horizon]`, and A116 records this), while today's new
+13:00 slot is still ahead and is. Both tests assumed an edit cannot change the instance **set**: they
+iterated the *current* instances and looked each up among the *originals*, so the newly minted row
+resolved to `undefined` and died on the `!`.
+
+Fixed by inverting the lookup — iterate the originals, find each in the current set. That is exactly
+what both test names claim (CLAIMED instances did not move per I24; unclaimed ones did), and it holds
+at any hour. Verified at pantry-local 08:04, 10:04, 11:04 and 18:04; 10:04 and 11:04 failed before.
+**No constraint relaxed, no assertion dropped.**
+
+**Standing lesson for the next lead: a green gate is evidence only if the suite is time-independent.**
+Any future test whose fixture straddles wall-clock `now` can do this again.
+
 ### Seam fixes the lead owes after 4a merges
 
 Collected as lanes report. All are in lead-owned files no lane may touch, so none is a lane defect.
@@ -135,6 +162,13 @@ Collected as lanes report. All are in lead-owned files no lane may touch, so non
    notice, and the screen would then tell a volunteer the wrong number of tries before a lockout.
    The lane identified the fix precisely — carry `triesLeft` through `ApiError` — and it is one
    field. Do it at seam-wiring, then delete the mirrored constant.
+2. **Promote a shared segmented/tab control to `components/`.** `s1-2-board` built `Segmented.tsx`
+   and `s1-4-my-shifts` built `Tabs.tsx` — the same control, twice, each inside its own folder
+   exactly as instructed. **Two lanes wanting it is the promote signal** the briefs named; one would
+   not have been. `ui-ux-spec.md §3` has no contract for one, so promoting it means writing that
+   contract, not just moving a file.
+3. **Wire `useUnreadCount` into `app/App.tsx`** so `AppShell`'s existing `unreadCount` prop is fed
+   from the inbox lane's new endpoint. The prop has been dangling since Wave 1.
 
 ### The inbox lane is not like the others
 
