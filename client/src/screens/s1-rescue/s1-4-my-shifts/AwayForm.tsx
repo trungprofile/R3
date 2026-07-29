@@ -76,10 +76,13 @@ export function AwayForm({ onSaved, now }: AwayFormProps) {
   const [saving, setSaving] = useState(false);
 
   const times = timeOptions();
+  const startTime = form.startTime;
+  // Only times later in the same day are offered as an end: a window is intra-day
+  // (state A57), and §3 prefers hiding an option over showing one that is refused.
   const laterTimes =
-    form.startTime === null
+    startTime === null
       ? times
-      : times.filter((time) => minutesOfTime(time) > minutesOfTime(form.startTime as string));
+      : times.filter((time) => minutesOfTime(time) > minutesOfTime(startTime));
   const summary = summarySentence(form, now);
 
   const setKind = (kind: AwayFormState['kind']) => {

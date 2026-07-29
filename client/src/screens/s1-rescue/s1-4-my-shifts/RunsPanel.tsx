@@ -10,9 +10,18 @@
 // so an old in-progress run sitting in "Earlier" is the expected result of I11,
 // not a stuck row to explain away in copy.
 
-import { Button, EmptyState, ErrorBlock, List, ListItem, ListRow, SkeletonRows, StatusChip } from '../../../components/index.ts';
-import { useAsyncData, useRouter } from '../../../app/index.ts';
 import { useCallback } from 'react';
+import {
+  Button,
+  EmptyState,
+  ErrorBlock,
+  List,
+  ListItem,
+  ListRow,
+  SkeletonRows,
+  StatusChip,
+} from '../../../components/index.ts';
+import { useAsyncData, useRouter } from '../../../app/index.ts';
 import { fetchMyRuns } from './data.ts';
 import { formatRunWhen, groupRuns } from './logic.ts';
 import type { ShiftSummary } from '../../../api/shared.ts';
