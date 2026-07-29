@@ -141,10 +141,14 @@ attempt 1 — the partition was never the problem; see H3.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
-| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
-| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
-| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
+| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-aeb37364caf59ac1f` | `worktree-agent-aeb37364caf59ac1f` | **yes** | — | — |
+| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a6ede00f689f72ad6` | `worktree-agent-a6ede00f689f72ad6` | **yes** | — | — |
+| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a82503cec27dc11c9` | `worktree-agent-a82503cec27dc11c9` | **yes** | — | — |
+| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-adb1d6c0b0ea86d28` | `worktree-agent-adb1d6c0b0ea86d28` | **yes** | — | — |
+
+All four spawned 2026-07-28 and branched from **`0a6fa3e`**, verified against `git worktree list`
+rather than constructed from the lane name (§5.6 step 1). Attempt 1's ids are dead — if you find a
+worktree or branch whose id is not in this table, it is a leftover and should be removed.
 
 ### Wave 2 — attempt 1 (aborted, nothing merged)
 
