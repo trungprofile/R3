@@ -137,7 +137,7 @@ Stored states: **`OPEN` → `CLAIMED` → `IN_PROGRESS` → `COMPLETED`**, plus 
 **Pickup-complete milestone (within `IN_PROGRESS`, optional).**
 
 - `Shift.pickup_completed_at` — nullable timestamp, set by an explicit driver tap ("done / heading back"). The tap doubles as a review screen (shift info + driver notes) before confirming.  
-- **Gate:** it can be set only once every `ShiftStop ∈ {COLLECTED, SKIPPED}` (driver has resolved all assigned stops).  
+- **Gate:** it can be set only once every `ShiftStop ∈ {COLLECTED, SKIPPED, REASSIGNED}` (driver has resolved all assigned stops; a `REASSIGNED` stop is no longer this driver's to resolve — I30). Amended with I27, 2026-07-28; see the note under §4.  
 - **Not a state, not a completion.** The shift stays `IN_PROGRESS`; only the receiver's receive-done closes it. This is a handoff signal, compatible with the PRD's "no driver completion step" (that rule is about *closing* the shift, not this milestone).  
 - **Trigger:** setting it fires a notification to the Receiver(s) ("driver heading back"). Delivery mechanics → notifications doc.  
 - **Optional:** a driver may never tap it; the receiver-resolves-`PENDING` fallback (§3.2) still applies. When tapped, the receiver inherits a shift with **no `PENDING` stops** — only `COLLECTED` ones left to weigh.
@@ -240,7 +240,7 @@ One shared entity advanced by **two actors in sequence**: the driver during the 
 
 **PICKUP HANDOFF**
 
-- **I27** Shift.pickup_completed_at (nullable) may be set only when every ShiftStop ∈ {COLLECTED, SKIPPED}. It does NOT change the Shift state (stays IN_PROGRESS) and does NOT complete the shift. Setting it triggers a Receiver notification.
+- **I27** Shift.pickup_completed_at (nullable) may be set only when every ShiftStop ∈ {COLLECTED, SKIPPED, REASSIGNED}. It does NOT change the Shift state (stays IN_PROGRESS) and does NOT complete the shift. Setting it triggers a Receiver notification. *(REASSIGNED added under human authorization, 2026-07-28 — see the note below.)*
 
 **DONOR UNIQUENESS**
 
@@ -250,6 +250,17 @@ One shared entity advanced by **two actors in sequence**: the driver during the 
 **MID-RUN REASSIGNMENT**
 
 - **I30** Staff may move an unresolved (PENDING or unweighed-COLLECTED) ShiftStop to another driver's shift mid-run: source disposition → REASSIGNED (terminal, excluded from that shift's completion gate), destination gets a new ShiftStop row (fresh position, PENDING). Never an in-place shift_id update — ShiftStop stays a frozen per-shift snapshot (I5).
+
+**Note on I27's gate — amended 2026-07-28 under explicit human authorization.** I27 originally read
+`{COLLECTED, SKIPPED}`, omitting `REASSIGNED`. That was a drafting slip, not a distinction, and the
+deciding evidence is that **the literal reading breaks I30**: a run that had a stop moved off it would
+have a `REASSIGNED` row forever, so its pickup-complete milestone would be permanently unreachable —
+turning the feature meant to rescue a stranded run into the thing that freezes it. Two further checks
+agree. §3.2's driver-side-resolution bullet already stated the gate as `{COLLECTED, SKIPPED,
+REASSIGNED}`, and **I12**, the parallel receive-side gate, enumerates `REASSIGNED` explicitly
+(`{WEIGHED, SKIPPED, REASSIGNED}`) in both the invariant and §3.2 — so naming it is this doc's
+convention, and I27's silence was the outlier. Found by Wave 3's execution lane, which implemented
+§3.2's reading and declared the conflict rather than picking a side quietly.
 
 ---
 

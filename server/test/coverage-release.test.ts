@@ -160,15 +160,22 @@ describe('release-one (§5.3, cap 8)', () => {
     expect(recipients).toEqual([coordinator.id, other.id].sort());
   });
 
-  // Recorded because it is a real consequence of the schema, not of this service.
-  // `uq_notif_shift_event` is `(event, shift_id, recipient_id)` with no filter on which
-  // events it covers, while `0006`'s comment says "only shift-scoped, time-triggered
-  // events need it; event-triggered ones fire once by construction". SHIFT_OPENED is
-  // event-triggered and does NOT fire once by construction — a run can be released,
-  // re-claimed and released again — so the second fan-out is absorbed by the index.
-  // Pinned here so the behaviour is visible; changing it would take a migration, which
-  // is lead-owned.
-  it('sends one open-run alert per person per run, even across two releases', async () => {
+  // FIXED BY MIGRATION 0009 — this test previously asserted the opposite.
+  //
+  // The coverage lane found that `uq_notif_shift_event` was `(event, shift_id,
+  // recipient_id)` with no filter on which events it covered, while `0006`'s own
+  // comment justified it for "shift-scoped, time-triggered events" only, on the
+  // grounds that "event-triggered ones fire once by construction". SHIFT_OPENED is
+  // event-triggered and does NOT fire once by construction — release → re-claim →
+  // release is an ordinary sequence — so the second fan-out was absorbed by the index
+  // and nobody was told the run was back on the board. The lane could not fix it
+  // (migrations are lead-owned, build-plan §3) and pinned the broken behaviour here
+  // instead, which is the only reason it was ever visible.
+  //
+  // 0009 restricts the index to `event IN ('SHIFT_REMINDER','SHIFT_AT_RISK')`, so the
+  // second release now alerts. The assertion is inverted rather than deleted: it is
+  // the same question, and it must keep being asked.
+  it('alerts again on a second release of the same run', async () => {
     const coordinator = await makeUser({ tier: 'STAFF' });
     const driver = await makeDriver();
     const shift = await makeShift({
@@ -192,7 +199,12 @@ describe('release-one (§5.3, cap 8)', () => {
       .select(['event', 'recipient_id'])
       .where('event', '=', 'SHIFT_OPENED')
       .execute();
-    expect(rows).toEqual([{ event: 'SHIFT_OPENED', recipient_id: coordinator.id }]);
+    // Two rows for the same (event, shift, recipient) — the pair the old index
+    // collapsed into one. The coordinator is told both times the run reopened.
+    expect(rows).toEqual([
+      { event: 'SHIFT_OPENED', recipient_id: coordinator.id },
+      { event: 'SHIFT_OPENED', recipient_id: coordinator.id },
+    ]);
   });
 
   it('answers a double-tap with "already back on the board", not "not yours"', async () => {

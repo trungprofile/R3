@@ -49,6 +49,13 @@ export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
  * they are the ones the tier-1 partial unique index `uq_notif_shift_event`
  * (`event, shift_id, recipient_id`) protects — a delayed or repeated sweep cannot
  * re-send. Event-triggered notifications fire once by construction (§4.4).
+ *
+ * KEEP THIS LIST AND MIGRATION 0009 IN LOCKSTEP. The index's `event IN (…)` filter
+ * enumerates exactly these strings. Until 0009 the index had no event filter at all
+ * and silently swallowed a second `SHIFT_OPENED` for the same run — this constant
+ * described the intent correctly while the DDL did something wider, which is why the
+ * two are now cross-referenced in both directions. Adding a time-triggered event is
+ * an edit here AND a migration.
  */
 export const TIME_TRIGGERED_EVENTS: readonly NotificationEvent[] = [
   'SHIFT_REMINDER',

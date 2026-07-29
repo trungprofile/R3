@@ -22,6 +22,11 @@ export * from './masters.js';
 export * from './routes.js';
 export * from './availability.js';
 
+// Wave-3 API shapes, same seam and same reason.
+export * from './schedule.js';
+export * from './coverage.js';
+export * from './execution.js';
+
 /** `tier` — I1. Hierarchical: VOLUNTEER ⊂ STAFF ⊂ ADMIN. Compare by rank with `>=`,
  *  never by equality. */
 export const TIERS = ['VOLUNTEER', 'STAFF', 'ADMIN'] as const;

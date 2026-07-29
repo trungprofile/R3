@@ -13,12 +13,36 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **3 — 3 lanes spawning** |
-| Wave status | wave 2 **passed and pushed**; A5/A7/A36/A58 **ratified as-is by the human**; the lead's three pre-Wave-3 chores are **done and `doc-qa`-clean** (one real defect found and fixed in the process — see the chores section). Wave 3 spawning |
+| Current wave | **3 — all 3 lanes merged, mechanical gate green, NOT PROMOTED** |
+| Wave status | **All three Wave-3 lanes reported, merged `--no-ff` with no conflict, seams wired, `gate.sh` PASSED at 500 tests.** The wave is **not promoted**, because §5.3 needs all four criteria and only three are met: `doc-qa` **has not been run over the cumulative diff**. The human was nearly out of credit and asked to wrap up and commit, so the lead committed the work and stopped rather than spending the remaining budget on an agent. **The next lead's first action is `doc-qa` over `4c10428..HEAD`** — nothing else, and no Wave 4, until it is clean |
 | Branch | `phase-1` |
 | Loop armed | **yes** — restarted 2026-07-28 on the human's go-ahead |
 | Consecutive gate failures | 0. Worth noting for the next lead: **every `doc-qa` finding this session came from the lead's own changes, not from a lane** — the incomplete cross-doc sync after amending §5.2, then the conflict-flag constraint described backwards. Keep `doc-qa` on lead chores, not only on waves |
 | Halted | **no — H4 cleared 2026-07-28.** Both questions answered by the human; see H4 for what each changed |
+
+### The one thing the next lead must do first
+
+**Run `doc-qa` over `git diff 4c10428..HEAD`.** Wave 3 is merged and mechanically green but
+**unpromoted**: §5.3 requires all four criteria and the `doc-qa` half of the gate never ran. Do not
+start Wave 4, do not remove the Wave-3 worktrees, and do not treat the ledger's "green" as a pass —
+the gate decides pass/fail and only half of it has spoken.
+
+Three things in this wave are exactly what `doc-qa` exists to catch, and all three are the **lead's**
+edits rather than a lane's:
+
+1. **The I27 amendment** to the locked `domain-modeling.md` (authorized by the human). The lead synced
+   §3.1's gate bullet alongside it, but the last time a locked-doc amendment happened, the lead's
+   cross-doc sync was **incomplete and `doc-qa` caught it** — `data-model.md §6` and the PRD are the
+   places to check for a restated two-element I27 gate.
+2. **Migration 0009**, which changed a tier-1 index, and the inverted assertion in
+   `coverage-release.test.ts` that goes with it.
+3. **The job registry assertion** widened from 2 jobs to 5. That is a wave-scoped fact expiring, not
+   a constraint relaxed to pass — but it is the shape of edit §5.5 forbids, so it should be looked at
+   by something other than the person who made it.
+
+Worktrees still on disk, deliberately: `agent-a0d3f9b26e700d0fc`, `agent-ae8393a4467fb460d`,
+`agent-a95dba7531295b943`, `agent-aac3964bdc1925e97` (the stopped lane, now merged in via the
+continuation). Remove all four **after** `doc-qa` is clean, not before.
 
 ## Halt
 
@@ -307,9 +331,9 @@ large it looks next to the others.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **schedule** | `server/src/services/{schedule,recurrence}.ts`, `server/src/routes/shifts.ts`, `server/src/jobs/materialization.ts`, `shared/src/schedule.ts`, own tests | `.claude/worktrees/agent-a95dba7531295b943` (continuation) | `worktree-agent-a95dba7531295b943` | **yes** — 2nd attempt, continuing | — | — |
-| **coverage** | `server/src/services/coverage.ts`, `server/src/routes/coverage.ts`, `server/src/jobs/at-risk.ts`, `shared/src/coverage.ts`, own tests | `.claude/worktrees/agent-ae8393a4467fb460d` | `worktree-agent-ae8393a4467fb460d` | **yes** | **complete** (`011e6d9`, 86 lane tests, own `gate.sh` green at 376) | — |
-| **execution** | `server/src/services/execution.ts`, `server/src/routes/execution.ts`, `server/src/jobs/reminder.ts`, `shared/src/execution.ts`, own tests | `.claude/worktrees/agent-a0d3f9b26e700d0fc` | `worktree-agent-a0d3f9b26e700d0fc` | **yes** | **complete** (`1198753`, 58 lane tests, own `gate.sh` green at 348) | — |
+| **schedule** | `server/src/services/{schedule,recurrence}.ts`, `server/src/routes/shifts.ts`, `server/src/jobs/materialization.ts`, `shared/src/schedule.ts`, own tests | `.claude/worktrees/agent-a95dba7531295b943` (continuation) | `worktree-agent-a95dba7531295b943` | **yes** — 2nd attempt, continuing | **complete** (`96bbeec`, 66 lane tests, own `gate.sh` green at 356) | **yes** |
+| **coverage** | `server/src/services/coverage.ts`, `server/src/routes/coverage.ts`, `server/src/jobs/at-risk.ts`, `shared/src/coverage.ts`, own tests | `.claude/worktrees/agent-ae8393a4467fb460d` | `worktree-agent-ae8393a4467fb460d` | **yes** | **complete** (`011e6d9`, 86 lane tests, own `gate.sh` green at 376) | **yes** |
+| **execution** | `server/src/services/execution.ts`, `server/src/routes/execution.ts`, `server/src/jobs/reminder.ts`, `shared/src/execution.ts`, own tests | `.claude/worktrees/agent-a0d3f9b26e700d0fc` | `worktree-agent-a0d3f9b26e700d0fc` | **yes** | **complete** (`1198753`, 58 lane tests, own `gate.sh` green at 348) | **yes** |
 
 All three spawned 2026-07-28 and branched from **`4c10428`**, verified against `git worktree
 list` rather than constructed from the lane name (§5.6 step 1).
@@ -495,7 +519,7 @@ different worktrees. Registering it is a Wave-2 one-liner, not a gap.
 | 0 — substrate | *(single-lane, lead-run)* | direct to `phase-1` | **pass** (round 3) | [report](../../reports/wave-0-substrate.md). 3 `doc-qa` findings, all real: A4 doc-vs-doc contradiction, A1 wrong inference, one incomplete doc edit |
 | 1 — identity / surface / signal | 3, file-disjoint | all 3, `--no-ff`, in report order: signal → surface → identity | **pass** (round 1) | Reports [identity](../../reports/1-identity.md), [surface](../../reports/1-surface.md), [signal](../../reports/1-signal.md). `doc-qa` zero findings. Pushed `add4e13`. Worktrees and branches removed, verified against `git worktree list`. **Halted after the wave on H2 (A24)** |
 | 2 — masters / routes / eligible / PWA | attempt 2: 4, file-disjoint | all 4, `--no-ff`, in report order: routebuilder → masters → eligible → pwa, **no conflict** | **pass** (`doc-qa` round 3) | Reports [masters](../../reports/2-masters.md), [routebuilder](../../reports/2-routebuilder.md), [eligible](../../reports/2-eligible.md), [pwa](../../reports/2-pwa.md). Attempt 1 aborted by H3. Halted on H4; **both questions answered by the human** — A46 (docs corrected) and A54 (locked `§5.2` amended). Rounds 1–2 of `doc-qa` were those decisions; round 2 also caught the lead's incomplete doc sync. A36–A78 recorded. Worktrees and branches removed |
-| 3 — schedule+recurrence / execution | not started | — | — | Coverage stays single-owner |
+| 3 — schedule / coverage / execution | 3, file-disjoint | all 3, `--no-ff`, in report order: execution → coverage → schedule, **no conflict** | **mechanical half green (500 tests); `doc-qa` NOT run** | Reports [schedule](../../reports/3-schedule.md), [coverage](../../reports/3-coverage.md), [execution](../../reports/3-execution.md). Schedule was stopped mid-run by the human and **resumed**, not restarted — it found 4 defects in the inherited code. A79 and A80 both answered by the human; **I27 amended under authorization**. Lead added migration 0009 (A94). A94–A116 recorded. **NOT PROMOTED** — see below |
 | 4 — screens S1.1–S1.9 | not started | — | — | one agent per screen folder |
 
 ## Open assumptions
@@ -668,8 +692,8 @@ checked the doc and wrote a test asserting the row's exact column set.
 
 | # | Wave | Assumption | Resolved? |
 | :---- | :---- | :---- | :---- |
-| **A79** | 3 | **I27's Receiver notification is NOT enqueued.** I27 says setting `pickup_completed_at` "triggers a Receiver notification" and the lead's brief said to enqueue it. The lane declined, on scope: PRD cap 10 and `ui-ux-spec.md S1.5` both identify that alert as the **truck-inbound** one, and PRD §5 scopes Phase 1 as "caps 1–11, 13 **minus truck-inbound**". Enqueuing it would also need a new event string in another lane's file and a device-scoped recipient (the receiver tablet) whose registration is Phase 2. **The milestone write itself is unaffected.** | open — **escalate**: the lane overrode the lead's brief on a documented scope boundary, and it reads correct |
-| **A80** | 3 | **I27's gate: `{COLLECTED, SKIPPED}` or `{COLLECTED, SKIPPED, REASSIGNED}`?** I27 states the first; `domain-modeling.md §3.2`'s final bullet states the second, and `data-model.md §6` agrees with §3.2. **Both readings sit inside the locked doc**, so the authority order cannot break the tie — the same shape as H2. The lane implemented the §3.2 reading (a `REASSIGNED` stop counts as resolved, being terminal and "excluded from this shift's completion gate"), which is 2-to-1 on the documents and internally coherent. | open — **`doc-qa` to rule**; possible §5.5 doc-contradiction |
+| **A79** | 3 | **I27's Receiver notification is NOT enqueued.** I27 says setting `pickup_completed_at` "triggers a Receiver notification" and the lead's brief said to enqueue it. The lane declined, on scope: PRD cap 10 and `ui-ux-spec.md S1.5` both identify that alert as the **truck-inbound** one, and PRD §5 scopes Phase 1 as "caps 1–11, 13 **minus truck-inbound**". Enqueuing it would also need a new event string in another lane's file and a device-scoped recipient (the receiver tablet) whose registration is Phase 2. **The milestone write itself is unaffected.** | **RESOLVED 2026-07-28 — human ratified the lane's call.** No Receiver notification in Phase 1; the lead's brief was wrong to ask for it |
+| **A80** | 3 | **I27's gate: `{COLLECTED, SKIPPED}` or `{COLLECTED, SKIPPED, REASSIGNED}`?** I27 states the first; `domain-modeling.md §3.2`'s final bullet states the second, and `data-model.md §6` agrees with §3.2. **Both readings sit inside the locked doc**, so the authority order cannot break the tie — the same shape as H2. The lane implemented the §3.2 reading (a `REASSIGNED` stop counts as resolved, being terminal and "excluded from this shift's completion gate"), which is 2-to-1 on the documents and internally coherent. | **RESOLVED 2026-07-28 — human authorized amending the locked doc.** I27 now reads `{COLLECTED, SKIPPED, REASSIGNED}`; §3.1's gate bullet synced too. The deciding argument was that the literal reading makes I30 freeze the very run it exists to rescue, plus I12's parallel wording already enumerating REASSIGNED. Code was already correct |
 | A81 | 3 | **The reminder sweep is bounded on both sides of now** — a run that already started gets no reminder. No doc says whether a missed window should fire late; "your run starts in an hour" about a run that began two hours ago is false. | open, non-blocking |
 | A82 | 3 | **The reminder sweep considers only `CLAIMED` shifts with an active owner.** The matrix names "the owning driver"; an `IN_PROGRESS` run's driver is already on it, and a deactivated account cannot read an inbox (I21). Neither exclusion is stated. | open, non-blocking |
 | A83 | 3 | **`resolveStop` is idempotent, refuses `COLLECTED → SKIPPED`** (§3.2 gives that edge to the receiver), **and offers no un-check** — the ShiftStop machine has no edge back to `PENDING`. No doc addresses an undo. Idempotence is deliberate: a double-tap on a flaky phone must not error. | open, non-blocking |
@@ -717,6 +741,32 @@ dependencies among transactions". That is a rule which **only** SSI catches: it 
 | **A108** | 3 | **HTTP shapes are the lane's** — `POST /shifts/:id/{claim,release,assign,unassign}`, `GET /shifts/:id/eligibility?driverId=`; 409s discriminated by `error`. **Possible collision:** the sibling `schedule` lane also mounts under `/shifts`, and two identical declarations resolve to whichever registers first rather than conflicting loudly. | open — **lead must check the merged declaration list at merge**; nothing in the gate catches a shadowed route |
 | A109 | 3 | **The transactional core `claimShiftIn(tx, …)` is exported alongside `claimShift`.** The public entry is still one function per domain operation; the core exists so a test can put a barrier between the gate's read and its write, which is the only way to make the write-skew interleaving deterministic rather than lucky. `services/notification.ts` sets the precedent for a `tx`-taking export. | open, non-blocking |
 | A110 | 3 | **`occurrence_date` is rendered from the Date's local calendar fields, not `toISOString()`**, and range bounds are cast in SQL (`$1::date`) rather than passed as instants. It is a calendar slot (`data-model.md §5.3`); both would be off by the pantry's UTC offset at exactly the range edges in any zone east of UTC. | open, non-blocking |
+
+### Wave 3 — schedule lane (continuation)
+
+Reported `complete`, 66 lane tests, own `gate.sh` green (356 total). Built `routes/shifts.ts`
+(11 routes) and reviewed the four files inherited from the stopped agent.
+
+**It found four defects in the inherited code**, which is the return on resuming rather than
+restarting. The one that mattered: `startDate` on pattern create **was undone by the next nightly
+sweep** — there is no `start_date` column, so the catch-up back-filled every date the create had
+skipped, and a pattern made for September would put August runs on the board the next morning. The
+other three: `updatePattern` never surfaced the `real_conflict` soft check that `data-model.md §5.3`
+requires at edit as well as create; `applyToFutureInstances` counted `moved` per loop iteration
+rather than per row actually updated, so a run claimed between the read and the conditional UPDATE
+was reported as moved when it wasn't; and a dead `nextDay` export whose comment claimed callers it
+did not have. The `ck_shift_conflict_flag` defect the lead flagged as likely was **not** present —
+the inherited code already cleared `assigned_over_conflict` alongside `owner_id` in both cancel and
+the cap-9 release.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| **A111** | 3 | **A pattern has no start date; a series begins when it is created.** `domain-modeling.md §5.3` (locked) gives the rule three parts plus `ownerDefault` and `endDate`, names `endDate` as the *only* stop condition, and writes the loop as `for each occurrence date D in [now, horizon]`; `data-model.md §5.2` has no `start_date` column. But `ui-ux-spec.md S1.6` says the builder reads "Every Tuesday, **starting __**, no end". Resolved by authority order — locked doc first, UI spec last. **This removed a field the stopped agent had already put on the wire.** | open — **escalate.** If an arbitrary future start date is intended, it needs a `start_date` column + migration, which is lead-owned. The UI spec implies one; the locked doc and the schema both do not |
+| **A112** | 3 | **`GET /shifts` and `GET /shifts/:id` are `{ tier: 'VOLUNTEER' }`** — any signed-in user, no duty. Cap 5 says "all drivers see every shift", which suggests `anyDuty: ['DRIVE']`, but that would lock out a Staff coordinator who does not hold the Drive duty, and tier never confers a duty (I1/I2). A receive-only volunteer can therefore read the board. Judged harmless: names are public-within-org (PRD §2) and the shape carries no phone or address. | open — the docs do not say who may read the board other than drivers |
+| A113 | 3 | **A born-CLAIMED run (I25) sends no `SHIFT_ASSIGNED`.** Inherited behaviour, kept; no doc settles whether materializing onto `ownerDefault` is an "assignment" for the matrix's purposes. | open, non-blocking |
+| A114 | 3 | **Reschedule checks I20's two temporal clauses rather than full `eligible()`.** Inherited, kept. | open, non-blocking |
+| A115 | 3 | **`createShift` surfaces `real_conflict` for one-offs**, not only for pattern instances. Inherited, kept. | open, non-blocking |
+| A116 | 3 | **Occurrences whose window has already begun are not minted** by the sweep. Inherited, kept; §5.3's `[now, horizon]` does not say which side of `now` a partially-elapsed occurrence falls. | open, non-blocking |
 
 ## Blocked
 

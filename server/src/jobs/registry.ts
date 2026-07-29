@@ -16,8 +16,20 @@
 // The receiver edit window is deliberately absent: it only changes what is ALLOWED,
 // so it is derived on read. Jobs you do not have cannot fail (§4.4).
 
+import { atRiskJob } from './at-risk.js';
+import { materializationJob } from './materialization.js';
 import { pushDispatchJob } from './push-dispatch.js';
+import { shiftReminderJob } from './reminder.js';
 import { sessionCleanupJob } from './session-cleanup.js';
 import type { Job } from './scheduler.js';
 
-export const JOBS: readonly Job[] = [pushDispatchJob, sessionCleanupJob];
+export const JOBS: readonly Job[] = [
+  pushDispatchJob,
+  sessionCleanupJob,
+  // Wave 3 — the three sweeps the table above scheduled for this wave. Each lane
+  // wrote its own file and none registered it: three lanes appending to one array
+  // is a guaranteed conflict in a partition that is otherwise file-disjoint.
+  materializationJob,
+  shiftReminderJob,
+  atRiskJob,
+];

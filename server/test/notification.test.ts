@@ -502,10 +502,19 @@ describe('banner copy obeys ui-ux-spec.md §7', () => {
 describe('the scheduler runs catch-up sweeps', () => {
   // The registry is the one list of what runs, so it is asserted exactly rather
   // than loosely: a job that appears here without a wave deciding to add it is the
-  // failure this guards against. Wave 2 added session-cleanup, which registry.ts's
-  // own table had already scheduled for this wave.
-  it('registers the jobs waves 1 and 2 added, and no others', () => {
-    expect(JOBS.map((j) => j.name)).toEqual(['push-dispatch', 'session-cleanup']);
+  // failure this guards against. Wave 2 added session-cleanup and Wave 3 added the
+  // three sweeps — each was already scheduled for its wave by registry.ts's own
+  // table, so the list is being kept in step with a plan, not widened to fit
+  // whatever landed. Updating this assertion is a wave-scoped fact expiring; it is
+  // NOT a constraint being relaxed to make a test pass (build-plan §5.5).
+  it('registers the jobs waves 1 to 3 added, and no others', () => {
+    expect(JOBS.map((j) => j.name)).toEqual([
+      'push-dispatch',
+      'session-cleanup',
+      'recurrence-materialization',
+      'shift-reminder',
+      'at-risk',
+    ]);
     expect(JOBS.every((j) => j.intervalMs > 0)).toBe(true);
   });
 
