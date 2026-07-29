@@ -13,11 +13,11 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **2 — PASSED. Wave 3 not yet spawned** |
-| Wave status | **wave 2 passed and pushed.** All four §5.3 criteria hold: `gate.sh` exits 0, `doc-qa` **zero findings** on the third pass, all four lanes reported `complete`, and A36–A78 are all recorded below. H4 cleared by the human |
+| Current wave | **3 — 3 lanes spawning** |
+| Wave status | wave 2 **passed and pushed**; A5/A7/A36/A58 **ratified as-is by the human**; the lead's three pre-Wave-3 chores are **done and `doc-qa`-clean** (one real defect found and fixed in the process — see the chores section). Wave 3 spawning |
 | Branch | `phase-1` |
-| Loop armed | **no** — stopped at H4 and not yet restarted. **Wave 3 is unblocked**, but the lead owes three chores first (see below) |
-| Consecutive gate failures | 0 — reset by the pass. The wave took three `doc-qa` rounds: findings 1–2 were human decisions (H4), findings 3–4 were the lead's own incomplete doc sync after amending §5.2 |
+| Loop armed | **yes** — restarted 2026-07-28 on the human's go-ahead |
+| Consecutive gate failures | 0. Worth noting for the next lead: **every `doc-qa` finding this session came from the lead's own changes, not from a lane** — the incomplete cross-doc sync after amending §5.2, then the conflict-flag constraint described backwards. Keep `doc-qa` on lead chores, not only on waves |
 | Halted | **no — H4 cleared 2026-07-28.** Both questions answered by the human; see H4 for what each changed |
 
 ## Halt
@@ -295,6 +295,36 @@ else blocks them.
 
 *(H1 was cleared in wave 0. A1 and A4 were decided by the human on 2026-07-28; see Open
 assumptions.)*
+
+## Wave 3 — lanes in flight
+
+Named before spawning (§5.6 step 1). Three lanes, per build-plan §2's "2–3".
+
+**Coverage stays single-owner — this is the wave's whole risk.** §2: effort is even across the spine
+but difficulty is not, and Coverage holds nearly every remaining Phase-1 invariant — I19, I20 and its
+staff-assign exemption, I23–I25, and claim atomicity. It is **one lane**, not fanned out, however
+large it looks next to the others.
+
+| Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
+| :---- | :---- | :---- | :---- | :---- | :---- | :---- |
+| **schedule** | `server/src/services/{schedule,recurrence}.ts`, `server/src/routes/shifts.ts`, `server/src/jobs/materialization.ts`, `shared/src/schedule.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
+| **coverage** | `server/src/services/coverage.ts`, `server/src/routes/coverage.ts`, `server/src/jobs/at-risk.ts`, `shared/src/coverage.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
+| **execution** | `server/src/services/execution.ts`, `server/src/routes/execution.ts`, `server/src/jobs/reminder.ts`, `shared/src/execution.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
+
+**Seams the lead owns, as in every wave:** `server/src/routes/index.ts` (three spreads),
+`shared/src/index.ts` (three re-exports), and now **`server/src/jobs/registry.ts`** — each lane writes
+its own job file and none registers it, because three lanes each adding a line to one array is a
+guaranteed conflict in a partition that is otherwise disjoint.
+
+**All three lanes must be told about `ck_shift_conflict_flag`** (migration 0008): any UPDATE clearing
+`shift.owner_id` must clear `assigned_over_conflict` in the same statement or it raises.
+`server/test/shift-conflict-flag.test.ts` pins it. Coverage is the lane that will actually hit this —
+release and staff-unassign are both its writes.
+
+**Why the lanes can run in parallel despite all three writing `shift`.** They are file-disjoint, which
+is the partition rule (§3); sharing a table is expected. §2 makes the dependency explicit: pickup
+execution needs only *a shift in `CLAIMED`*, which the fixture factory seeds, so it does not wait on
+the claim work.
 
 ## Wave 2 — lanes in flight (attempt 2)
 
