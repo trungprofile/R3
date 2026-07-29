@@ -65,10 +65,10 @@ ground truth left.
 | Lane | Screen | Worktree branch | Merged? |
 | :---- | :---- | :---- | :---- |
 | `s1-1-login` | S1.1 Login | `worktree-agent-afcbdae24cb485037` | **merged** (clean, no conflict) |
-| `s1-2-board` | S1.2 Shared shift board | `worktree-agent-a172e7e5324aeb522` | not yet |
-| `s1-4-my-shifts` | S1.4 My shifts + availability | `worktree-agent-a2aabbb6c854a3d9d` | not yet |
-| `s1-5-pickup` | S1.5 Driver pickup execution | `worktree-agent-a11efe9ea96dde6d6` | not yet |
-| `s1-9-inbox` | S1.9 Notification inbox **+ its server surface** | `worktree-agent-ae61c199995723b58` | not yet |
+| `s1-2-board` | S1.2 Shared shift board | `worktree-agent-a172e7e5324aeb522` | no — **stopped at spend limit**, partial work preserved at `3402a97` |
+| `s1-4-my-shifts` | S1.4 My shifts + availability | `worktree-agent-a2aabbb6c854a3d9d` | no — **stopped at spend limit**, partial work preserved at `fddf862` |
+| `s1-5-pickup` | S1.5 Driver pickup execution | `worktree-agent-a11efe9ea96dde6d6` | no — **stopped at spend limit**, partial work preserved at `925d6a6` |
+| `s1-9-inbox` | S1.9 Notification inbox **+ its server surface** | `worktree-agent-ae61c199995723b58` | no — **stopped at spend limit**, partial work preserved at `b96474b` |
 
 Worktree paths are `.claude/worktrees/agent-<id>` for the same `<id>`.
 
@@ -87,6 +87,34 @@ construction, so a conflict means the partition was wrong.
 3. **Check for promoted components.** Any lane that needed a shared component built it inside its own
    folder and said so under `Assumed:`. Two lanes wanting the same one is the signal to promote it to
    `components/` — one lane wanting it is not.
+
+### The 4a stop — spend limit, 2026-07-29
+
+**Four of five lanes were killed mid-write by the account's monthly spend limit.** Not a build
+failure, not a blocked dependency, not a doc contradiction — an external billing stop that hit every
+running agent at once. `s1-1-login` had already finished and merged clean; the other four died at
+various depths, none having written a report.
+
+**This is NOT a §5.5 HALT.** Every §5.5 condition is about the *work* being wrong — a red gate, a
+merge conflict, a doc contradiction, an unauthorized dependency. None applies. The work is unfinished,
+not unsound. The correct response is to resume, and the limit has since been reset.
+
+**The lead committed each lane's uncommitted work in its own worktree before doing anything else**
+(SHAs in the table above), because that work existed only as dirty files in four checkouts and any
+cleanup would have destroyed it. It is **untested and ungated** — a starting point, not a deliverable.
+
+Depth at the stop, from the preserved diffs:
+
+- **`s1-2-board`** — furthest along. Seven files: `Board.tsx`, `Segmented.tsx`, `api.ts`, `board.ts`,
+  `board.css`, `board.test.ts`, `index.ts`. Plausibly close to done.
+- **`s1-9-inbox`** — substantial and the most valuable to preserve, because it is the only lane doing
+  server work: `services/inbox.ts`, `routes/notifications.ts`, two server test files, its registration
+  in `routes/index.ts`, and the screen folder.
+- **`s1-4-my-shifts`**, **`s1-5-pickup`** — screen folders only, earliest at the stop.
+
+**Resume, do not restart.** Wave 3's schedule lane is the precedent: a lane resumed from preserved
+work found four real defects in what it inherited, which is exactly the return a restart throws away.
+A resumed lane must be told the inherited code is untested and that reviewing it is part of the job.
 
 ### Seam fixes the lead owes after 4a merges
 
