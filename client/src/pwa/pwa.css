@@ -1,0 +1,92 @@
+/* The §5 onboarding card.
+ *
+ * Every value is a token (`ui-ux-spec.md §2`) — no literal hex, no literal px, per
+ * `client/src/tokens/`. The card floats above the content and clears the phone's
+ * bottom nav, because it must never cover the navigation it is asking the user to
+ * keep using: the app is fully usable with alerts off (§5).
+ */
+
+.r3-onboarding {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* Tablet and desktop have no bottom nav to clear — only the home-indicator inset. */
+  bottom: env(safe-area-inset-bottom, 0px);
+  z-index: 40;
+  padding: var(--space-4);
+  pointer-events: none;
+}
+
+/* Phone only, and by media query rather than by the shell's `r3-app--phone`
+ * class: the card is a sibling of the shell, not a descendant, so it cannot
+ * inherit that class. 768px is the phone/tablet breakpoint `tokens/index.ts`
+ * fixes (`phase-1-state.md` A16) — a custom property cannot be used here. */
+@media (max-width: 767px) {
+  .r3-onboarding {
+    bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+.r3-onboarding > .r3-card {
+  pointer-events: auto;
+  max-width: 34rem;
+  margin: 0 auto;
+  box-shadow: var(--shadow-modal);
+}
+
+.r3-onboarding__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-h3);
+  line-height: var(--line-height);
+}
+
+.r3-onboarding__body {
+  margin: 0 0 var(--space-3);
+}
+
+.r3-onboarding__steps {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.r3-onboarding__step {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin-bottom: var(--space-2);
+}
+
+/* The "2-step illustration" §5 asks for, drawn as a numbered sequence: two big
+ * numbered rows read at a glance and survive 200% zoom, which a bitmap of a phone
+ * menu does not. */
+.r3-onboarding__step-number {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: var(--radius-pill);
+  background: var(--action-fill);
+  color: var(--text-on-brand);
+  font-weight: 700;
+}
+
+.r3-onboarding__problem {
+  margin: 0 0 var(--space-2);
+  color: var(--text);
+}
+
+.r3-onboarding__reassurance {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.r3-onboarding__actions {
+  display: flex;
+  flex-wrap: wrap;
+  /* §1.2: 8px minimum between adjacent targets. */
+  gap: var(--space-2);
+}

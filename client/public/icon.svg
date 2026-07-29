@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The AGFP heart, the one decorative brand mark (ui-ux-spec.md §2 and §3).
+     Colours are the token values verbatim: --surface #ffffff, --brand-orange
+     #e97900, --structural-dark #363839. An icon file cannot read a CSS custom
+     property, so these are the only literal hex values in the client. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="R3">
+  <rect width="512" height="512" rx="96" fill="#ffffff"/>
+  <g transform="translate(256 236) scale(13.5) translate(-12 -12)">
+    <path fill="#e97900" d="M12 20.5 4.2 13a4.7 4.7 0 0 1 0-6.7 4.7 4.7 0 0 1 6.6 0l1.2 1.2 1.2-1.2a4.7 4.7 0 0 1 6.6 0 4.7 4.7 0 0 1 0 6.7Z"/>
+  </g>
+  <text x="256" y="452" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="88" font-weight="700" fill="#363839">R3</text>
+</svg>

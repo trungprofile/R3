@@ -11,7 +11,7 @@
 // MISSED / at-risk is derived at read time and never stored (I7), so it arrives
 // as a flag beside the status rather than as a status value.
 
-import type { ShiftStatus } from '@r3/shared';
+import type { ShiftStatus } from '../api/shared.ts';
 
 export interface StatusChipProps {
   status: ShiftStatus;

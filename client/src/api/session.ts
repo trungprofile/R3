@@ -10,7 +10,7 @@
 // real current-user route is `/me`, not `/auth/me`. Keeping them collected here
 // is what made that a one-line correction.
 
-import type { Duty, ShapedUser, SessionResponse, Tier } from '@r3/shared';
+import type { Duty, ShapedUser, SessionResponse, Tier } from './shared.ts';
 import { api } from './client.ts';
 
 const PATHS = {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Maskable variant: the launcher may crop this to any shape, so everything that
+     must survive stays inside the middle 80% safe zone and the corners are just
+     background. Same tokens as icon.svg (§2). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="R3">
+  <rect width="512" height="512" fill="#ffffff"/>
+  <g transform="translate(256 256) scale(11) translate(-12 -12)">
+    <path fill="#e97900" d="M12 20.5 4.2 13a4.7 4.7 0 0 1 0-6.7 4.7 4.7 0 0 1 6.6 0l1.2 1.2 1.2-1.2a4.7 4.7 0 0 1 6.6 0 4.7 4.7 0 0 1 0 6.7Z"/>
+  </g>
+</svg>
