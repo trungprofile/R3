@@ -284,11 +284,21 @@ window     = [start, end)                       # half-open, pantry-local time
 overlap(A,B) := A.start < B.end AND B.start < A.end
 
 eligible(driver, shift):
-    return  Drive ∈ driver.duties
+    return  driver is active                        # not soft-deleted (I21)
+        AND  Drive ∈ driver.duties
         AND  no AvailabilityBlock b of driver with overlap(b, shift.window)
         AND  no other shift S, S ≠ shift, owned by driver,
              S.state ∈ {CLAIMED, IN_PROGRESS}, with overlap(S.window, shift.window)
 ```
+
+**On the active clause** (added 2026-07-28; the other three are original). A soft-deleted driver is
+"hidden from new use" per I21, and being scheduled onto a run is new use. It is stated here rather
+than left to each caller because the consequence is not symmetric across the call sites: claim and
+availability declaration are unreachable for a deactivated account anyway (it cannot sign in), but
+**materialization is not**. Without this clause, a recurring pattern whose `ownerDefault` was
+deactivated months ago keeps minting instances **born CLAIMED to that dead account** under I25 — the
+run never appears open, and the person named on it cannot act on it. Staff-assign likewise loses its
+warning. One clause here is cheaper, and harder to forget, than the same check at two call sites.
 
 **When it runs:**
 

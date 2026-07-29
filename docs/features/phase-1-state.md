@@ -16,20 +16,21 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 | Current wave | **2 — built and merged, NOT promoted** |
 | Wave status | attempt 1 aborted by H3; attempt 2 built, all four lanes `complete`, all four merged `--no-ff` in report order **with no conflict**, seams wired. **`gate.sh` green at `2203333`; `doc-qa` red with 2 findings.** Halted on **H4** |
 | Branch | `phase-1` — pushed at the halt, see H4 |
-| Loop armed | **no** — the loop stopped itself at H4 (§5.5) |
+| Loop armed | **no** — stopped at H4. Ready to restart once the lead's three pre-Wave-3 chores are done |
 | Consecutive gate failures | 1 `doc-qa` round. **Not counted toward §5.5's max-3**: no fixer was spawned, because neither finding is fixable without a human deciding a locked-doc question |
-| Halted | **YES — H4, now one question.** A46 resolved by the human 2026-07-28 (docs corrected, no code change). Outstanding: **A54** — may `eligible()` have a fourth clause? |
+| Halted | **no — H4 cleared 2026-07-28.** Both questions answered by the human; see H4 for what each changed |
 
 ## Halt
 
-### H4 — HALTED 2026-07-28: wave 2's gate is red. **A46 resolved; A54 outstanding.**
+### H4 — CLEARED 2026-07-28: both findings answered by the human
 
 **Wave 2 is built, merged and mechanically green. It is not promoted.** `scripts/gate.sh` exits 0 at
 `2203333` (285 server tests + the client suite, migrations apply clean, no stubs, `db/types.ts` in
 sync). `doc-qa` — gate part 2, and §5.2 says **the gate decides pass/fail, the lead never does** —
 returned **two findings**. Both are spec questions, not defects, and both turn on a **locked** doc.
-**A46 has since been answered by the human — see below. A54 is the one still open**, and until it is
-answered the gate stays red and Wave 3 does not spawn.
+**Both have since been answered by the human.** A46: no code change, two docs corrected. A54: the
+clause stays and the **locked doc was amended by the human's explicit authorisation** — the one thing
+§5.5 forbids an agent to do on its own initiative.
 
 Neither can be resolved by a fixer agent, so §5.5's "spawn a fixer, max 3 rounds" does not apply:
 there is nothing to converge on. A fourth attempt at a question is not a fix.
@@ -86,7 +87,23 @@ order can pick which doc wins; it cannot tell you whether the **doc** or the **c
 
 ---
 
-#### The question — **A54**: may `eligible()` have a fourth clause?
+#### A54 — **RESOLVED 2026-07-28 by the human: the clause stays; `domain-modeling.md §5.2` was amended.**
+
+The human chose "keep the clause, make the locked doc accurate" over stripping it. `§5.2`'s pseudocode
+now carries `driver is active` as its **first conjunct**, with a paragraph explaining why it lives in
+the algorithm rather than at each call site, and `architecture.md §4.1`'s `eligible()` entry gained the
+matching note. `eligibility.ts:210` is unchanged except its comment, which now **cites** §5.2's first
+conjunct instead of arguing for an extension.
+
+**The argument that decided it — and that neither the lane nor `doc-qa` raised — is I25.** Both had
+weighed claim, staff-assign and fan-out, where the clause is nearly redundant. But materialization is
+reachable by a deactivated account precisely because it needs no login: without the clause, a
+recurrence pattern whose `ownerDefault` was deactivated months ago keeps minting instances **born
+`CLAIMED` to that dead account**, so the run never shows as open and the person named on it cannot act
+on it. That is a silent scheduling hole, and it is Wave 3's code — which is why settling this before
+Wave 3 was worth a halt.
+
+<details><summary>The finding as reported</summary>
 
 **This is the one where `doc-qa` and the building lane disagree, and `doc-qa` is the gate.**
 
@@ -120,6 +137,8 @@ Both roads need a human, so the lead took neither.
 - **If the clause should stay** — `domain-modeling.md §5.2` must be amended to state the fourth
   conjunct, and `architecture.md §4.1`'s `eligible()` paragraph updated with it. **Requires unlocking
   the locked doc.**
+
+</details>
 
 ---
 
@@ -479,7 +498,7 @@ is a stored shape; A56 is timezone arithmetic that Wave 3 will need again and mu
 
 | # | Wave | Assumption | Resolved? |
 | :---- | :---- | :---- | :---- |
-| **A54** | 2 | **A deactivated account is ineligible — a clause `domain-modeling.md §5.2` does not contain.** §5.2's predicate names only the Drive duty, so this is the lane's addition, justified from I21 ("hidden from new use") and from the consequence that fan-out would otherwise alert a removed account. Isolated behind its own reason code (`DEACTIVATED`), so it is one line to drop if §5.2 is meant literally. **Notable because it extends a locked doc rather than interpreting a silent one** — the right call needs a human, but the lane made it visible instead of burying it. | open — confirm the locked doc is meant to be read literally |
+| **A54** | 2 | **RESOLVED 2026-07-28 (human): the clause stays and `§5.2` was amended to state it** (first conjunct), with `architecture.md §4.1` updated to match. Decided by I25: without it, materialization mints instances born `CLAIMED` to a deactivated `ownerDefault`. Original finding: **a deactivated account is ineligible — a clause `domain-modeling.md §5.2` does not contain.** §5.2's predicate names only the Drive duty, so this is the lane's addition, justified from I21 ("hidden from new use") and from the consequence that fan-out would otherwise alert a removed account. Isolated behind its own reason code (`DEACTIVATED`), so it is one line to drop if §5.2 is meant literally. **Notable because it extends a locked doc rather than interpreting a silent one** — the right call needs a human, but the lane made it visible instead of burying it. | open — confirm the locked doc is meant to be read literally |
 | A55 | 2 | **Availability is declared as pantry-local calendar dates and clock times; the server converts.** §5.2 says the window is "pantry-local", `app_config.timezone` holds the pantry's zone, and a driver's phone may be in another. API takes `fromDate`/`toDate` (`YYYY-MM-DD`) and optional `startTime`/`endTime` (`HH:MM`), never instants. No doc states the request shape. | open, non-blocking |
 | **A56** | 2 | **Local-to-instant conversion is `Intl.DateTimeFormat` with a two-pass offset correction**, because D5 forbids adding a dependency. DST edges: a local time that does not exist (spring-forward gap) resolves to the instant the clock jumped to; one that happens twice resolves to the first. No doc states either behaviour. **Wave 3's recurrence materialization needs the identical conversion**, and it currently lives inside `services/availability.ts` — the lead should hoist it to a shared module before Wave 3, or it gets written twice and the two copies drift at exactly the edges no test covers. | open — hoist before Wave 3 spawns |
 | A57 | 2 | **A `WINDOW` declaration must be intra-day** (`endTime` strictly after `startTime`); an overnight absence is expressed as a `DATES` range. §5.3 states intra-day for *recurrence* windows, not for availability; the same reading was applied. | open, non-blocking |

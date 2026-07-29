@@ -204,9 +204,7 @@ export async function evaluateEligibility(
   }
 
   if (!person.drives) reasons.push('NO_DRIVE_DUTY');
-  // I21 — a soft-deleted account is hidden from new use. §5.2 names only the Drive
-  // duty, but a deactivated driver cannot sign in to act on a shift, and putting
-  // one in the fan-out set would notify an account that was removed.
+  // §5.2's first conjunct — a soft-deleted account is ineligible (I21).
   if (person.deactivatedAt !== null) reasons.push('DEACTIVATED');
 
   const blocks = await conflictingAvailabilityBlocks(reader, driverId, shift);

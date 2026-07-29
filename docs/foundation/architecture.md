@@ -99,6 +99,8 @@ Three obligations follow:
 
 A tier-3 service function (`Domain Modeling §5.2`), evaluated at claim, availability-declaration, and materialization. Deliberately **not** evaluated at staff-assign — the I20 exemption, where Staff is warned and may confirm through a conflict.
 
+Its first conjunct is that the driver is **active** — a soft-deleted account (I21) is ineligible. That clause carries its weight at materialization, not at the gates: a deactivated account cannot sign in, so it never reaches claim or availability-declaration, but I25 would otherwise keep minting instances born `CLAIMED` to a pattern's long-deactivated `ownerDefault`. The notification fan-out filters deactivated accounts in its own query as well, so that path is covered whether or not it routes through `eligible()`.
+
 ---
 
 ### 4.2 Auth & sessions
