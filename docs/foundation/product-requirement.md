@@ -20,12 +20,14 @@ R3 separates two independent axes: an **access tier** (exactly one per user, str
 | Tier | Can do | Cannot do |
 | :---- | :---- | :---- |
 | **Volunteer** | See own personal info, shifts, and assignments. Perform any operational duty assigned to them (`drive`, `receive`, and/or `report`). | Manage accounts; see anyone else's PII; create/delete donors; reassign other people's shifts. |
-| **Staff** | Everything a Volunteer can, plus operational coordination: publish shifts, assign/reassign drivers, reschedule shifts, view operational status across all volunteers (availability, assignments). | Manage accounts; assign access tiers; see others' PII; create/delete permanent donors. |
-| **Admin** | Everything Staff can, plus the Admin-only delta: account lifecycle (create/delete non-admin accounts, assign tiers and duties), PII visibility, donor & truck master data, metrics review. | — |
+| **Staff** | Everything a Volunteer can, plus operational coordination: publish shifts, assign/reassign drivers, reschedule shifts, view operational status across all volunteers (availability, assignments, **and contact details — a coordinator has to be able to phone the driver**). | Manage accounts; assign access tiers; **edit** anyone's phone/address; create/delete permanent donors. |
+| **Admin** | Everything Staff can, plus the Admin-only delta: account lifecycle (create/delete non-admin accounts, assign tiers and duties), **editing** anyone's phone/address, donor & truck master data, metrics review. | — |
 
 - **"Coordinator"** is not a separate role or schema flag — it's the notification matrix's name for every user holding Staff tier (Staff ⊆ Admin also qualifies). Fan-out to "Coordinator" means fan-out to all active Staff-tier-and-above users, however many that is at a given deployment; §6's "1 coordinator (Clark)" is this org's current headcount, not a distinct concept from Staff.
 
 - **"PII"** here means phone number and address — the things a Volunteer shouldn't see about someone else. It does **not** include name: names are public-within-org by design (shown on the shared login screen so anyone can find their own account, and on the shared shift board so drivers see who owns each run). Only phone/address are gated to Staff-tier-and-above.
+
+  **Seeing is not editing.** Staff *see* everyone's phone and address, because coordinating a run means being able to call the driver; only Admin can *change* them, as part of account lifecycle. Everyone always sees their own. The role table above stated this the other way round until 2026-07-28 and was corrected — `architecture.md §4.3` (`viewer.tier >= STAFF` OR `viewer.id == subject.id`) had it right, and is the enforcement point.
 
 **Duties**. Three operational duties — drive, receive, report — are assigned per user, independently of tier. A user sees the duties they hold and, where a duty has a dedicated workflow on a shared device, chooses which duty they are performing.
 

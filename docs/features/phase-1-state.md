@@ -13,16 +13,31 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **1 complete — Wave 2 NOT started (halted)** |
-| Wave status | **passed.** `scripts/gate.sh` green on the cumulative diff (132 server + 19 client tests), `doc-qa` **zero findings**, merged and pushed to `origin/phase-1` at `add4e13` |
+| Current wave | **2 — 4 lanes** |
+| Wave status | wave 1 **passed** and pushed (`add4e13`); H2 resolved by the human 2026-07-28; wave 2 spawning |
 | Branch | `phase-1` |
-| Loop armed | **no** — stopped at H2 on 2026-07-28, awaiting a human decision |
+| Loop armed | **yes** — re-armed 2026-07-28 after H2 was resolved |
 | Consecutive gate failures | 0 (wave 1 passed on the first gate round) |
-| Halted | **yes — H2 (A24), a security rule the docs answer both ways** |
+| Halted | no |
 
 ## Halt
 
-### H2 — PII visibility: `product-requirement.md §2` contradicts itself
+### H2 — RESOLVED 2026-07-28 by the human: **Staff can see phone/address; only Admin can edit**
+
+> "can Staff see another user's phone and address --> Yes, Staff just can't edit data like admin"
+
+**No code change was required.** `pii.ts` already implemented `viewer.tier >= STAFF OR viewer.id ==
+subject.id`, and `routes/users.ts` already declared reads at `STAFF` and every write — create, patch,
+credential, delete — at `ADMIN`. The view/edit split the human drew was the split the code had.
+
+`product-requirement.md §2` was corrected instead: the Staff row's *Cannot* column no longer says
+"see others' PII" (it says **edit**), the Admin-only delta now reads "**editing** anyone's
+phone/address", and a "**Seeing is not editing**" note was added under the PII definition naming
+`architecture.md §4.3` as the enforcement point, so the next reader cannot re-derive the old
+contradiction. No other doc restated the rule the wrong way — `architecture.md:197`'s enforcement
+table ("Volunteers see names, not others' phone/address") was already consistent.
+
+<details><summary>Original halt text — the contradiction as found</summary>
 
 **Wave 1 passed its gate.** All four §5.3 promotion criteria hold: `gate.sh` exits 0, `doc-qa`
 reports zero findings, all three lanes reported `complete`, and every `Assumed:` line is recorded
@@ -72,8 +87,34 @@ waves' time — §5.5's "cheap to decide now, expensive to unwind later", exactl
 (master data CRUD incl. D2 ‖ route builder ‖ `eligible()` + availability ‖ PWA onboarding); nothing
 else blocks them.
 
+</details>
+
 *(H1 was cleared in wave 0. A1 and A4 were decided by the human on 2026-07-28; see Open
 assumptions.)*
+
+## Wave 2 — lanes in flight
+
+Named before spawning (§5.6 step 1). Four lanes per build-plan §2.
+
+| Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
+| :---- | :---- | :---- | :---- | :---- | :---- | :---- |
+| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | — | — | no | — | — |
+| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | — | — | no | — | — |
+| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | — | — | no | — | — |
+| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | — | — | no | — | — |
+
+**The seam this wave is `server/src/routes/index.ts`** — it aggregates every route module into the
+one array the default-deny gate compiles from, and three lanes each need a line in it. Same
+resolution as Wave 1's scheduler: **no lane edits it; the lead adds each import and spread at
+merge.** Lanes test their routes by calling `buildRouter(myRoutes)` directly, which exercises the
+real gate without touching the shared list.
+
+`shared/src/index.ts` goes to **pwa** alone (the only client lane, and the client can only import the
+package entry). Server lanes put their API shapes in their own `shared/src/<area>.ts` and import it
+by relative path per A34; the lead adds re-exports at merge.
+
+Also for the lead at merge: register `purgeExpiredSessions()` as a job (carried from Wave 1) — it
+needs `services/session.ts` and `jobs/` in the same tree, which first happens now.
 
 ## Wave 1 — lanes (all merged, worktrees removed)
 
@@ -171,7 +212,7 @@ agreement is currently coincidence, not a constraint anything checks.
 
 | # | Wave | Assumption | Resolved? |
 | :---- | :---- | :---- | :---- |
-| **A24** | 1 | **PII visibility — `product-requirement.md §2` contradicts itself, on a security rule.** Verified by the lead against the source, not taken from the report: §2's role table says Staff "Cannot ... see others' PII" and lists "PII visibility" in the **Admin-only delta**, while §2's own prose bullet three lines later says "Only phone/address are gated to **Staff-tier-and-above**" — the opposite reading. `architecture.md §4.3` implements the bullet (`viewer.tier >= STAFF` OR `viewer.id == subject.id`) and cites `PRD §2` for it. The lane implemented `architecture.md §4.3`. The authority order **cannot** resolve this: both readings sit in the higher-authority doc. One line in `pii.ts` either way. | **HALT — human decision required** |
+| **A24** | 1 | **RESOLVED 2026-07-28 (human): Staff *see* phone/address, only Admin *edits* them.** The code was already right and `product-requirement.md §2` was corrected; see the Halt section. Original finding: **PII visibility — `product-requirement.md §2` contradicts itself, on a security rule.** Verified by the lead against the source, not taken from the report: §2's role table says Staff "Cannot ... see others' PII" and lists "PII visibility" in the **Admin-only delta**, while §2's own prose bullet three lines later says "Only phone/address are gated to **Staff-tier-and-above**" — the opposite reading. `architecture.md §4.3` implements the bullet (`viewer.tier >= STAFF` OR `viewer.id == subject.id`) and cites `PRD §2` for it. The lane implemented `architecture.md §4.3`. The authority order **cannot** resolve this: both readings sit in the higher-authority doc. One line in `pii.ts` either way — and it turned out to need none. | **yes** |
 | A25 | 1 | **Brute-force throttle counters live in process memory**, not a table — migrations are Wave-0-owned and §4.5 runs one process. A restart clears a 15-minute soft lock. | open, non-blocking |
 | A26 | 1 | **Threshold numbers**: account lock at **4** failures (so the first attempt can report S1.1's "3 tries left"), per-IP ceiling of **20 failures per rolling 15 min**, delay curve 250 ms doubling to a 2 s cap. §4.2 fixes none of these. | open, non-blocking |
 | A27 | 1 | **Minimum staff/admin password length is 8.** No doc states a minimum. | open, non-blocking |
