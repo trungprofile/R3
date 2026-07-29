@@ -13,14 +13,110 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **2 — all four lanes merged, gating** |
-| Wave status | attempt 1 aborted by H3; **attempt 2 complete**: all four lanes reported `complete`, all four merged `--no-ff` in report order **with no conflict**, seams wired, **mechanical gate green at `2203333`**. `doc-qa` (gate part 2) running over `0a6fa3e..HEAD` |
-| Branch | `phase-1` |
-| Loop armed | **yes** — re-armed 2026-07-28 after H3 cleared |
-| Consecutive gate failures | 0 mechanical (one intermediate red — a stale Wave-1 job-count assertion the lead fixed; not a lane defect and not a fix-round) |
-| Halted | no — but **A46 is a §5.5 halt candidate to raise before Wave 3** |
+| Current wave | **2 — built and merged, NOT promoted** |
+| Wave status | attempt 1 aborted by H3; attempt 2 built, all four lanes `complete`, all four merged `--no-ff` in report order **with no conflict**, seams wired. **`gate.sh` green at `2203333`; `doc-qa` red with 2 findings.** Halted on **H4** |
+| Branch | `phase-1` — pushed at the halt, see H4 |
+| Loop armed | **no** — the loop stopped itself at H4 (§5.5) |
+| Consecutive gate failures | 1 `doc-qa` round. **Not counted toward §5.5's max-3**: no fixer was spawned, because neither finding is fixable without a human deciding a locked-doc question |
+| Halted | **YES — H4.** Two questions, both one line of code either way: **A46** (may a category be hard-deleted?) and **A54** (may `eligible()` have a fourth clause?) |
 
 ## Halt
+
+### H4 — HALTED 2026-07-28: wave 2's gate is red on two questions only a human can answer
+
+**Wave 2 is built, merged and mechanically green. It is not promoted.** `scripts/gate.sh` exits 0 at
+`2203333` (285 server tests + the client suite, migrations apply clean, no stubs, `db/types.ts` in
+sync). `doc-qa` — gate part 2, and §5.2 says **the gate decides pass/fail, the lead never does** —
+returned **two findings**. Both are spec questions, not defects, and both turn on a **locked** doc.
+
+Neither can be resolved by a fixer agent, so §5.5's "spawn a fixer, max 3 rounds" does not apply:
+there is nothing to converge on. A fourth attempt at a question is not a fix.
+
+---
+
+#### The question — **A46**: may a category ever be hard-deleted?
+
+| Where | Says |
+| :---- | :---- |
+| `domain-modeling.md` I21 (**locked**, top of the authority order) | "Donor / Category / Truck / User: soft-delete (deactivate) if any referencing history, else **hard-delete OK**" |
+| `ui-ux-spec.md S1.8` (lowest authority) | categories are "add, archive (**no hard delete** — archived categories are hidden from the S2.2 weight-entry keypad but preserved in history/reports)" |
+
+The `masters` lane followed the authority order and implemented I21, exposing
+`DELETE /categories/:id`. **In Phase 1 nothing references `category` at all**, so that endpoint
+hard-deletes on *every* call today — the two readings diverge immediately, not eventually.
+
+`doc-qa` read it exactly as the lead did, and checked whether it recurs: **it does not.** S1.8's
+Donors and Trucks bullets say only "add/edit/delete" with no such restriction, and `§3.3`'s Route row
+has no UI-side counterpart — so `donor.ts`, `truck.ts` and `pickup-route.ts`'s hard-delete paths carry
+no equivalent conflict. This is one rule in one place.
+
+**Why the authority order does not end it.** It says the code is right and S1.8 is stale. But S1.8's
+parenthetical is specific and gives a *reason* — it names the S2.2 keypad and the reports that must
+keep resolving the category. That reads as a deliberate product rule, not loose prose. The authority
+order can pick which doc wins; it cannot tell you whether the **doc** or the **code** is wrong.
+
+- **If I21 governs** — no code change. Edit `ui-ux-spec.md S1.8`'s parenthetical so the next reader
+  cannot re-derive this.
+- **If S1.8 governs** — drop the `DELETE /categories/:id` route and `removeCategory()` (one file),
+  leaving `PATCH { active: false }` as the only removal. `domain-modeling.md` is locked, so **only a
+  human may carve Category out of I21.**
+
+---
+
+#### The question — **A54**: may `eligible()` have a fourth clause?
+
+**This is the one where `doc-qa` and the building lane disagree, and `doc-qa` is the gate.**
+
+`domain-modeling.md §5.2` (**locked**) specifies `eligible()` as exactly three conjuncts: `Drive ∈
+driver.duties` AND no overlapping `AvailabilityBlock` AND no overlapping owned `CLAIMED`/`IN_PROGRESS`
+shift. The `eligible` lane added a fourth — a deactivated account is ineligible — justified from I21,
+isolated behind a `DEACTIVATED` reason code, and **declared** in its report as A54.
+
+The lane framed it as a defensible reading of a silent doc. `doc-qa` framed it as **an addition to a
+fully-specified locked algorithm**, and leans toward stripping it, on two arguments the lead verified
+against the source:
+
+1. **It is largely redundant.** A deactivated account's next request already fails on the session
+   check (`architecture.md §4.2`), so the claim and staff-assign-warning call sites gain little.
+2. **The failure mode it cites is already prevented elsewhere.** `eligibleDriverIds()` — the fan-out
+   set — carries its own independent `WHERE app_user.deactivated_at IS NULL`
+   (`server/src/services/eligibility.ts:261`). Removing the clause from `evaluateEligibility` does
+   **not** reopen "notify a removed account".
+
+**Why the lead did not just strip it.** It is one line, and conforming code to the locked doc is
+normally the lead's call — but stripping has a real consequence at a call site **Wave 3 has not built
+yet**: with the clause gone, `eligible()` returns true for a deactivated driver, so **staff-assign
+would show no warning when assigning a shift to a deactivated account.** Choosing between "the locked
+doc is literally right" and "the code is protecting something the doc forgot" is a domain decision.
+The alternative fix — amending `§5.2` — means **editing a locked doc, which §5.5 forbids outright.**
+Both roads need a human, so the lead took neither.
+
+- **If §5.2 is literal** — delete the `DEACTIVATED` push at `eligibility.ts:210` and the reason from
+  `ELIGIBILITY_REASONS` in `shared/src/availability.ts`. Leave `eligibleDriverIds()`'s own filter.
+  Then decide, for Wave 3, whether staff-assign needs its own deactivated check.
+- **If the clause should stay** — `domain-modeling.md §5.2` must be amended to state the fourth
+  conjunct, and `architecture.md §4.1`'s `eligible()` paragraph updated with it. **Requires unlocking
+  the locked doc.**
+
+---
+
+**A43 is *not* part of this halt.** `doc-qa` confirmed the malformed-uuid inconsistency is real (new
+routes 404, Wave-1 identity routes 500) but that no doc mandates a direction, so it is **not a gate
+blocker**. Its own suggestion, worth recording: strictly, neither is right — a syntactically invalid
+id is a client error (**400**), not "absent" (404) or "server fault" (500). Left open as A43.
+
+**What `doc-qa` found clean**, so the human knows the scope of what is *not* in question: every new
+route declares a tier or duty (no silently-open route); zero write paths outside `services/`, with
+I20's and I28's cross-row gates reading inside their own write transaction; donor `address`/`contact`
+returned whole everywhere (PII gates people, not places); all four `xHasHistory()` predicates match
+`data-model.md`'s real referencing tables and D3's phase split; no dependency added; and A78's client
+`@r3/shared` repointing verified across all five files.
+
+**To resume:** answer both questions above, apply the corresponding change, clear this section, set
+`Halted` to no, and restart the loop. Wave 3's lanes are named in build-plan §2 (schedule +
+recurrence ‖ execution, **Coverage stays single-owner**). Before spawning them the lead still owes the
+three carried items below: the `shift` conflict-flag migration, the A56 timezone hoist, and making
+A34/A78's `@r3/shared` resolution structural.
 
 ### H3 — CLEARED 2026-07-28: wave 2 attempt 1 aborted by a macOS TCC lockout
 
@@ -224,7 +320,7 @@ different worktrees. Registering it is a Wave-2 one-liner, not a gap.
 | :---- | :---- | :---- | :---- | :---- |
 | 0 — substrate | *(single-lane, lead-run)* | direct to `phase-1` | **pass** (round 3) | [report](../../reports/wave-0-substrate.md). 3 `doc-qa` findings, all real: A4 doc-vs-doc contradiction, A1 wrong inference, one incomplete doc edit |
 | 1 — identity / surface / signal | 3, file-disjoint | all 3, `--no-ff`, in report order: signal → surface → identity | **pass** (round 1) | Reports [identity](../../reports/1-identity.md), [surface](../../reports/1-surface.md), [signal](../../reports/1-signal.md). `doc-qa` zero findings. Pushed `add4e13`. Worktrees and branches removed, verified against `git worktree list`. **Halted after the wave on H2 (A24)** |
-| 2 — masters / routes / eligible / PWA | attempt 1: 4 spawned, **0 merged** | none — no lane committed or reported | — | **Attempt 1 aborted by H3**, a macOS TCC lockout, not a gate or spec failure. Work preserved as `wave2-aborted/*` tags, worktrees and branches removed, baseline re-gated green at `0d91d12`. Attempt 2 re-spawned from `0d91d12` |
+| 2 — masters / routes / eligible / PWA | attempt 2: 4, file-disjoint | all 4, `--no-ff`, in report order: routebuilder → masters → eligible → pwa, **no conflict** | **`gate.sh` pass / `doc-qa` RED (2)** | Reports [masters](../../reports/2-masters.md), [routebuilder](../../reports/2-routebuilder.md), [eligible](../../reports/2-eligible.md), [pwa](../../reports/2-pwa.md). Attempt 1 aborted by H3. **Halted on H4 before promotion** — A46 and A54, both locked-doc questions. A36–A78 recorded |
 | 3 — schedule+recurrence / execution | not started | — | — | Coverage stays single-owner |
 | 4 — screens S1.1–S1.9 | not started | — | — | one agent per screen folder |
 
