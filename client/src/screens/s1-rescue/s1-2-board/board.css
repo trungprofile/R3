@@ -1,0 +1,175 @@
+/* S1.2 — the shared shift board.
+ *
+ * Every value is a token (`ui-ux-spec.md §2`); no literal hex and no literal px,
+ * per `client/src/tokens/`. Sizes are relative units because §1 principle 3 says
+ * the screen must survive 200% zoom.
+ *
+ * Phone is canonical and desktop is "usable" (responsive matrix), so the layout is
+ * one column everywhere and the desktop only gains a reading width and a head that
+ * puts the filter beside the title instead of under it. There is no second layout
+ * to keep in step.
+ */
+
+.r3-board {
+  max-width: 46rem;
+}
+
+.r3-board__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.r3-board__title {
+  margin: 0;
+}
+
+/* --- Segmented filter (All · Open · Mine) -------------------------------- */
+
+.r3-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  /* §1 principle 2: 8px minimum gap between adjacent targets. */
+  gap: var(--space-2);
+}
+
+.r3-segmented__item {
+  flex: 1 1 auto;
+  min-height: var(--target-min); /* 44px — §1 principle 2, not the 24px floor */
+  min-width: var(--target-min);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-body);
+  cursor: pointer;
+}
+
+/* §2: orange is the accent for an active state, and never carries a text colour
+ * that fails on it — the selected label is --text-on-brand (5.0:1). */
+.r3-segmented__item.is-selected {
+  background: var(--action-fill);
+  border-color: var(--action-fill);
+  color: var(--text-on-brand);
+  font-weight: 700;
+}
+
+/* --- Day groups ---------------------------------------------------------- */
+
+.r3-board__day + .r3-board__day {
+  margin-top: var(--space-5);
+}
+
+.r3-board__day-heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-h3);
+}
+
+/* --- Row detail ---------------------------------------------------------- */
+
+/* The row's meta line: owner (or OPEN), truck, and the repeating tag. Separated by
+ * a rule rather than punctuation so the three read as distinct facts at a glance. */
+.r3-board__owner,
+.r3-board__truck {
+  margin-right: var(--space-3);
+}
+
+.r3-board__owner {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* S1.2: 'recurring shift shows a small "repeats weekly" tag'. Small, quiet and
+ * unmistakably not a status chip — one chip per row is the rule (§3). */
+.r3-board__repeats {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Chip above, Claim below: the button keeps a full 44px target without squeezing
+ * the route name, and on a phone the two never end up shoulder to shoulder. */
+.r3-board__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+/* --- Partial-claim summary (S1.2) ---------------------------------------- */
+
+.r3-board__summary {
+  margin-bottom: var(--space-4);
+}
+
+.r3-board__summary-text {
+  margin: 0 0 var(--space-3);
+}
+
+.r3-board__summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* --- Skipped-dates list -------------------------------------------------- */
+
+.r3-board__skipped {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.r3-board__skipped-item {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.r3-board__skipped-item:last-child {
+  border-bottom: 0;
+}
+
+.r3-board__skipped-when {
+  font-weight: 700;
+}
+
+.r3-board__skipped-reason {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* --- Desktop ("usable", not canonical) ----------------------------------- */
+
+/* 1024px is the desktop breakpoint `tokens/index.ts` fixes; a custom property
+ * cannot be used in a media query. */
+@media (min-width: 1024px) {
+  .r3-board__head {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  .r3-segmented {
+    flex: 0 0 auto;
+  }
+
+  .r3-segmented__item {
+    flex: 0 0 auto;
+  }
+
+  /* Room for a mouse pointer: the chip and the button sit side by side where the
+   * width exists, rather than stacking as they do on a phone. */
+  .r3-board__side {
+    flex-direction: row;
+    align-items: center;
+  }
+}
