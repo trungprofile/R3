@@ -141,7 +141,7 @@ attempt 1 — the partition was never the problem; see H3.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-aeb37364caf59ac1f` | `worktree-agent-aeb37364caf59ac1f` | **yes** | — | — |
+| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-aeb37364caf59ac1f` | `worktree-agent-aeb37364caf59ac1f` | **yes** | **complete** (`dcf7a78`, 180 tests) | — |
 | **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a6ede00f689f72ad6` | `worktree-agent-a6ede00f689f72ad6` | **yes** | **complete** (`c752a45`, 171 tests) | — |
 | **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a82503cec27dc11c9` | `worktree-agent-a82503cec27dc11c9` | **yes** | — | — |
 | **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-adb1d6c0b0ea86d28` | `worktree-agent-adb1d6c0b0ea86d28` | **yes** | — | — |
@@ -174,6 +174,9 @@ needs `services/session.ts` and `jobs/` in the same tree, which first happens no
 
 - `routebuilder` — one import + spread in `server/src/routes/index.ts`; `export * from './routes.js';`
   in `shared/src/index.ts`. Reconcile **A43** (malformed-uuid 404 vs identity's 500) in one direction.
+- `masters` — **three** route spreads in `server/src/routes/index.ts`; `export * from './masters.js';`
+  in `shared/src/index.ts`. Without both, the 15 routes stay unmounted and their tests still pass,
+  because lanes test via `buildRouter(myRoutes)` — so nothing fails loudly if this is forgotten.
 
 ### The lead owes a migration before Wave 3 spawns
 
@@ -312,6 +315,24 @@ route families answer a garbage id differently, which is the lead's to reconcile
 | **A43** | 2 | **A malformed uuid answers 404, not 500.** Postgres raises 22P02 on an unparseable uuid, which would otherwise surface as an unhandled 500; an id that cannot exist is treated as one that does not. **The Wave-1 identity routes do not do this**, so the two route families now differ on a garbage id. A behavioural inconsistency between merged lanes — the lead reconciles it, in one direction or the other. | open — reconcile at merge |
 | A44 | 2 | **The I6 test inserts `shift_stop` rows directly.** No fixture-factory builder exists for a snapshot and this lane may not add one to the shared factory, so the test arranges its precondition by hand. No production code in this lane reads or writes `shift` / `shift_stop`. | open, non-blocking |
 | A45 | 2 | **Error copy is the lane's**, written to `ui-ux-spec.md §6/§7` conventions and asserted against the forbidden-word list, but **no human has read it**: "Give this route a name.", "Add at least one store to this route.", "A store can only appear once on a route.", "That store is no longer available.", "That store is deactivated. Turn it back on to add it here.", "No such route." Same standing as A6. | open, non-blocking |
+
+### Wave 2 — masters lane
+
+Reported `complete`, 180/180 tests. **A46 is a §5.5 halt candidate** — a doc-vs-doc contradiction,
+handled the way Wave 1 handled H2: the wave finishes and gates first, then the halt is raised before
+Wave 3 spawns, because §5.5 halts independently of promotion and killing two in-flight lanes to ask
+one question would cost more than it saves.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| **A46** | 2 | **May a category ever be hard-deleted? Two foundation docs disagree.** `domain-modeling.md` I21 (**locked**) — "Donor / Category / Truck / User: soft-delete (deactivate) if any referencing history, else hard-delete OK". `ui-ux-spec.md S1.8` — categories are "add, archive (**no hard delete** — archived categories are hidden from the S2.2 weight-entry keypad but preserved in history/reports)". The lane followed the authority order and implemented I21, exposing `DELETE /categories/:id`. **Consequence: in Phase 1 no table references `category` at all, so that endpoint hard-deletes every time** — the two readings diverge immediately, not eventually. If S1.8's intent governs, drop the `DELETE` route and `removeCategory()` (one file) and let `PATCH { active: false }` be the only removal. Note S1.8's parenthetical is specific and gives a *reason*, so it reads as a deliberate category-specific rule rather than loose prose — which is why the authority order resolving it cleanly does not settle whether the **doc** or the **code** is wrong. | **HALT CANDIDATE** — raise before Wave 3 |
+| A47 | 2 | **`active` is a field on `PATCH`, not a pair of endpoints.** `domain-modeling.md §3.3` gives each master a two-way toggle (ACTIVE ⇄ DEACTIVATED / INACTIVE / ARCHIVED) but no doc says which endpoint performs it or that a restore exists. Archive is `{ active: false }`, restore `{ active: true }`, on the reading that "⇄" means the return trip is reachable. No separate deactivate endpoint: `DELETE` is the removal verb and I21 decides what removal means. | open, non-blocking |
+| A48 | 2 | **Reading donors / trucks / categories requires only `VOLUNTEER`** (any signed-in user). `product-requirement.md §2` states only what Volunteers *cannot* do — "create/delete donors" — and drivers need the donor address and contact and the truck picker, so the write-side prohibition was read as not implying a read-side one. Categories have no Phase-1 reader at all and were **not** gated on the `RECEIVE` duty, which would be a rule invented for a caller that does not exist until Phase 2. | open, non-blocking |
+| A49 | 2 | **Writing donors / trucks / categories requires `ADMIN`**, from §2's Admin-only delta ("donor & truck master data") plus cap 17's "Admin maintains the list". §2 does not name categories in the Staff *cannot* column; cap 17's wording was treated as decisive. | open, non-blocking |
+| A50 | 2 | **List reads return the active set by default**, full set on `?includeInactive=true`. No doc specifies a default. Active-default chosen because `data-model.md §0` describes active reads as the filtered ones and every picker is a read; the S1.8 admin list is the exception that asks. | open, non-blocking |
+| A51 | 2 | **Blank / whitespace-only optional text (`address`, `contact`, `note`, `plate`) is stored as `NULL`**, and a whitespace-only *name* is a 400. The columns are nullable with no CHECK and no doc distinguishes `''` from `NULL`; collapsing them keeps "nothing on file" a single state. | open, non-blocking |
+| A52 | 2 | **`PATCH` with no recognised field is a 400** ("Nothing to change."), not a no-op 200. | open, non-blocking |
+| A53 | 2 | **Re-deactivating an already-deactivated master does not restamp `deactivated_at`** — the original instant is kept. Same for a `DELETE` that lands on the soft branch. | open, non-blocking |
 
 ## Blocked
 
