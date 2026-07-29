@@ -1,0 +1,77 @@
+/* S1.1 Login.
+ *
+ * Every value is a token (`ui-ux-spec.md §2`) — no literal hex, no literal px, per
+ * `client/src/tokens/`. The shell already gives this screen the full viewport with
+ * the screen padding applied (`.r3-app__fullscreen`, `routes.ts` fullScreen), so
+ * all that is left is a readable column.
+ *
+ * One column on every surface. The responsive matrix has no row for login because
+ * it is canonical everywhere — the phone, the tablet on the counter and the back
+ * office desktop all show the same two steps, and a layout that reflowed would
+ * make the tablet's four taps different from the phone's.
+ */
+
+.r3-login {
+  max-width: 30rem;
+  margin: 0 auto;
+  padding-block: var(--space-5);
+}
+
+.r3-login__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-h1);
+  line-height: var(--line-height);
+  color: var(--text);
+}
+
+.r3-login__hint {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-label);
+  color: var(--text-muted); /* §2: label size is muted-only */
+}
+
+/* --- PIN entry ------------------------------------------------------------ */
+
+.r3-login__pin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.r3-login__dots {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  min-height: var(--space-5);
+  align-items: center;
+}
+
+.r3-login__dot {
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+
+/* Orange as a fill, never as text (§2's hard rule). */
+.r3-login__dot--filled {
+  border-color: var(--brand-orange);
+  background: var(--brand-orange);
+}
+
+.r3-login__error {
+  margin: var(--space-4) 0 0;
+  font-size: var(--font-body);
+  color: var(--danger);
+  text-align: center;
+}
+
+/* --- Actions -------------------------------------------------------------- */
+
+.r3-login__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3); /* >= the §1.2 minimum gap between adjacent targets */
+  margin-top: var(--space-5);
+}
