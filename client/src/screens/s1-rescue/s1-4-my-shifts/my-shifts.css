@@ -1,0 +1,240 @@
+/* S1.4 — My shifts + availability.
+ *
+ * Tokens only (`ui-ux-spec.md §2`): no literal hex, no literal px where a spacing
+ * or size token exists. The rules that show up as numbers here are §1's — 44px
+ * minimum target with an 8px gap between adjacent ones, 18px body, relative units
+ * so 200% zoom does not break the calendar.
+ *
+ * Class prefix `s14-` because this file ships beside the screen rather than in
+ * `components/`, and two screens must never fight over a name.
+ */
+
+.s14 {
+  max-width: 42rem;
+}
+
+.s14-title {
+  font-size: var(--font-h1);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.s14-heading {
+  font-size: var(--font-h3);
+  margin: var(--space-5) 0 var(--space-3) 0;
+}
+
+.s14-panel {
+  margin-top: var(--space-4);
+}
+
+/* --- Tabs ---------------------------------------------------------------- */
+
+.s14-tabs {
+  display: flex;
+  gap: var(--space-2); /* §1.2: 8px minimum between adjacent targets */
+}
+
+.s14-tab {
+  flex: 1 1 0;
+  min-height: var(--target-min);
+  padding: var(--space-3) var(--space-2);
+  font: inherit;
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+/* Orange is a selected-state accent, never text and never carrying white text
+ * (§2's hard rule) — so the active tab is marked by a bar, not a fill. */
+.s14-tab--active {
+  border-color: var(--brand-orange);
+  box-shadow: inset 0 -4px 0 0 var(--brand-orange);
+  font-weight: 600;
+}
+
+/* --- "When I'm away" ------------------------------------------------------ */
+
+.s14-explain {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.s14-hint {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: var(--space-2) 0 0 0;
+}
+
+.s14-summary {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: var(--space-4) 0 var(--space-2) 0;
+}
+
+.s14-error {
+  font-size: var(--font-body);
+  color: var(--danger);
+  margin: var(--space-2) 0 var(--space-3) 0;
+}
+
+.s14-label {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.s14-form {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.s14-form .s14-heading {
+  margin-top: 0;
+}
+
+.s14-kind,
+.s14-times {
+  border: 0;
+  margin: var(--space-4) 0 0 0;
+  padding: 0;
+}
+
+.s14-kind__row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.s14-choice,
+.s14-time {
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.s14-choice {
+  flex: 1 1 0;
+}
+
+.s14-choice--active,
+.s14-time--active {
+  border-color: var(--brand-orange);
+  box-shadow: inset 0 -4px 0 0 var(--brand-orange);
+  font-weight: 600;
+}
+
+.s14-times__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* --- Day picker ----------------------------------------------------------- */
+
+.s14-calendar {
+  margin-top: var(--space-3);
+}
+
+.s14-calendar__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.s14-calendar__month {
+  font-size: var(--font-h3);
+}
+
+.s14-calendar__nav,
+.s14-calendar__spacer {
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  font: inherit;
+  font-size: var(--font-h3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.s14-calendar__spacer {
+  border-color: transparent;
+  background: transparent;
+}
+
+.s14-calendar__weekdays,
+.s14-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1);
+}
+
+.s14-calendar__weekdays {
+  margin-top: var(--space-3);
+}
+
+.s14-calendar__weekday {
+  text-align: center;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.s14-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  font: inherit;
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.s14-day--today {
+  font-weight: 700;
+}
+
+/* Selected range: an orange edge and a tinted body. The label stays `--text` on a
+ * light background — never white on orange (§2, 2.9:1). */
+.s14-day--in-range {
+  border-color: var(--brand-orange);
+  background: var(--surface-paper);
+}
+
+.s14-day--edge {
+  box-shadow: inset 0 -4px 0 0 var(--brand-orange);
+  font-weight: 700;
+}
+
+/* Days already gone, and the grid's filler cells: present so the columns line up,
+ * not offered as targets. */
+.s14-day--gone {
+  color: var(--text-muted);
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
+
+.s14-day--blank {
+  border-color: transparent;
+  background: transparent;
+}
