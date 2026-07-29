@@ -90,7 +90,7 @@ Duties are orthogonal to tier: a Volunteer may hold any combination, and `report
 | Shift still open and at-risk (1 day before start) | Coordinator + eligible drivers | push + flag | time |
 | Truck inbound | receiver tablet (device push subscription; fires regardless of who is logged in) | push + flag | event |
 
-Eligible driver (the fan-out set for open-shift and at-risk alerts) is computed at send time as: holding the drive duty AND no unavailability block overlapping the open shift's time window on that date AND not already owning a **CLAIMED or IN_PROGRESS** shift whose time window overlaps the open shift (a COMPLETED or CANCELLED shift of theirs doesn't count against them, even if its window would have overlapped). Non-overlapping shifts or blocks on the same day still count as eligible.
+Eligible driver (the fan-out set for open-shift and at-risk alerts) is computed at send time as: the account being **active** (not soft-deleted — I21) AND holding the drive duty AND no unavailability block overlapping the open shift's time window on that date AND not already owning a **CLAIMED or IN_PROGRESS** shift whose time window overlaps the open shift (a COMPLETED or CANCELLED shift of theirs doesn't count against them, even if its window would have overlapped). Non-overlapping shifts or blocks on the same day still count as eligible. This is `eligible()` — `domain-modeling.md §5.2` is the definition, and this sentence must not drift from it.
 
 ### Receive & Report
 

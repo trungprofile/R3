@@ -141,10 +141,13 @@ export async function categoryHasHistory(
  * hard-delete when it has none.
  *
  * In Phase 1 that always resolves to a hard delete, because no Phase-1 table
- * references `category` at all. `ui-ux-spec.md S1.8` describes the Categories tab
- * as "add, archive (no hard delete)"; that is a screen-level choice — the archive
- * action is `updateCategory({ active: false })` — and I21, which is locked and
- * wins, permits removing a category that nothing has ever referenced.
+ * references `category` at all. The archive action is a separate call —
+ * `updateCategory({ active: false })` — and the caller does not choose between the
+ * two: this function asks the domain and reports which branch happened.
+ *
+ * `ui-ux-spec.md S1.8` used to say "no hard delete", contradicting I21. Resolved by
+ * the human 2026-07-28 in favour of I21 (hard-delete only when nothing references it,
+ * so no history row is ever left dangling); S1.8 and PRD cap 17 were corrected.
  */
 export async function removeCategory(categoryId: string): Promise<RemovalOutcome> {
   return writeTransaction(async (tx) => {

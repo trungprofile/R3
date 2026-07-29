@@ -8,7 +8,7 @@
 //   1. the pure predicate            `overlaps()`
 //   2. the AvailabilityBlock clause  SQL, against the migrated database
 //   3. the owned-shift clause        SQL, against the migrated database
-//   4. the fan-out set query         SQL, the second copy of the same three clauses
+//   4. the fan-out set query         SQL, the second copy of the same four clauses
 //
 // (2)-(4) are separate SQL, and (4) is a deliberate re-expression of (1)-(3) as NOT
 // EXISTS for the notification fan-out. Driving all four from one table is what stops
@@ -143,7 +143,7 @@ describe('overlap arithmetic (§5.2)', () => {
 
   it('the fan-out set query agrees with the per-driver gate on every case', async () => {
     // Every case as one cohort, then one query: the notification fan-out
-    // (`product-requirement.md §4`) re-expresses the same three clauses as NOT
+    // (`product-requirement.md §4`) re-expresses the same four clauses as NOT
     // EXISTS, and this is what proves the two readings are the same reading.
     // The publishing admin holds every duty including Drive and owns nothing, so
     // they are legitimately in the set. Named here rather than filtered out later:

@@ -158,7 +158,8 @@ export async function conflictingAvailabilityBlocks(
  * `eligible()` with its reasons — §5.2 in full:
  *
  *     eligible(driver, shift) :=
- *         Drive ∈ driver.duties
+ *         driver is active                       # not soft-deleted (I21)
+ *     AND Drive ∈ driver.duties
  *     AND no AvailabilityBlock b of driver with overlap(b, shift.window)
  *     AND no other shift S ≠ shift owned by driver, S.state ∈ {CLAIMED, IN_PROGRESS},
  *         with overlap(S.window, shift.window)
@@ -241,12 +242,16 @@ export async function eligible(
 /**
  * The fan-out set: every eligible driver for one shift window, in one query.
  *
- * `product-requirement.md §4` defines it as "computed at send time … holding the
- * drive duty AND no unavailability block overlapping … AND not already owning a
- * CLAIMED or IN_PROGRESS shift whose window overlaps", which is `eligible()` over
- * every driver. It is the same three clauses as `evaluateEligibility`, expressed as
- * NOT EXISTS so the whole set costs one round trip — and any change to one must be
- * made to the other, which is why the test table drives both.
+ * `product-requirement.md §4` defines it as "computed at send time … the account being
+ * active AND holding the drive duty AND no unavailability block overlapping … AND not
+ * already owning a CLAIMED or IN_PROGRESS shift whose window overlaps", which is
+ * `eligible()` over every driver. It is the same four clauses as `evaluateEligibility`,
+ * expressed as NOT EXISTS so the whole set costs one round trip — and any change to one
+ * must be made to the other, which is why the test table drives both.
+ *
+ * This function does NOT call `evaluateEligibility`, so its `deactivated_at IS NULL`
+ * below is the sole implementation of §5.2's first conjunct here — not a redundant
+ * guard, and not safe to drop.
  */
 export async function eligibleDriverIds(
   reader: Reader,

@@ -352,7 +352,7 @@ Neither may filter the union on `shift` (walk-ins have none). Grouping is `repor
   WHERE id=:id AND status IN ('OPEN','CLAIMED');
   ```
 
-- **No claim count cap exists.** The claim gate is `eligible()` (I20: Drive duty ∧ no overlapping AvailabilityBlock ∧ no overlapping owned CLAIMED/IN_PROGRESS shift), enforced service-side at claim time, block-declaration, and materialization.  
+- **No claim count cap exists.** The claim gate is `eligible()` (`domain-modeling.md §5.2` — driver active (I21) ∧ Drive duty ∧ no overlapping AvailabilityBlock ∧ no overlapping owned CLAIMED/IN_PROGRESS shift), enforced service-side at claim time, block-declaration, and materialization.  
 - **Receive-done (I11/I12)** and **pickup milestone (I27)** run their cross-row gates in the service layer, then transition.  
 - **Field edits = LWW** (`reportable` toggle, stop reorder, `donor_label` fix): last write wins, `updated_at`/`updated_by` stamped. Acceptable at <10 concurrency (PRD §6).  
 - **Materialization insert** is retry-safe via `uq_shift_occurrence` + `ON CONFLICT DO NOTHING`.
