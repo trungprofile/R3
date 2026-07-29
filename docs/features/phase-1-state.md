@@ -307,9 +307,12 @@ large it looks next to the others.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **schedule** | `server/src/services/{schedule,recurrence}.ts`, `server/src/routes/shifts.ts`, `server/src/jobs/materialization.ts`, `shared/src/schedule.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
-| **coverage** | `server/src/services/coverage.ts`, `server/src/routes/coverage.ts`, `server/src/jobs/at-risk.ts`, `shared/src/coverage.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
-| **execution** | `server/src/services/execution.ts`, `server/src/routes/execution.ts`, `server/src/jobs/reminder.ts`, `shared/src/execution.ts`, own tests | *(pending spawn)* | *(pending spawn)* | — | — | — |
+| **schedule** | `server/src/services/{schedule,recurrence}.ts`, `server/src/routes/shifts.ts`, `server/src/jobs/materialization.ts`, `shared/src/schedule.ts`, own tests | `.claude/worktrees/agent-aac3964bdc1925e97` | `worktree-agent-aac3964bdc1925e97` | **yes** | — | — |
+| **coverage** | `server/src/services/coverage.ts`, `server/src/routes/coverage.ts`, `server/src/jobs/at-risk.ts`, `shared/src/coverage.ts`, own tests | `.claude/worktrees/agent-ae8393a4467fb460d` | `worktree-agent-ae8393a4467fb460d` | **yes** | — | — |
+| **execution** | `server/src/services/execution.ts`, `server/src/routes/execution.ts`, `server/src/jobs/reminder.ts`, `shared/src/execution.ts`, own tests | `.claude/worktrees/agent-a0d3f9b26e700d0fc` | `worktree-agent-a0d3f9b26e700d0fc` | **yes** | — | — |
+
+All three spawned 2026-07-28 and branched from **`4c10428`**, verified against `git worktree
+list` rather than constructed from the lane name (§5.6 step 1).
 
 **Seams the lead owns, as in every wave:** `server/src/routes/index.ts` (three spreads),
 `shared/src/index.ts` (three re-exports), and now **`server/src/jobs/registry.ts`** — each lane writes
