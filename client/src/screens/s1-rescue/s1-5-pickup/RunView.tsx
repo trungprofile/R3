@@ -177,7 +177,6 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
           question={COPY.skipQuestion}
           consequence={`${skipTarget.donorName} — ${COPY.skipConsequence}`}
           confirmLabel={COPY.skipConfirm}
-          busy={busyStopId === skipTarget.id}
           onCancel={() => setSkipTarget(null)}
           onConfirm={() => {
             const stop = skipTarget;

@@ -159,12 +159,10 @@ export function stopStatusLabel(disposition: ShiftStopDisposition): string {
       return COPY.statusSkipped;
     case 'REASSIGNED':
       return COPY.statusMoved;
-    case 'WEIGHED':
-      // Never stored — a read-time projection over non-voided WeightEntry rows
-      // (I12), and `weight_entry` is a Phase-2 table (build-plan D3), so it
-      // cannot reach this screen. The branch keeps the enum exhaustive.
-      return COPY.statusWeighed;
   }
+  // `WEIGHED` is not in this enum and cannot arrive here: it is a read-time
+  // projection over non-voided WeightEntry rows (I12), never a stored
+  // disposition, and `weight_entry` is a Phase-2 table anyway (build-plan D3).
 }
 
 /**
@@ -382,7 +380,6 @@ export const COPY = {
   statusPickedUp: 'Picked up',
   statusSkipped: 'Skipped',
   statusMoved: 'Moved to another driver',
-  statusWeighed: 'Weighed',
   storeNoteLabel: 'Store note',
   stopNoteLabel: 'Note for the pantry',
   addStopNote: 'Add a note for the pantry',
@@ -404,6 +401,8 @@ export const COPY = {
   // --- heading back (I27) -------------------------------------------------
   headingBack: 'Heading back',
   headingBackHint: 'Optional. It records that you finished your stops.',
+  headingBackToast: 'Marked as heading back.',
+  reviewAgain: 'Review your run',
   reviewTitle: 'Heading back',
   reviewIntro: 'A last look at your run. Anything you write here goes to the pantry with it.',
   runNoteLabel: 'Note about the whole run',
