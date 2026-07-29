@@ -13,7 +13,7 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **4b — HALF SPAWNED, 2 of 4 lanes in flight. Wave 4a is PROMOTED and closed.** See the boxed warning under "Wave 4b — in flight" before acting: `s1-3-shift-detail` and `s1-6-schedule` are running, `s1-7-reschedule` and `s1-8-admin` are not, and `git worktree list` is the only ground truth for which is which |
+| Current wave | **4b — all 4 lanes spawned 2026-07-29 (2nd attempt; the 1st left nothing on disk). Wave 4a is PROMOTED and closed.** 4b is the last of Phase 1's build scope. Run `git worktree list` first — it is the only lane↔branch mapping |
 | Wave status | **Wave 4a promoted 2026-07-29 at `697e01b`, pushed `233fc22..697e01b`.** All four §5.3 criteria met: `gate.sh` green both halves, **`doc-qa` round 2 clean — zero findings**, all five lanes reported `complete`, and every `Assumed:` (A117–A129) recorded below. All five worktrees and branches removed; `git worktree list` shows only the main checkout. Two lead chores have landed since, each gated and doc-qa'd on its own: **A120** (the pantry timezone, `c085738`) and **the segmented-control promotion** (`3b6f237`) |
 | Branch | `phase-1` |
 | Loop armed | **yes** — restarted 2026-07-28 on the human's go-ahead; resumed 2026-07-29 |
@@ -65,57 +65,58 @@ needs a binary asset. **This is a human's to produce**, which is why four waves 
 **PARTIALLY SPAWNED 2026-07-29 from `1856e33`.** Four lanes planned, all `isolation: worktree`, all
 branching from `phase-1`'s HEAD. Recorded *before* any lane reports, per §5.6.
 
-| Lane | Screen | Spawned? | Worktree branch | Merged? |
+| Lane | Screen | Worktree branch | Reported | Merged? |
 | :---- | :---- | :---- | :---- | :---- |
-| `s1-3-shift-detail` | S1.3 Shift detail | **YES — in flight** | see `git worktree list` | no |
-| `s1-6-schedule` | S1.6 Shift & route scheduling | **YES — in flight** | see `git worktree list` | no |
-| `s1-7-reschedule` | S1.7 Reschedule | **NO — not yet spawned** | — | no |
-| `s1-8-admin` | S1.8 Admin — accounts, donors, trucks, categories | **NO — not yet spawned** | — | no |
+| `s1-3-shift-detail` | S1.3 Shift detail | see `git worktree list` | no | no |
+| `s1-6-schedule` | S1.6 Shift & route scheduling | see `git worktree list` | no | no |
+| `s1-7-reschedule` | S1.7 Reschedule | see `git worktree list` | no | no |
+| `s1-8-admin` | S1.8 Admin — accounts, donors, trucks, categories | see `git worktree list` | no | no |
 
-> **THE SESSION RAN OUT OF CONTEXT BETWEEN THE SECOND AND THIRD SPAWN.** This is the state a resuming
-> lead must reconcile first, and it is the exact failure §5.6's "write state at every step" exists to
-> prevent — so read this before doing anything else.
+> **A first spawn attempt on 2026-07-29 was lost, and left NOTHING behind.** The session exhausted its
+> credit between the second and third spawn. On resume, `git worktree list` showed **only the main
+> checkout** and `reports/` held no `4b-*` file: both spawned agents died before the harness ever
+> created their worktrees, so they wrote nothing at all. Unlike 4a's spend-limit stop — where four
+> lanes had real work on disk that had to be committed before anything else — **there was nothing to
+> preserve, so all four lanes were spawned fresh.**
 >
-> **Two lanes are running and two are not.** The two branch names could not be recorded here because
-> the agents had not yet touched disk when the session ended, so `git worktree list` had nothing to
-> report. **`git worktree list` is therefore the only ground truth for the mapping** — run it first.
-> Expect two `.claude/worktrees/agent-<id>` entries on `worktree-agent-<id>` branches, both branched
-> from `1856e33`, and match them to the two lanes by the screen folder each contains
-> (`client/src/screens/s1-rescue/s1-3-shift-detail/` and `.../s1-6-schedule/`).
->
-> **Do NOT re-spawn `s1-3-shift-detail` or `s1-6-schedule`.** Two identical lanes conflict cleanly
-> only some of the time, which is how duplicate work lands on `phase-1` with nothing to announce it.
-> If a worktree exists for a lane, that lane is running or has run.
->
-> **The remaining work is: spawn `s1-7-reschedule` and `s1-8-admin`, then merge all four in report
-> order.** Their briefs are drafted below so the next lead does not have to re-derive them.
+> The lesson is about *ordering*, not billing: the previous lead could not record the two branch names
+> because the harness had not yet created the worktrees when it needed to write them down. **The branch
+> names cannot be known at spawn time.** So the reliable protocol is the one used here: name every lane
+> in this table *before* spawning, and treat `git worktree list` as the mapping — matching a worktree
+> to a lane by which screen folder it contains. A lane with a worktree is running or has run; do not
+> re-spawn it.
 
 **Reports land at `reports/4b-<lane>.md`.** Merge in report order, `--no-ff`, one lane at a time.
 
-### Briefs for the two unspawned lanes
+### What each lane owns
 
-Both are **client-only** — the server surface exists and no 4b lane writes server code. Both own
+All four are **client-only** — the server surface exists and no 4b lane writes server code. Each owns
 exactly `client/src/screens/s1-rescue/<lane>/` and may not touch `main.tsx`, `app/`, `components/`,
-`tokens/`, `api/index.ts`, `client/public/`, `shared/`, or `server/`. Both gate on
-`npx tsc --noEmit -p client/tsconfig.json` and `npx vitest run --root client` (no `test-db.sh` — they
-have no server tests). Both inherit the four decisions in "What 4b lanes must inherit" below.
+`tokens/`, `api/index.ts`, `client/public/`, `shared/`, or `server/`. Each gates on
+`npx tsc --noEmit -p client/tsconfig.json` and `npx vitest run --root client` (no `test-db.sh` — none
+has server tests). All inherit the four decisions below.
 
-- **`s1-7-reschedule`** (S1.7, staff/desktop). Endpoints: `POST /shifts/:id/reschedule`,
-  `GET /shifts/:id/eligibility`, `GET /shifts/:id`. The screen's whole substance is the conflict
-  path: moving a shift keeps the owner by default, but if the new time conflicts with that owner's
-  declared availability the app must say so *before* confirm, in S1.7's exact voice ("Karen marked
-  herself away then. Moving this releases her run back to the board."), and on confirm the owner is
-  **released** and the shift returns to the board as Open. **The system never auto-picks a
-  replacement** — that is the clause most likely to be helpfully violated.
-- **`s1-8-admin`** (S1.8, admin/desktop). Endpoints: `/users` (+ `/:id`, `/:id/credential`),
-  `/devices`, `/donors`, `/trucks`, `/routes` (+ `/:id/restore`), `/categories`. Four sub-screens
-  selected by `components/Segmented.tsx` in **`mode="tabs"`** (A131 — S1.8 gained that Layout line
-  precisely so this lane would not invent a navigation pattern). Load-bearing details: username is
-  auto-generated and **immutable after creation** (I3), shown read-only; duties are toggles (I2, set
-  membership) and tier is a hierarchy (I1) — the two are different kinds of control and are easy to
-  build alike by accident; **Delete asks the domain, which decides hard-delete vs. deactivate (I21)**
-  and the UI must not make the user choose; categories are seeded with the 11 AGFP categories and
-  ship in Phase 1 per **D2**.
+- **`s1-3-shift-detail`** (S1.3). `GET /shifts/:id`, `POST /shifts/:id/release`,
+  `POST /shifts/:id/stops/:stopId/reassign`, `PATCH /shifts/:id/note`, `GET /shifts`. Two views of one
+  screen: owner-on-phone and staff-on-desktop, with the staff note editable by one and read-only to
+  the other. Release is before-start only; the conflict-flag banner is informational and must never
+  block pickup execution.
+- **`s1-6-schedule`** (S1.6). `POST /shifts`, `PATCH`/`DELETE /shifts/:id`, `/patterns` (+ `/:id`,
+  `/:id/terminate`), `GET /shifts/:id/eligibility`, `/shifts/:id/assign`+`/unassign`, `/routes`,
+  `GET /donors`. No truck field at publish (the driver picks it at start, I8). Assign is a **warning,
+  never a block** (I20's staff-assign exemption).
+- **`s1-7-reschedule`** (S1.7). `POST /shifts/:id/reschedule`, `GET /shifts/:id/eligibility`,
+  `GET /shifts/:id`. The screen's whole substance is the conflict path: moving a shift keeps the owner
+  by default, but a conflict with that owner's declared availability must be surfaced *before* confirm
+  in S1.7's exact voice, and on confirm the owner is **released** and the shift returns to the board as
+  Open. **The system never auto-picks a replacement** — the clause most likely to be helpfully violated.
+- **`s1-8-admin`** (S1.8). `/users` (+ `/:id`, `/:id/credential`), `/devices`, `/donors`, `/trucks`,
+  `/routes` (+ `/:id/restore`), `/categories`. Four sub-screens selected by `components/Segmented.tsx`
+  in **`mode="tabs"`** (A131 gave S1.8 that Layout line precisely so this lane would not invent a
+  navigation pattern). Load-bearing: username is auto-generated and **immutable after creation** (I3),
+  shown read-only; duties are set membership (I2) and tier is a hierarchy (I1) — different kinds of
+  control, easy to build alike by accident; **Delete asks the domain, which decides hard-delete vs.
+  deactivate (I21)** and the UI must not make the user choose; categories ship in Phase 1 per **D2**.
 
 ### Why 4b is a materially easier wave than 4a
 
