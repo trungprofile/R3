@@ -18,6 +18,7 @@ import {
 import { notFound } from '../middleware/error.js';
 import { shapeUser } from '../pii.js';
 import { login } from '../services/auth.js';
+import { getPantryTimezone } from '../services/config.js';
 import { destroySession, findDevice } from '../services/session.js';
 import { getUser, listRosterUsers } from '../services/user.js';
 import { body, defineRoute, requiredString } from './registry.js';
@@ -83,6 +84,10 @@ export const authRoutes = [
         }),
         expiresAt: result.expiresAt.toISOString(),
         sharedDevice: result.sharedDevice,
+        // A second service call, deliberately: §4.1's "one service function per
+        // domain operation" is about who owns the WRITE. This is a read of pantry
+        // settings that every screen needs and that auth has no business owning.
+        timezone: await getPantryTimezone(),
       };
       res.status(200).json(payload);
     },
@@ -117,6 +122,7 @@ export const authRoutes = [
         user: shapeUser(record.user, record.duties, { id: actor.id, tier: actor.tier }),
         expiresAt: actor.expiresAt.toISOString(),
         sharedDevice: actor.sharedDevice,
+        timezone: await getPantryTimezone(),
       };
       res.json(payload);
     },

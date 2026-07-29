@@ -156,8 +156,11 @@ export function dayHeading(date: string, today: string = todayCalendarDate()): s
   return `${weekdayName(date)}, ${monthDay}`;
 }
 
-/** "9:00 AM – 11:00 AM". `timeZone` is for tests only; left undefined the device
- *  formats in its own zone, which for this pantry's volunteers is the pantry's. */
+/** "9:00 AM – 11:00 AM" in the PANTRY's zone (A120), which the session carries.
+ *  A run's window is a pantry-local fact: the 9am run is 9am at the pantry, not on
+ *  whatever device is reading it. Left undefined the device's own zone is used —
+ *  correct only for the moment before the session has loaded, since there is
+ *  nothing better to fall back to. */
 export function timeRange(startsAt: string, endsAt: string, timeZone?: string): string {
   const format = new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',

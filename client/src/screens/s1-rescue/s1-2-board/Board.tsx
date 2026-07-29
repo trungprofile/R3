@@ -23,7 +23,13 @@ import {
   SkeletonRows,
   StatusChip,
 } from '../../../components/index.ts';
-import { useAsyncData, useCurrentUser, useRouter, useToast } from '../../../app/index.ts';
+import {
+  useAsyncData,
+  useCurrentUser,
+  useRouter,
+  useSession,
+  useToast,
+} from '../../../app/index.ts';
 import type { ScreenProps } from '../../../app/index.ts';
 import { atLeastTier, hasDuty } from '../../../app/index.ts';
 import { displayName } from '../../../api/index.ts';
@@ -54,6 +60,7 @@ const FILTER_OPTIONS = BOARD_FILTERS.map((value) => ({ value, label: FILTER_LABE
 
 export function BoardScreen(_props: ScreenProps) {
   const user = useCurrentUser();
+  const { timezone } = useSession();
   const { go } = useRouter();
   const toast = useToast();
 
@@ -173,6 +180,7 @@ export function BoardScreen(_props: ScreenProps) {
         error={state.error}
         onRetry={state.reload}
         busyId={busyId}
+        timeZone={timezone}
         onClaim={onClaim}
         onOpen={(shiftId) => go('shift', { shiftId })}
       />
@@ -204,6 +212,8 @@ interface BoardBodyProps {
   error: unknown;
   onRetry: () => void;
   busyId: string | null;
+  /** Pantry zone from the session (A120); null until it loads. */
+  timeZone: string | null;
   onClaim: (shift: ShiftSummary) => void;
   onOpen: (shiftId: string) => void;
 }
@@ -215,6 +225,7 @@ function BoardBody({
   error,
   onRetry,
   busyId,
+  timeZone,
   onClaim,
   onOpen,
 }: BoardBodyProps) {
@@ -234,7 +245,13 @@ function BoardBody({
           <List label={group.heading}>
             {group.rows.map((row) => (
               <ListItem key={row.shift.id}>
-                <Row row={row} busy={busyId === row.shift.id} onClaim={onClaim} onOpen={onOpen} />
+                <Row
+                  row={row}
+                  busy={busyId === row.shift.id}
+                  timeZone={timeZone}
+                  onClaim={onClaim}
+                  onOpen={onOpen}
+                />
               </ListItem>
             ))}
           </List>
@@ -265,13 +282,15 @@ function BoardEmpty({ filter }: { filter: BoardFilter }) {
 interface RowProps {
   row: BoardRow;
   busy: boolean;
+  /** The pantry's zone, so a row reads the same on any device (A120). */
+  timeZone: string | null;
   onClaim: (shift: ShiftSummary) => void;
   onOpen: (shiftId: string) => void;
 }
 
-function Row({ row, busy, onClaim, onOpen }: RowProps) {
+function Row({ row, busy, timeZone, onClaim, onOpen }: RowProps) {
   const { shift } = row;
-  const when = timeRange(shift.startsAt, shift.endsAt);
+  const when = timeRange(shift.startsAt, shift.endsAt, timeZone ?? undefined);
   const owner = shift.ownerName ?? COPY.unowned;
 
   const chip = (

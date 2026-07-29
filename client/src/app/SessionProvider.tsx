@@ -23,6 +23,16 @@ export interface SessionValue {
   /** Epoch ms the sign-in lapses at, as the server reported it, slid forward by
    *  local activity. Used only to decide when to warn. */
   expiresAt: number | null;
+  /**
+   * The pantry's IANA zone, from the session (`app_config.timezone`).
+   *
+   * Every run time on screen is a pantry-local fact — "the 9am run" is 9am at the
+   * pantry, not on whatever device is reading it. Screens format against this
+   * rather than the device's zone, which is right only while everyone happens to
+   * be in one place. `null` before the session loads; a formatter falling back to
+   * the device zone for that moment is correct, since there is nothing else to use.
+   */
+  timezone: string | null;
   /** Re-read the signed-in user. Doubles as the "Yes, I'm here" answer, because
    *  an authenticated request is what slides the timeout server-side. */
   refresh: () => Promise<void>;
@@ -38,6 +48,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>('loading');
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [timezone, setTimezone] = useState<string | null>(null);
   const [idleWindowMs, setIdleWindowMs] = useState<number | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -47,6 +58,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const expiry = Date.parse(info.expiresAt);
       setUser(info.user);
       setExpiresAt(Number.isNaN(expiry) ? null : expiry);
+      setTimezone(info.timezone);
       // How long a quiet app has before it lapses. Read off the server's own
       // number rather than hard-coded, because it differs by device and tier
       // (`architecture.md §4.2`) and is tunable without a redeploy.
@@ -84,6 +96,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // left the name in the top bar on a shared tablet is the worse outcome.
       setUser(null);
       setExpiresAt(null);
+      setTimezone(null);
       setStatus('signed-out');
     }
   }, []);
@@ -93,12 +106,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       status,
       user,
       expiresAt,
+      timezone,
       refresh: load,
       signOut,
       onSignedIn: load,
       error,
     }),
-    [status, user, expiresAt, load, signOut, error],
+    [status, user, expiresAt, timezone, load, signOut, error],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

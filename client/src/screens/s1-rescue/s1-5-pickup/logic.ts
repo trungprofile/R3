@@ -254,11 +254,12 @@ export interface HeadingBackState {
   confirmedAt: string | null;
 }
 
-export function headingBackState(run: RunDetail): HeadingBackState {
+export function headingBackState(run: RunDetail, timeZone?: string): HeadingBackState {
   return {
     offered: canHeadBack(run.stops),
     confirmed: run.pickupCompletedAt !== null,
-    confirmedAt: run.pickupCompletedAt === null ? null : timeOfDay(run.pickupCompletedAt),
+    confirmedAt:
+      run.pickupCompletedAt === null ? null : timeOfDay(run.pickupCompletedAt, timeZone),
   };
 }
 
@@ -271,10 +272,16 @@ export function runIsStillInProgress(run: RunDetail): boolean {
   return run.status === 'IN_PROGRESS';
 }
 
-export function timeOfDay(iso: string): string {
+/** A milestone's clock time in the PANTRY's zone (A120). Undefined falls back to
+ *  the device's, which is right only before the session has loaded. */
+export function timeOfDay(iso: string, timeZone?: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return '';
-  return at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return at.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(timeZone ? { timeZone } : {}),
+  });
 }
 
 /** One line per stop for the review screen: what happened, plus the note the

@@ -17,7 +17,7 @@
 // vanishes from a list the driver is reading while driving.
 
 import { useState } from 'react';
-import { useToast } from '../../../app/index.ts';
+import { useSession, useToast } from '../../../app/index.ts';
 import { Button, ConfirmModal, EmptyState } from '../../../components/index.ts';
 import type { DriverResolution, RunDetail, RunStopSummary } from '../../../api/shared.ts';
 import { resolveStop, saveOrder, saveStopNote } from './api.ts';
@@ -105,7 +105,8 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
   const stops = orderedStops(run.stops);
   const onRunStops = stopsOnThisRun(run.stops);
   const focusId = nextPendingStop(run.stops)?.id ?? null;
-  const heading = headingBackState(run);
+  const { timezone } = useSession();
+  const heading = headingBackState(run, timezone ?? undefined);
 
   return (
     <>

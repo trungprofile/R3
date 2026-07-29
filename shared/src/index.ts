@@ -150,6 +150,17 @@ export interface SessionResponse {
   user: ShapedUser;
   expiresAt: string;
   sharedDevice: boolean;
+  /**
+   * The pantry's IANA zone (`app_config.timezone`).
+   *
+   * Every run time on screen is a *pantry-local* fact — a 9am pickup is 9am at the
+   * pantry regardless of where the phone reading it happens to be. Without this the
+   * client can only fall back to the device's own zone, which is right for everyone
+   * in one place and silently wrong for anyone who is not. Dates never drift (they
+   * come from the server-resolved `occurrenceDate`); times do, which is the harder
+   * bug to notice.
+   */
+  timezone: string;
 }
 
 /** 401 body on a bad credential. `triesLeft` is the S1.1 inline count. */
