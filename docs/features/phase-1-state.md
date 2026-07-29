@@ -308,7 +308,7 @@ large it looks next to the others.
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
 | **schedule** | `server/src/services/{schedule,recurrence}.ts`, `server/src/routes/shifts.ts`, `server/src/jobs/materialization.ts`, `shared/src/schedule.ts`, own tests | `.claude/worktrees/agent-a95dba7531295b943` (continuation) | `worktree-agent-a95dba7531295b943` | **yes** — 2nd attempt, continuing | — | — |
-| **coverage** | `server/src/services/coverage.ts`, `server/src/routes/coverage.ts`, `server/src/jobs/at-risk.ts`, `shared/src/coverage.ts`, own tests | `.claude/worktrees/agent-ae8393a4467fb460d` | `worktree-agent-ae8393a4467fb460d` | **yes** | — | — |
+| **coverage** | `server/src/services/coverage.ts`, `server/src/routes/coverage.ts`, `server/src/jobs/at-risk.ts`, `shared/src/coverage.ts`, own tests | `.claude/worktrees/agent-ae8393a4467fb460d` | `worktree-agent-ae8393a4467fb460d` | **yes** | **complete** (`011e6d9`, 86 lane tests, own `gate.sh` green at 376) | — |
 | **execution** | `server/src/services/execution.ts`, `server/src/routes/execution.ts`, `server/src/jobs/reminder.ts`, `shared/src/execution.ts`, own tests | `.claude/worktrees/agent-a0d3f9b26e700d0fc` | `worktree-agent-a0d3f9b26e700d0fc` | **yes** | **complete** (`1198753`, 58 lane tests, own `gate.sh` green at 348) | — |
 
 All three spawned 2026-07-28 and branched from **`4c10428`**, verified against `git worktree
@@ -336,6 +336,29 @@ The original worktree and branch are kept until the continuation merges, then re
 
 - `execution` — `...executionRoutes` in `routes/index.ts`; `export * from './execution.js';` in
   `shared/src/index.ts`; `shiftReminderJob` in `jobs/registry.ts`.
+- `coverage` — `...coverageRoutes` in `routes/index.ts`; `export * from './coverage.js';` in
+  `shared/src/index.ts`; `atRiskJob` in `jobs/registry.ts`.
+- **Check the merged route declaration list for a `/shifts` collision** (A108). Coverage and schedule
+  both mount under `/shifts`. Two identical method+path declarations do *not* conflict loudly — the
+  first registered wins and the second is dead code. Nothing in the gate catches this; it is a
+  by-hand check at merge, on the merged `routes/index.ts`.
+- **Migration 0009 — `uq_notif_shift_event` (A94).** Lead-owned, authored *between* Wave 3 and Wave 4,
+  the same path migration 0008 took. See A94 for what is wrong and why it is not a §5.5 halt.
+
+**Two claims in the coverage report the lead checked rather than took:**
+
+1. *"The `SHIFT_REMINDER` sweep is not built."* — **It is**, by the `execution` lane, in
+   `server/src/jobs/reminder.ts` and `services/execution.ts:757`. Coverage could not see a sibling
+   lane's worktree, which is the isolation working as designed (§3). No gap; no action. Worth keeping
+   because it is the second time a lane has correctly reported a hole that another lane had already
+   filled — a report saying "confirm another lane owns X" is the right output from inside isolation,
+   and the lead is the only one positioned to answer it.
+2. *"`uq_notif_shift_event` swallows a second `SHIFT_OPENED`."* — **Confirmed against source**, not
+   taken on the report's word. `notification.ts:115` inserts with an unqualified
+   `.onConflict((oc) => oc.doNothing())`, and `0006`'s index is `(event, shift_id, recipient_id)`
+   with a partial predicate on the two columns being non-null and **no filter on `event`**. So the
+   index covers every shift-scoped event, while the comment three lines above it justifies its
+   existence for "shift-scoped, **time-triggered** events" only. Recorded as A94.
 
 **Seams the lead owns, as in every wave:** `server/src/routes/index.ts` (three spreads),
 `shared/src/index.ts` (three re-exports), and now **`server/src/jobs/registry.ts`** — each lane writes
@@ -660,6 +683,40 @@ checked the doc and wrote a test asserting the row's exact column set.
 | A91 | 3 | **`getRun` is readable by the run's owner or Staff-and-above.** S1.3 is a staff screen and PRD §2 gives Staff operational status across volunteers. No doc enumerates who may read a run. | open, non-blocking |
 | A92 | 3 | **Endpoint paths and refusal copy are the lane's.** `PICKUP_INCOMPLETE_MESSAGE` is "Finish or skip every stop before you head back." — written to §7's rules, unread by a human. Same standing as A6, A45, A70. | open, non-blocking |
 | A93 | 3 | **Starting a run whose route has zero stops is permitted** and produces an empty snapshot. §2.2 says a route has 1..N stops, so it should be unreachable; no rule was invented to block it. | open, non-blocking |
+
+### Wave 3 — coverage lane
+
+Reported `complete`, 86 lane tests, own `gate.sh` green (376 total). **A94 is the one to read first**
+and is the lane's own pick to escalate: a real defect it declined to work around, pinned with a test
+instead, because the fix is a migration and migrations are lead-owned (§3).
+
+**Two of its tests are the justification for `SERIALIZABLE` executing.** Both drive genuinely
+concurrent transactions with a barrier holding each between its gate's read and its write. The second
+is `architecture.md §4.1`'s canonical **write-skew** case — one driver, two overlapping runs, both
+gates read "no overlapping owned shift" and *both are right when they read it*; the rows written are
+different, so no row lock and no tier-2 predicate sees anything. The loser fails `40001` "read/write
+dependencies among transactions". That is a rule which **only** SSI catches: it is invisible to
+`READ COMMITTED` and to every constraint in the schema.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| **A94** | 3 | **`uq_notif_shift_event` silently swallows a second `SHIFT_OPENED` for the same (run, recipient).** The index is `(event, shift_id, recipient_id)` with **no filter on `event`**, so it covers every shift-scoped event; `0006`'s own comment justifies it for "shift-scoped, **time-triggered** events" because "event-triggered ones fire once by construction". `SHIFT_OPENED` is event-triggered and does **not** fire once by construction — release → re-claim → release is an ordinary sequence, and `notification.ts`'s unqualified `ON CONFLICT DO NOTHING` absorbs the second fan-out. Nobody is told the run is back on the board. Lane pinned the behaviour with a test rather than working around it. **Lead verified against source.** | open — **lead owes migration 0009** between Wave 3 and Wave 4. *Not* a §5.5 halt: that condition fires when an `Assumed:` *requires* a schema change to proceed, and this one is compatible with the schema as it stands — the lane pinned current behaviour instead of assuming different behaviour. Same path as 0008 |
+| A95 | 3 | **I20's staff-assign exemption is scoped to the two temporal reasons.** `AVAILABILITY_BLOCK` and `OWNED_SHIFT_OVERLAP` are confirmable; `NO_DRIVE_DUTY`, `DEACTIVATED` and `UNKNOWN_USER` are hard refusals for Staff too. The I20 note names exactly "the driver's declared availability or another owned shift", and a user with no Drive duty is not a driver to override a conflict *about*. No doc says what Staff may **not** confirm through. | open, non-blocking |
+| A96 | 3 | **Staff-assign and staff-unassign are restricted to `OPEN` and `CLAIMED`** — an `IN_PROGRESS` run's driver cannot be swapped wholesale. Inferred from I30 existing at all: mid-run reassignment moves *stops* (close-old + insert-new) precisely because the shift is not the unit that moves — its truck is picked (I8) and its stops are snapshotted (I5). No doc states this bound. | open, non-blocking |
+| A97 | 3 | **Reassigning a `CLAIMED` run to a different driver notifies only the new owner.** The matrix has no "you were removed from a run" event and the lane read it as closed. (Staff-*unassign* does notify, because that run returns to the board and the matrix covers that.) | open, non-blocking |
+| A98 | 3 | **A self-select claim notifies nobody.** The matrix's "Shift assigned / defaulted to you" is read as the staff-assign path; telling a driver what they just did themselves is not in it. | open, non-blocking |
+| A99 | 3 | **The actor is excluded from the `SHIFT_OPENED` fan-out.** A driver releasing a run is, one statement later, an eligible driver for it. The matrix says "Coordinator + eligible drivers" without saying whether the person who caused the event is one of them. **Consequence worth knowing:** at this org's headcount (PRD §6 — one coordinator) a staff unassign therefore sends no coordinator row at all. | open, non-blocking |
+| A100 | 3 | **Claiming has no time bound**; release does. `data-model.md §9`'s claim predicate is `status='OPEN' AND owner_id IS NULL` and nothing else, and no doc forbids claiming a run whose window has passed. Release *is* bounded by `starts_at > now()` because cap 8 says "before it starts" in as many words. The asymmetry is deliberate, not an oversight. | open, non-blocking |
+| A101 | 3 | **§5.3's "existing future OPEN instances" is `starts_at > now()`, plus the run the driver actually tapped, always** — keeping SERIES a superset of ONE even for a run starting within the hour. No doc fixes the boundary. | open, non-blocking |
+| A102 | 3 | **`claim-all` sets `ownerDefault` unconditionally**, including when every existing run was skipped. §5.3 states the two clauses independently, and each future run is gated again at materialization by I25. | open, non-blocking |
+| A103 | 3 | **A series claim reports skips rather than failing**, even when the driver is ineligible for every run (`claimed: []`, `partial: true`). The one thing that fails outright is the tapped run no longer being `OPEN`. | open, non-blocking |
+| A104 | 3 | **`release-range` defaults `fromDate` to the tapped run's own date and treats a missing `toDate` as open-ended** — S1.3's "this and future". Touches only runs of the same pattern owned by the actor. §5.3 says "instances in [from, to]" without saying of what, or what an absent bound means. | open, non-blocking |
+| A105 | 3 | **A range release silently omits a run that moved on since the read; a single release explains the refusal.** No doc covers the partial case for release the way S1.2 covers it for claim. | open, non-blocking |
+| A106 | 3 | **The at-risk sweep alerts once per run, not once per recipient-becoming-eligible.** Due is `OPEN ∧ now() < starts_at ≤ now() + interval '1 day'`; unhandled is "no `SHIFT_AT_RISK` row for this run". A driver who becomes eligible *after* the first alert is never alerted. §4.4 says "1 day before an unclaimed shift" and does not say whether the set is re-evaluated. | open, non-blocking |
+| A107 | 3 | **Every user-visible sentence in the lane is the lane's except three** (S1.2's partial-success summary, §6's "That run was just taken by Karen.", S1.6's assign warning). Includes generalizing S1.6's copy to a neutral pronoun, the multi-weekday series label, and the double-tap answers "That run is already yours." / "That run is already back on the board." — the alternative for the latter was a 403, which is both harsh and untrue for someone who released it a second earlier. Same standing as A6, A45, A70, A92. | open, non-blocking |
+| **A108** | 3 | **HTTP shapes are the lane's** — `POST /shifts/:id/{claim,release,assign,unassign}`, `GET /shifts/:id/eligibility?driverId=`; 409s discriminated by `error`. **Possible collision:** the sibling `schedule` lane also mounts under `/shifts`, and two identical declarations resolve to whichever registers first rather than conflicting loudly. | open — **lead must check the merged declaration list at merge**; nothing in the gate catches a shadowed route |
+| A109 | 3 | **The transactional core `claimShiftIn(tx, …)` is exported alongside `claimShift`.** The public entry is still one function per domain operation; the core exists so a test can put a barrier between the gate's read and its write, which is the only way to make the write-skew interleaving deterministic rather than lucky. `services/notification.ts` sets the precedent for a `tx`-taking export. | open, non-blocking |
+| A110 | 3 | **`occurrence_date` is rendered from the Date's local calendar fields, not `toISOString()`**, and range bounds are cast in SQL (`$1::date`) rather than passed as instants. It is a calendar slot (`data-model.md §5.3`); both would be off by the pantry's UTC offset at exactly the range edges in any zone east of UTC. | open, non-blocking |
 
 ## Blocked
 
