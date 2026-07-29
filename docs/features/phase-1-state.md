@@ -55,6 +55,52 @@ Two carried-over items the lead owns, neither blocking 4a:
 2. **A67 — `client/public/` ownership.** Created by Wave 2's pwa lane as a declared exception. Still
    unratified. It has caused no conflict since; ratify it or re-partition before 4b.
 
+## Wave 4a — in flight
+
+**Spawned 2026-07-29 from `1c09255`.** Five lanes, all `isolation: worktree`, all branched from
+`phase-1`'s HEAD so each starts from Wave 3's merged result. Recorded here *before* any lane reports,
+per §5.6: after a compaction this mapping exists nowhere else, and `git worktree list` is the only
+ground truth left.
+
+| Lane | Screen | Worktree branch | Merged? |
+| :---- | :---- | :---- | :---- |
+| `s1-1-login` | S1.1 Login | `worktree-agent-afcbdae24cb485037` | not yet |
+| `s1-2-board` | S1.2 Shared shift board | `worktree-agent-a172e7e5324aeb522` | not yet |
+| `s1-4-my-shifts` | S1.4 My shifts + availability | `worktree-agent-a2aabbb6c854a3d9d` | not yet |
+| `s1-5-pickup` | S1.5 Driver pickup execution | `worktree-agent-a11efe9ea96dde6d6` | not yet |
+| `s1-9-inbox` | S1.9 Notification inbox **+ its server surface** | `worktree-agent-ae61c199995723b58` | not yet |
+
+Worktree paths are `.claude/worktrees/agent-<id>` for the same `<id>`.
+
+**Reports land at `reports/4a-<lane>.md`.** Merge in report order, `--no-ff`, one lane at a time
+(§5.6 step 2). A conflict is a **HALT**, not a merge to resolve — these lanes are file-disjoint by
+construction, so a conflict means the partition was wrong.
+
+### What the lead owes at merge
+
+1. **Wire `client/src/main.tsx`'s `SCREENS` registry** — one import + one entry per screen. No lane
+   touches it; that is the whole reason five screens can be built at once. Until the lead wires it,
+   every route renders `AppShell`'s "This screen isn't ready yet." placeholder, so a green lane gate
+   does **not** mean the screen is reachable.
+2. **Wire the top-bar unread bell.** `AppShell` already takes an `unreadCount` prop and nothing feeds
+   it. The inbox lane builds the count endpoint and reports the seam under `Unblocked:`.
+3. **Check for promoted components.** Any lane that needed a shared component built it inside its own
+   folder and said so under `Assumed:`. Two lanes wanting the same one is the signal to promote it to
+   `components/` — one lane wanting it is not.
+
+### The inbox lane is not like the others
+
+It is the only 4a lane touching `server/`, and it is building an API surface **from scratch**: there
+is no read endpoint for `notification` at all, so nothing has ever read the rows Waves 1–3 have been
+writing. The schema was always ready (`read_at`, and `ix_notif_unread` built for exactly this query)
+— only the service and routes are missing. It is therefore the **named owner of
+`server/src/routes/index.ts` for Wave 4a**, which satisfies §3's "one owner each, named before the
+wave starts" because no other 4a lane touches server code at all.
+
+Expect its `Assumed:` list to be the longest of the five, and expect it to be *correctly* long: every
+endpoint path, every response shape, and the mark-read semantics are its own invention. No doc
+specifies them. **Read that list before the others.**
+
 ## Halt
 
 ### H4 — CLEARED 2026-07-28: both findings answered by the human
