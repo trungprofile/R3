@@ -27,12 +27,19 @@ COMMENT ON COLUMN shift.assigned_over_conflict IS
   'self-select or materialization, both of which are gated by eligible() and so can '
   'never produce a conflicting assignment.';
 
--- The flag belongs to the *owner*, so it cannot outlive one. Release, cancel and
--- staff-unassign all clear `owner_id` (I7's ck_shift_owner), and this makes the flag
--- clear with it rather than lingering to banner the next driver about a conflict that
--- was never theirs. Enforced here rather than in the service because it is exactly
--- the kind of "clear the other column too" step an UPDATE forgets (`architecture.md`
--- §4.1 tier 1: if the database can hold the rule, it holds it).
+-- The flag belongs to the *owner*, so it cannot outlive one.
+--
+-- READ THIS BEFORE WRITING A RELEASE / CANCEL / STAFF-UNASSIGN UPDATE. The constraint
+-- does NOT clear the flag for you — it makes forgetting to clear it *fail*. Any
+-- statement that sets `owner_id = NULL` must also set `assigned_over_conflict = false`
+-- in the same statement, or the transaction raises. That is the intent: the loud
+-- failure is preferable to a released shift silently keeping a banner and showing it
+-- to the next driver, about a conflict that was never theirs.
+--
+-- Enforced here rather than in the service because it is exactly the kind of "clear
+-- the other column too" step an UPDATE forgets (`architecture.md` §4.1 tier 1: if the
+-- database can hold the rule, it holds it). `data-model.md §9`'s cancel predicate shows
+-- the required form.
 ALTER TABLE shift
   ADD CONSTRAINT ck_shift_conflict_flag
   CHECK (assigned_over_conflict = false OR owner_id IS NOT NULL);

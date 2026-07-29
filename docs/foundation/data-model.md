@@ -350,9 +350,18 @@ Neither may filter the union on `shift` (walk-ins have none). Grouping is `repor
   WHERE id=:id AND status='CLAIMED' AND owner_id=:me;
 
   -- cancel (OPEN|CLAIMED -> CANCELLED): predicate enforces I9 (never from IN_PROGRESS/COMPLETED); owner cleared (Domain Modeling §2.2)
-  UPDATE shift SET status='CANCELLED', owner_id=NULL, updated_by=:me, updated_at=now()
+  -- assigned_over_conflict MUST be cleared in the same statement: ck_shift_conflict_flag
+  -- forbids a flagged shift with no owner, so omitting it raises rather than silently
+  -- leaving a stale banner. Same for release and staff-unassign (migration 0008).
+  UPDATE shift SET status='CANCELLED', owner_id=NULL, assigned_over_conflict=false,
+                   updated_by=:me, updated_at=now()
   WHERE id=:id AND status IN ('OPEN','CLAIMED');
   ```
+
+  **Any statement that clears `owner_id` must clear `assigned_over_conflict` with it.** The CHECK
+  makes this loud rather than optional — a release, cancel or staff-unassign that forgets fails the
+  transaction instead of leaving the next driver a banner about a conflict that was never theirs.
+  Wave 3 owns release and staff-unassign; only cancel is written out here.
 
 - **No claim count cap exists.** The claim gate is `eligible()` (`domain-modeling.md §5.2` — driver active (I21) ∧ Drive duty ∧ no overlapping AvailabilityBlock ∧ no overlapping owned CLAIMED/IN_PROGRESS shift), enforced service-side at claim time, block-declaration, and materialization.  
 - **Receive-done (I11/I12)** and **pickup milestone (I27)** run their cross-row gates in the service layer, then transition.  

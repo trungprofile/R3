@@ -353,9 +353,13 @@ None is a lane's to do — each touches a lead-owned file or would otherwise be 
 1. ~~The `shift` conflict-flag migration~~ — **done.** `0008_shift_conflict_flag.sql` adds
    `shift.assigned_over_conflict boolean NOT NULL DEFAULT false`, plus
    `ck_shift_conflict_flag CHECK (assigned_over_conflict = false OR owner_id IS NOT NULL)` so the
-   flag cannot outlive the owner it warns — release, cancel and staff-unassign all clear
-   `owner_id`, and the flag now clears with them instead of lingering to banner the next driver
-   about a conflict that was never theirs. Boolean, not a timestamp: S1.3's banner asks *is this
+   flag cannot outlive the owner it warns. **The constraint does not clear the flag — it makes
+   forgetting to clear it fail.** `doc-qa` caught the lead asserting otherwise: `data-model.md §9`'s
+   documented cancel predicate nulls `owner_id` without touching the flag, so against a flagged row
+   it would have *raised* rather than succeeded. §9's predicate now sets
+   `assigned_over_conflict = false` in the same statement, and says that any statement clearing
+   `owner_id` must. **Wave 3 owns release and staff-unassign and must do the same** — the loud
+   failure is the point, but only if the writer knows to expect it. Boolean, not a timestamp: S1.3's banner asks *is this
    flagged*, never *when*. **Semantics are Wave 3's** — this only makes the flag storable.
    `data-model.md §9` documents the column and the constraint.
 2. ~~Hoist the local-to-instant timezone conversion (A56)~~ — **done.** New `server/src/time.ts` holds `localToInstant`, the calendar/clock parsers, and `formatRange` (A7's pre-formatted `when`,

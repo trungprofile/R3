@@ -136,9 +136,11 @@ fi
 #     `shared/src/<area>.ts` by relative path; client code goes through
 #     `client/src/api/shared.ts`.
 #
-#     Comments naming the alias are fine — this looks for imports only.
+#     Comments naming the alias are fine — this looks for imports only. Backticks and
+#     `require.resolve` are matched too: both are ways *past* the check rather than
+#     plausible accidents, and a gate with a known hole is worse than no gate.
 step "no @r3/shared package imports (worktrees resolve it to the wrong tree)"
-ALIAS=$(grep -rnE "(from|import|require)[[:space:]]*\(?[[:space:]]*['\"]@r3/shared" \
+ALIAS=$(grep -rnE "(from|import|require(\.resolve)?)[[:space:]]*\(?[[:space:]]*['\"\`]@r3/shared" \
           server/src server/test client/src shared/src 2>/dev/null || true)
 if [ -n "$ALIAS" ]; then
   fail "import the source by relative path instead — see A34 / A78:"
