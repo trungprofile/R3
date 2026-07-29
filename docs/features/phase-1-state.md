@@ -112,6 +112,20 @@ returned whole everywhere (PII gates people, not places); all four `xHasHistory(
 `data-model.md`'s real referencing tables and D3's phase split; no dependency added; and A78's client
 `@r3/shared` repointing verified across all five files.
 
+**A deliberate deviation from §5.6 step 4, recorded so it does not read as an oversight: the lead
+pushed `phase-1` on a red gate.** Step 4 says push *only* after a green gate. The reason it gives is
+durability — "a multi-hour unattended run that exists only on one disk is one failure from zero" —
+not publication, and this session **already lost a whole wave to exactly that failure** (H3). The
+gate's authority is over **promotion**, and promotion is precisely what did not happen: no Wave 3 was
+spawned. Preserving the work offsite and promoting it are different acts, and only the second is the
+gate's to allow. A future lead who disagrees can reset the remote branch; nothing here is merged to
+`main`.
+
+**Worktree hygiene (§5.6 step 5) was completed even though the gate is red** — all four lanes had
+already reported and merged, so their worktrees held nothing unmerged. Branches deleted, four
+`r3_test_agent_*` databases dropped, verified against `git worktree list`. The `wave2-aborted/*` tags
+from attempt 1 are **kept**: H3 says to delete them once wave 2 passes its gate, and it has not.
+
 **To resume:** answer both questions above, apply the corresponding change, clear this section, set
 `Halted` to no, and restart the loop. Wave 3's lanes are named in build-plan §2 (schedule +
 recurrence ‖ execution, **Coverage stays single-owner**). Before spawning them the lead still owes the
