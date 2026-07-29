@@ -13,12 +13,12 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **2 — attempt 2, re-spawned after H3** |
-| Wave status | wave 1 **passed** and pushed (`add4e13`); H2 resolved 2026-07-28; wave 2 **attempt 1 aborted** by H3 (environment lockout) with nothing committed and no lane report; worktrees archived and removed, baseline re-gated green at `0d91d12`; **attempt 2 in flight, all four branched from `0a6fa3e`**, awaiting reports |
+| Current wave | **2 — all four lanes merged, gating** |
+| Wave status | attempt 1 aborted by H3; **attempt 2 complete**: all four lanes reported `complete`, all four merged `--no-ff` in report order **with no conflict**, seams wired, **mechanical gate green at `2203333`**. `doc-qa` (gate part 2) running over `0a6fa3e..HEAD` |
 | Branch | `phase-1` |
 | Loop armed | **yes** — re-armed 2026-07-28 after H3 cleared |
-| Consecutive gate failures | 0 (no wave-2 gate has run; wave 1 passed on the first round) |
-| Halted | no — H3 cleared |
+| Consecutive gate failures | 0 mechanical (one intermediate red — a stale Wave-1 job-count assertion the lead fixed; not a lane defect and not a fix-round) |
+| Halted | no — but **A46 is a §5.5 halt candidate to raise before Wave 3** |
 
 ## Halt
 
@@ -61,8 +61,6 @@ merged result intact.
 succeeds and reads back (TCC lets a process touch what it created), so `touch` is a false all-clear —
 and the file then cannot be removed, because unlink needs the directory permission. Use `ls` or
 `cat README.md`. Two probe files stranded by the lockout were already gone by resume.
-
-### H2 — RESOLVED 2026-07-28 by the human: **Staff can see phone/address; only Admin can edit**
 
 ### H2 — RESOLVED 2026-07-28 by the human: **Staff can see phone/address; only Admin can edit**
 
@@ -141,10 +139,10 @@ attempt 1 — the partition was never the problem; see H3.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-aeb37364caf59ac1f` | `worktree-agent-aeb37364caf59ac1f` | **yes** | **complete** (`dcf7a78`, 180 tests) | — |
-| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a6ede00f689f72ad6` | `worktree-agent-a6ede00f689f72ad6` | **yes** | **complete** (`c752a45`, 171 tests) | — |
-| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a82503cec27dc11c9` | `worktree-agent-a82503cec27dc11c9` | **yes** | **complete** (`60851e1`, 187 tests, own `gate.sh` green) | — |
-| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-adb1d6c0b0ea86d28` | `worktree-agent-adb1d6c0b0ea86d28` | **yes** | **complete** (`42ea848`, 205 tests, own `gate.sh` green) | — |
+| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-aeb37364caf59ac1f` | `worktree-agent-aeb37364caf59ac1f` | **yes** | **complete** (`dcf7a78`, 180 tests) | **yes** — 2nd |
+| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a6ede00f689f72ad6` | `worktree-agent-a6ede00f689f72ad6` | **yes** | **complete** (`c752a45`, 171 tests) | **yes** — 1st |
+| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a82503cec27dc11c9` | `worktree-agent-a82503cec27dc11c9` | **yes** | **complete** (`60851e1`, 187 tests, own `gate.sh` green) | **yes** — 3rd |
+| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-adb1d6c0b0ea86d28` | `worktree-agent-adb1d6c0b0ea86d28` | **yes** | **complete** (`42ea848`, 205 tests, own `gate.sh` green) | **yes** — 4th |
 
 All four spawned 2026-07-28 and branched from **`0a6fa3e`**, verified against `git worktree list`
 rather than constructed from the lane name (§5.6 step 1). Attempt 1's ids are dead — if you find a
