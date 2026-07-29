@@ -13,8 +13,8 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **2 — 4 lanes** |
-| Wave status | wave 1 **passed** and pushed (`add4e13`); H2 resolved by the human 2026-07-28; wave 2 spawning |
+| Current wave | **2 — 4 lanes in flight** |
+| Wave status | wave 1 **passed** and pushed (`add4e13`); H2 resolved by the human 2026-07-28; wave 2 spawned, all 4 branched from `d6a4f91`, awaiting reports |
 | Branch | `phase-1` |
 | Loop armed | **yes** — re-armed 2026-07-28 after H2 was resolved |
 | Consecutive gate failures | 0 (wave 1 passed on the first gate round) |
@@ -98,10 +98,10 @@ Named before spawning (§5.6 step 1). Four lanes per build-plan §2.
 
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | — | — | no | — | — |
-| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | — | — | no | — | — |
-| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | — | — | no | — | — |
-| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | — | — | no | — | — |
+| **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-a3eee541a08bde70b` | `worktree-agent-a3eee541a08bde70b` | **yes** | — | — |
+| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a44f61134bafee500` | `worktree-agent-a44f61134bafee500` | **yes** | — | — |
+| **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a74ee818355adfd84` | `worktree-agent-a74ee818355adfd84` | **yes** | — | — |
+| **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-add3568f76564bfb4` | `worktree-agent-add3568f76564bfb4` | **yes** | — | — |
 
 **The seam this wave is `server/src/routes/index.ts`** — it aggregates every route module into the
 one array the default-deny gate compiles from, and three lanes each need a line in it. Same
