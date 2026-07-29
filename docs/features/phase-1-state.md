@@ -13,49 +13,99 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **4a — spawning. Wave 3 is PROMOTED and closed.** |
-| Wave status | **Wave 3 promoted 2026-07-29 at `233fc22`.** All four §5.3 criteria met at last: `gate.sh` green (500 tests), **`doc-qa` round 2 clean — zero findings**, all three lanes reported `complete`, and every `Assumed:` (A79–A116) recorded below. Pushed to `origin/phase-1`; all four Wave-3 worktrees and their branches removed and verified against `git worktree list` (§5.6 step 5). The tree is clean and no lane is in flight |
+| Current wave | **4b — spawning. Wave 4a is PROMOTED and closed.** |
+| Wave status | **Wave 4a promoted 2026-07-29 at `697e01b`, pushed `233fc22..697e01b`.** All four §5.3 criteria met: `gate.sh` green both halves, **`doc-qa` round 2 clean — zero findings**, all five lanes reported `complete`, and every `Assumed:` (A117–A129) recorded below. All five worktrees and branches removed; `git worktree list` shows only the main checkout. Two lead chores have landed since, each gated and doc-qa'd on its own: **A120** (the pantry timezone, `c085738`) and **the segmented-control promotion** (`3b6f237`) |
 | Branch | `phase-1` |
 | Loop armed | **yes** — restarted 2026-07-28 on the human's go-ahead; resumed 2026-07-29 |
-| doc-qa (gate part 2) | **Round 1 reported 2026-07-29 over `4c10428..HEAD`: 4 findings, all resolved; round 2 pending.** Three were stale docs and **none was a code bug** — the Wave-3 lanes' code came through clean, and every finding traced to a doc restating a rule instead of citing it. (1) `data-model.md §11` and (2) `architecture.md §4.4` both still showed the pre-0009 `uq_notif_shift_event` DDL *and* the "event-triggered notifications fire once by construction" sentence that migration 0009 exists to refute — the same disproven claim in two places, which is why 0009 was needed at all. (3) `ui-ux-spec.md S1.5` still carried the superseded two-element I27 gate ("COLLECTED or SKIPPED"), which would have told a Wave-4 UI builder to hide *Heading back* on a run that had a stop reassigned off it — the exact freeze the I27 amendment was made to prevent. (4) was **A111**, escalated to the human and answered (see A111). All four fixed; re-run pending |
-| Consecutive gate failures | 0. Worth noting for the next lead: **every `doc-qa` finding this session came from the lead's own changes, not from a lane** — the incomplete cross-doc sync after amending §5.2, then the conflict-flag constraint described backwards. Keep `doc-qa` on lead chores, not only on waves |
+| doc-qa (gate part 2) | **Clean on everything committed.** Wave 4a round 2 zero findings; the segmented promotion clean with one non-blocking note (the §3 bullet claimed S1.8 was tabbed when S1.8's prose said only "sub-screen") — **fixed in the same commit rather than deferred**, by giving S1.8 a Layout line |
+| Consecutive gate failures | 0. Worth noting for the next lead: **nearly every `doc-qa` finding this session came from the lead's own changes, not from a lane.** Keep `doc-qa` on lead chores, not only on waves — the segmented promotion is the latest example, and it was a lead chore |
 | Halted | **no — H4 cleared 2026-07-28.** Both questions answered by the human; see H4 for what each changed |
 
 ### The one thing the next lead must do first
 
-**Wave 3 is closed. The next action is Wave 4a's merge-and-gate, or its spawn if the lanes below are
-not yet running.** Nothing from Wave 3 is outstanding: gate green both halves, pushed, worktrees
-removed. `git worktree list` showing only the main checkout is the confirmation.
+**Wave 4a is closed. The next action is Wave 4b's merge-and-gate, or its spawn if the lanes below are
+not yet running.** Nothing from 4a is outstanding. `git worktree list` showing only the main checkout
+is the confirmation.
 
-**Wave 4 is split into two batches, 4a then 4b.** `phase-1-build-plan.md §2` sizes Wave 4 as "high"
+**Wave 4b is the last of Phase 1's build scope.** After it merges green, §5.4's checklist is what
+remains — and two of its five items are known not to hold yet (see "What still stands between 4b and
+§5.4" below). Do not read a green 4b as Phase 1 being done.
+
+**Wave 4 was split into two batches, 4a then 4b.** `phase-1-build-plan.md §2` sizes Wave 4 as "high"
 parallelism, one agent per `S1.x` screen — nine lanes. The lead split it rather than spawning nine at
-once, for two reasons that are about *diagnosis*, not machine load: §5.5 allows only three fix rounds
-before a HALT, and a red gate with nine freshly-merged lanes gives those three rounds nine suspects
-instead of four or five. The batches are also a natural seam — 4a is the volunteer/driver path a real
-user walks end to end, so a green 4a is a demonstrable slice rather than half a screen set.
+once, for a reason about *diagnosis*, not machine load: §5.5 allows only three fix rounds before a
+HALT, and a red gate with nine freshly-merged lanes gives those three rounds nine suspects instead of
+four or five. The batches are also a natural seam — 4a is the volunteer/driver path a real user walks
+end to end, so a green 4a is a demonstrable slice rather than half a screen set.
 
-- **4a — the rescue loop as a user walks it:** S1.1 login, S1.2 board, S1.4 my shifts + availability,
-  S1.5 driver pickup, S1.9 inbox.
+- **4a — the rescue loop as a user walks it** (DONE): S1.1 login, S1.2 board, S1.4 my shifts +
+  availability, S1.5 driver pickup, S1.9 inbox.
 - **4b — the staff and admin path:** S1.3 shift detail, S1.6 scheduling, S1.7 reschedule, S1.8 admin.
 
 **The Wave-4 seam is `client/src/main.tsx`'s `SCREENS` registry, and it is LEAD-OWNED.** Every lane
 builds its screen under its own folder in `client/src/screens/s1-rescue/` and wires nothing; the lead
 adds one import + one registry line per screen at merge. No lane may edit `main.tsx`,
-`app/routes.ts`, `components/`, `tokens/`, or `api/index.ts` — those are the §3 single-owner files and
-the whole reason nine screens can be built at once. A lane needing a new shared component builds it
-inside its own folder and says so under `Assumed:`; the lead promotes it to `components/` later if two
-lanes turn out to want it.
+`app/routes.ts`, `components/`, `tokens/`, `client/public/` or `api/index.ts` — those are the §3
+single-owner files and the whole reason four screens can be built at once. A lane needing a new shared
+component builds it inside its own folder and says so under `Assumed:`; the lead promotes it to
+`components/` later if two lanes turn out to want it.
 
-Two carried-over items the lead owns, neither blocking 4a:
+**A67 — `client/public/` ownership — RATIFIED 2026-07-29 as lead-owned**, alongside `tokens/` and
+`components/`. It was created by Wave 2's pwa lane as a declared exception and has been unratified
+since. No 4b lane touches it (all four are screens), so ratifying costs nothing now and closes an
+assumption that has been open for two waves. Treat it as a §3 single-owner directory from here.
 
-1. **A66 — `apple-touch-icon` is still missing.** The manifest `<link>` is now static in
-   `client/index.html`, but iOS reads a PNG for the home-screen icon and `client/public/` holds only
-   SVGs. Until one exists the installed iOS icon is the browser's screenshot fallback. Needs a binary
-   asset, which is why no agent has produced it.
-2. **A67 — `client/public/` ownership.** Created by Wave 2's pwa lane as a declared exception. Still
-   unratified. It has caused no conflict since; ratify it or re-partition before 4b.
+**A66 — `apple-touch-icon` is still missing**, and is the one carried item no agent can close. The
+manifest `<link>` is static in `client/index.html`, but iOS reads a PNG for the home-screen icon and
+`client/public/` holds only SVGs, so the installed iOS icon is the browser's screenshot fallback. It
+needs a binary asset. **This is a human's to produce**, which is why four waves have not produced it.
 
-## Wave 4a — in flight
+## Wave 4b — in flight
+
+**Spawned 2026-07-29 from `3b6f237`.** Four lanes, all `isolation: worktree`, all branched from
+`phase-1`'s HEAD. Recorded here *before* any lane reports, per §5.6.
+
+| Lane | Screen | Worktree branch | Merged? |
+| :---- | :---- | :---- | :---- |
+| `s1-3-shift-detail` | S1.3 Shift detail (staff) | _pending spawn_ | no |
+| `s1-6-schedule` | S1.6 Create/schedule a run + recurrence | _pending spawn_ | no |
+| `s1-7-reschedule` | S1.7 Reschedule / cancel | _pending spawn_ | no |
+| `s1-8-admin` | S1.8 Admin — accounts, donors, trucks, categories | _pending spawn_ | no |
+
+**Reports land at `reports/4b-<lane>.md`.** Merge in report order, `--no-ff`, one lane at a time.
+
+### Why 4b is a materially easier wave than 4a
+
+**Every 4b screen has a complete server surface already, so no lane writes server code.** This was
+checked before spawning rather than assumed — the registered route list covers all four screens:
+`/shifts` + `/shifts/:id` (+ `/assign`, `/unassign`, `/release`, `/eligibility`, `/note`,
+`/reschedule`, `/stops/*`) for S1.3 and S1.7; `/patterns` (+ `/:id`, `/:id/terminate`) and
+`POST /shifts` for S1.6; `/users` (+ `/:id`, `/:id/credential`), `/devices`, `/donors`, `/trucks`,
+`/routes`, `/categories` for S1.8.
+
+That is the opposite of 4a, where the inbox lane had to invent an entire API from scratch because
+nothing had ever read the `notification` rows. **No 4b lane owns a server file, so no 4b lane needs
+`server/src/routes/index.ts`** — the single-owner hazard that made the inbox lane special does not
+recur. If a lane believes it needs a new endpoint, that is a **report**, not a build: it means Waves
+1–3 missed something, and the lead decides.
+
+### What 4b lanes must inherit rather than re-derive
+
+Four decisions landed after 4a's lanes were briefed. A lane that re-derives any of them ships a bug:
+
+1. **Times render in `useSession().timezone`, never the device zone (A120).** A run time is a
+   pantry-local fact. The device zone survives only as the fallback for the moment before the session
+   loads.
+2. **S1.6's "starting __" is a computed read-only display, not an input (A111, ruled by the human).**
+   There is no `start_date` column; the first occurrence is derived from the pattern.
+3. **The segmented control is `components/Segmented.tsx` (§3), with two behaviors.** S1.8's four
+   sub-screens and any other panel switcher use `mode="tabs"` and `tabPanelProps`; a filter that
+   narrows a list in place uses the default. Do not build a third copy — that is what this one
+   replaced.
+4. **Reordering is large Move up / Move down buttons, not a drag handle (A117, ruled by the human).**
+   Relevant to S1.6 if it orders stops.
+
+## Wave 4a — merged and promoted
 
 **Spawned 2026-07-29 from `1c09255`.** Five lanes, all `isolation: worktree`, all branched from
 `phase-1`'s HEAD so each starts from Wave 3's merged result. Recorded here *before* any lane reports,
@@ -150,9 +200,10 @@ at any hour. Verified at pantry-local 08:04, 10:04, 11:04 and 18:04; 10:04 and 1
 **Standing lesson for the next lead: a green gate is evidence only if the suite is time-independent.**
 Any future test whose fixture straddles wall-clock `now` can do this again.
 
-### Seam fixes the lead owes after 4a merges
+### Seam fixes the lead owed after 4a merged — ALL THREE DONE
 
-Collected as lanes report. All are in lead-owned files no lane may touch, so none is a lane defect.
+Collected as lanes reported. All were in lead-owned files no lane may touch, so none was a lane
+defect. **1 and 3 landed with the 4a merge; 2 landed as its own gated commit `3b6f237`.**
 
 1. **`client/src/api/errors.ts` drops every 401 body field except `message` and `correlationId`** —
    including `triesLeft`, which `shared/src/index.ts` defines on `LoginRejected` and the server
@@ -162,11 +213,27 @@ Collected as lanes report. All are in lead-owned files no lane may touch, so non
    notice, and the screen would then tell a volunteer the wrong number of tries before a lockout.
    The lane identified the fix precisely — carry `triesLeft` through `ApiError` — and it is one
    field. Do it at seam-wiring, then delete the mirrored constant.
-2. **Promote a shared segmented/tab control to `components/`.** `s1-2-board` built `Segmented.tsx`
-   and `s1-4-my-shifts` built `Tabs.tsx` — the same control, twice, each inside its own folder
-   exactly as instructed. **Two lanes wanting it is the promote signal** the briefs named; one would
-   not have been. `ui-ux-spec.md §3` has no contract for one, so promoting it means writing that
-   contract, not just moving a file.
+2. **Promote a shared segmented/tab control to `components/`** — **DONE, `3b6f237`.** `s1-2-board`
+   built `Segmented.tsx` and `s1-4-my-shifts` built `Tabs.tsx` — the same control, twice, each inside
+   its own folder exactly as instructed. **Two lanes wanting it was the promote signal** the briefs
+   named; one would not have been. `ui-ux-spec.md §3` had no contract for one, so promoting it meant
+   writing that contract, not just moving a file.
+
+   **Two things had to be resolved rather than merged, and both were real:**
+
+   - **ARIA.** A filter (narrows a list in place) and a tablist (switches panels) are different
+     patterns, not one control with two labels. `s1-4`'s `role="tablist"` carried **none** of the
+     keyboard behaviour that role obliges — no roving tabindex, no arrow keys, no Home/End. That is
+     worse than declaring no role at all, because it promises a screen-reader user an interaction
+     that is not there. The promoted control implements the full pattern in `mode="tabs"` and makes
+     `idPrefix` **required** there by the prop union, so an `aria-controls` pointing at nothing is
+     unrepresentable rather than merely unlikely.
+   - **The selected state.** The two copies disagreed and **each cited §2 for its choice** — a fill
+     on the board, an inset bar on the tabs. The bar's comment read §2's "never carries white text"
+     as a blanket ban on any label on orange. **It is not:** §2 pairs `--action-fill` with
+     `--text-on-brand` at 5.0:1 precisely so a label can sit on orange, and §3's Button already
+     ships that pairing. Fill won for both. **This changed S1.4's shipped appearance** — recorded as
+     A130, since no doc ruled between the two and the choice is the lead's.
 3. **Wire `useUnreadCount` into `app/App.tsx`** so `AppShell`'s existing `unreadCount` prop is fed
    from the inbox lane's new endpoint. The prop has been dangling since Wave 1.
 
@@ -935,6 +1002,30 @@ the wave** (A117, A118, A119) — the rest are open and non-blocking.
 | A127 | **A `REASSIGNED` stop stays visible on S1.5, struck-through**, rather than vanishing from a list someone is reading while driving. | non-blocking |
 | A128 | **Wire types are declared twice** for the inbox, server-side and client-side, because `shared/src/` was outside that lane's ownership. | non-blocking; a candidate for consolidation when `shared/` next has an owner |
 | A129 | **All user-visible copy on all five screens is the lane's**, unread by a human — same standing as A6/A45/A70/A92/A107. S1.5's set is pinned by a test against §7's forbidden words, against any sentence saying the run is over, and against any promising a notification. | non-blocking, but this is now five screens of unreviewed copy |
+
+## Open assumptions — lead chores between 4a and 4b
+
+| # | Assumption | Status |
+| :---- | :---- | :---- |
+| **A130** | **The promoted segmented control uses ONE selected-state look — `--action-fill` with a `--text-on-brand` label — in both its filter and tabs behaviours, which changed S1.4's shipped appearance from an inset orange bar to a fill.** §2 sanctions orange as a fill *and* as a selected bar, so the two Wave-4a copies were both legal and no doc ruled between them. The lead chose the fill because it is the one that reads at arm's length in a truck (§1 principle 1), and because one control with two looks is the duplication the promotion existed to end. `doc-qa` confirmed §2 permits it and that the deleted bar's "§2 forbids a label on orange" comment was a misreading. | non-blocking, but it is a **visible change to a screen that already passed a gate**, and the first thing a human will notice on S1.4 |
+| **A131** | **`ui-ux-spec.md` S1.8 gained a Layout line** saying its four sub-screens are selected by the §3 segmented control in tabs mode. S1.8 previously said only "sub-screen" and "Primary action varies per sub-screen", with **no statement of how a user moves between the four**. Written by the lead rather than left to the 4b lane, because the alternative was an invented navigation pattern arriving as an `Assumed:` after the fact. §1.5 rules out a dropdown and four is small enough to show at once, so the segmented control is the only §3 control that fits. | non-blocking; raised by `doc-qa` as its one note on the promotion and fixed in the same commit |
+| **A67** | **`client/public/` is lead-owned** — RATIFIED 2026-07-29, alongside `tokens/` and `components/`. Open since Wave 2, where the pwa lane created it as a declared exception. No 4b lane touches it. | **RESOLVED** |
+
+## What still stands between a green 4b and §5.4
+
+Recorded here because a green 4b gate will *look* like Phase 1 finishing, and it is not. §5.4 has five
+criteria; these are the ones known not to hold:
+
+1. **"Screens S1.1–S1.9 exist and are reachable through the shell" is verified only structurally.**
+   Typecheck, registry wiring and unit tests all pass — but **no one has ever loaded a page.** Neither
+   workspace defines a `dev` or `start` script, so `doc-qa` has now twice declined to run UI tests for
+   the honest reason that the app cannot be started. Five screens are built and four more are coming.
+   **This is the largest unverified surface in Phase 1** and it should be closed before the PR, not
+   after: a dev script is a small chore, and the alternative is discovering nine screens' worth of
+   runtime problems at once.
+2. **Nine screens of user-visible copy will be unread by a human** (A6/A45/A70/A92/A107/A129).
+   Non-blocking for the gate; worth naming in the PR.
+3. **A66 — the `apple-touch-icon` PNG** needs a human to produce a binary asset.
 
 ## Blocked
 
