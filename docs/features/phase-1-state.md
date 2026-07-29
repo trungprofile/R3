@@ -142,7 +142,7 @@ attempt 1 — the partition was never the problem; see H3.
 | Lane | Owns (exclusive) | worktreePath | worktreeBranch | Spawned | Reported | Merged |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
 | **masters** | `server/src/services/{donor,truck,category}.ts`, `server/src/routes/{donors,trucks,categories}.ts`, `shared/src/masters.ts`, own tests | `.claude/worktrees/agent-aeb37364caf59ac1f` | `worktree-agent-aeb37364caf59ac1f` | **yes** | — | — |
-| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a6ede00f689f72ad6` | `worktree-agent-a6ede00f689f72ad6` | **yes** | — | — |
+| **routebuilder** | `server/src/services/pickup-route.ts`, `server/src/routes/pickup-routes.ts`, `shared/src/routes.ts`, own tests | `.claude/worktrees/agent-a6ede00f689f72ad6` | `worktree-agent-a6ede00f689f72ad6` | **yes** | **complete** (`c752a45`, 171 tests) | — |
 | **eligible** | `server/src/services/{eligibility,availability}.ts`, `server/src/routes/availability.ts`, `shared/src/availability.ts`, own tests | `.claude/worktrees/agent-a82503cec27dc11c9` | `worktree-agent-a82503cec27dc11c9` | **yes** | — | — |
 | **pwa** | all of `client/src/**` except `sw.ts` (i.e. `app/**`, `pwa/**`, `components/**`, `api/**`, `tokens/**`), `server/src/services/push-subscription.ts`, `server/src/routes/push.ts`, `shared/src/index.ts`, own tests | `.claude/worktrees/agent-adb1d6c0b0ea86d28` | `worktree-agent-adb1d6c0b0ea86d28` | **yes** | — | — |
 
@@ -169,6 +169,11 @@ by relative path per A34; the lead adds re-exports at merge.
 
 Also for the lead at merge: register `purgeExpiredSessions()` as a job (carried from Wave 1) — it
 needs `services/session.ts` and `jobs/` in the same tree, which first happens now.
+
+**Merge chores accumulating as lanes report** (each is the lead's, none is a lane's):
+
+- `routebuilder` — one import + spread in `server/src/routes/index.ts`; `export * from './routes.js';`
+  in `shared/src/index.ts`. Reconcile **A43** (malformed-uuid 404 vs identity's 500) in one direction.
 
 ### The lead owes a migration before Wave 3 spawns
 
@@ -287,6 +292,26 @@ agreement is currently coincidence, not a constraint anything checks.
 | A33 | 1 | **Login identifies the account by `username`**; session cookie is `SameSite=Lax`; **the roster endpoint is public** (S1.1 shows a name list before anyone is signed in — §4.2 defends the PIN by throttling, not by hiding usernames). | open, non-blocking |
 | A34 | 1 | **Server code imports `shared/src/index.ts` by relative path, not as `@r3/shared`** — `server/package.json` declares no dependency on it, and inside a worktree `node_modules/@r3/shared` resolves to the **main checkout's** file, so a lane would silently typecheck against another tree. | open — worth making structural in Wave 2 |
 | A35 | 1 | **`TRUST_PROXY` is a new environment variable** (default `loopback`). On the box it must name the `cloudflared` network, or §4.2's per-IP counter collapses to a single address. **Not in `.env.example`** — no lane may edit it; the lead adds it. | open — needs the deploy value |
+
+### Wave 2 — routebuilder lane
+
+Reported `complete`, 171/171 tests. **A36 is the one to read first** — it is a *stored* value, so
+changing it after Wave 3 writes real rows is a data migration rather than a refactor. Same class as
+A5 and A7, and carried the same way. **A43 is a cross-lane inconsistency**, not a gap: it makes two
+route families answer a garbage id differently, which is the lead's to reconcile, not the lane's.
+
+| # | Wave | Assumption | Resolved? |
+| :---- | :---- | :---- | :---- |
+| **A36** | 2 | **`route_stop.position` is 0-based.** `data-model.md §5.1` says "contiguous" and never fixes the base. Chosen to match `test/fixtures.ts`'s `makeRoute()` — Wave-0-owned, already merged, inserts `position: 0..n-1`. **Stored value**: if Wave 3's shift-stop snapshot or any later query assumes 1-based, the two disagree *silently* rather than loudly. | open — decide before Wave 3 materializes shifts |
+| A37 | 2 | **Reading a route template requires Staff.** PRD cap 4 gives Staff "defines/edits routes" and is silent on who may *read* one. No Volunteer surface needs it (S1.2 renders the route *name* off the shift; S1.5 renders stops off the shift's snapshot), so under default-deny the reads were declared `STAFF` too. A later driver screen would need a new, narrower declaration — not a relaxation of these. | open, non-blocking |
+| **A38** | 2 | **A deactivated donor may stay on a route it is already on, but may not be added to one.** `domain-modeling.md §2.3` says a soft-deleted master is "hidden from new use; preserved everywhere referenced" and never says which side of that line a route *template* sits on. Read a new stop as new use and an existing stop as a reference to preserve — so a route whose store closed keeps rendering it, flagged, until staff swap it out, rather than silently shortening a planned run. | open — a domain reading, worth a human eye |
+| A39 | 2 | **`routeHasHistory()` counts `shift` and `recurrence_pattern` and deliberately excludes `route_stop`.** Stops are the route's own body, not a record of it having been used; excluding them is what makes "hard-delete a route created by mistake" possible at all. `removeRoute` deletes the stop rows itself in the hard-delete branch. Consistent with D3's one-function-per-entity shape. | open, non-blocking |
+| A40 | 2 | **Removal is one `DELETE` returning `{ outcome: 'DELETED' \| 'ARCHIVED' }`, plus `POST /:id/restore`** — no separate archive endpoint; the domain picks the branch, mirroring `removeUser`'s precedent. If S1.6 wants an explicit *Archive* button on a route with no history yet, it cannot get one without a new endpoint. | open, non-blocking |
+| A41 | 2 | **`PATCH /routes/:id` with `stops` present replaces the entire ordered list.** No add-one / remove-one / move-one endpoints. Nothing in the docs fixes the wire shape; whole-list replacement makes "contiguous" unfalsifiable and matches how a drag-and-drop surface saves. | open, non-blocking |
+| A42 | 2 | **Route names are not unique and not checked.** No doc asks for it and no other master data in this schema does. Two routes may share a name. | open, non-blocking |
+| **A43** | 2 | **A malformed uuid answers 404, not 500.** Postgres raises 22P02 on an unparseable uuid, which would otherwise surface as an unhandled 500; an id that cannot exist is treated as one that does not. **The Wave-1 identity routes do not do this**, so the two route families now differ on a garbage id. A behavioural inconsistency between merged lanes — the lead reconciles it, in one direction or the other. | open — reconcile at merge |
+| A44 | 2 | **The I6 test inserts `shift_stop` rows directly.** No fixture-factory builder exists for a snapshot and this lane may not add one to the shared factory, so the test arranges its precondition by hand. No production code in this lane reads or writes `shift` / `shift_stop`. | open, non-blocking |
+| A45 | 2 | **Error copy is the lane's**, written to `ui-ux-spec.md §6/§7` conventions and asserted against the forbidden-word list, but **no human has read it**: "Give this route a name.", "Add at least one store to this route.", "A store can only appear once on a route.", "That store is no longer available.", "That store is deactivated. Turn it back on to add it here.", "No such route." Same standing as A6. | open, non-blocking |
 
 ## Blocked
 
