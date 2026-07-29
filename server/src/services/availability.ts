@@ -30,130 +30,23 @@ import {
 } from '../../../shared/src/availability.js';
 import { db } from '../db/index.js';
 import { writeTransaction, type Tx } from '../db/transaction.js';
+import {
+  addDays,
+  dayNumber,
+  formatRange,
+  localToInstant,
+  parseDate,
+  parseTime,
+  type CalendarDate,
+} from '../time.js';
 import { badRequest, conflict, forbidden, notFound } from '../middleware/error.js';
 import { dispatchNow } from '../jobs/push-dispatch.js';
 import { enqueueNotifications } from './notification.js';
 import { conflictingOwnedShifts, type TimeWindow } from './eligibility.js';
 
-// ---------------------------------------------------------------------------
-// Pantry-local time
-//
-// §5.2 states the window as "half-open, pantry-local time", and the pantry's zone is
-// `app_config.timezone` (an IANA zone, DST-aware, never a fixed offset —
-// `data-model.md §2`). A calendar date and a wall-clock time are therefore resolved
-// to instants HERE, on the server, not by whatever timezone the driver's phone
-// happens to be in.
-//
-// No dependency is added for this: `Intl.DateTimeFormat` already knows the zone
-// database. Converting an instant to local wall time is direct; the inverse needs
-// one correction pass, because the offset to apply depends on the instant you are
-// trying to find.
-// ---------------------------------------------------------------------------
-
-interface WallTime {
-  year: number;
-  month: number; // 1-12
-  day: number;
-  hour: number;
-  minute: number;
-}
-
-function zoneParts(instant: Date, timeZone: string): WallTime {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).formatToParts(instant);
-
-  const read = (type: string): number => {
-    const part = parts.find((p) => p.type === type);
-    return part ? Number(part.value) : 0;
-  };
-
-  return {
-    year: read('year'),
-    month: read('month'),
-    day: read('day'),
-    hour: read('hour') % 24,
-    minute: read('minute'),
-  };
-}
-
-/** The zone's UTC offset in milliseconds at a given instant (positive east). */
-function zoneOffsetMs(instant: Date, timeZone: string): number {
-  const w = zoneParts(instant, timeZone);
-  return Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute) - instant.getTime();
-}
-
-/**
- * A pantry-local wall time as an absolute instant.
- *
- * Two passes: the first uses the offset in force at the naive guess, the second
- * re-reads the offset at the instant that produced — which is what makes a window
- * spanning a DST change come out the right length rather than an hour off. A local
- * time that does not exist (the spring-forward gap) resolves to the instant the
- * clock jumped to, and one that happens twice resolves to the first.
- */
-export function localToInstant(wall: WallTime, timeZone: string): Date {
-  const naive = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute);
-  const first = naive - zoneOffsetMs(new Date(naive), timeZone);
-  const second = naive - zoneOffsetMs(new Date(first), timeZone);
-  return new Date(second);
-}
-
-const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const TIME_PATTERN = /^(\d{2}):(\d{2})$/;
-
-interface CalendarDate {
-  year: number;
-  month: number;
-  day: number;
-}
-
-function parseDate(value: string, field: string): CalendarDate {
-  const match = DATE_PATTERN.exec(value);
-  if (!match) throw badRequest(`${field} must be a date, as YYYY-MM-DD.`);
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  // Round-trip through UTC to reject 2026-02-31 and friends. The date is a
-  // calendar fact here, not an instant — no zone is involved yet.
-  const probe = new Date(Date.UTC(year, month - 1, day));
-  if (
-    probe.getUTCFullYear() !== year ||
-    probe.getUTCMonth() !== month - 1 ||
-    probe.getUTCDate() !== day
-  ) {
-    throw badRequest(`${field} is not a real date.`);
-  }
-  return { year, month, day };
-}
-
-function parseTime(value: string, field: string): { hour: number; minute: number } {
-  const match = TIME_PATTERN.exec(value);
-  if (!match) throw badRequest(`${field} must be a time of day, as HH:MM.`);
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (hour > 23 || minute > 59) throw badRequest(`${field} is not a real time.`);
-  return { hour, minute };
-}
-
-function dayNumber(date: CalendarDate): number {
-  return Math.floor(Date.UTC(date.year, date.month - 1, date.day) / 86_400_000);
-}
-
-function addDays(date: CalendarDate, days: number): CalendarDate {
-  const shifted = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
-  return {
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate(),
-  };
-}
+// Pantry-local time lives in `../time.ts` — one implementation, because wave 3's
+// recurrence materialization needs the identical arithmetic and two copies would
+// disagree only at the DST edges (A56).
 
 // ---------------------------------------------------------------------------
 // Expanding a declaration into blocks
@@ -316,22 +209,6 @@ function toSummary(row: {
  *  Admin is a coordinator too, and an equality test here would silently drop them. */
 const COORDINATOR_TIERS: Tier[] = TIERS.filter((tier) => tierAtLeast(tier, 'STAFF'));
 
-function formatRange(window: TimeWindow, timeZone: string): string {
-  const date = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-  const time = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-  return `${date.format(window.startsAt)} ${time.format(window.startsAt)} – ${date.format(
-    window.endsAt,
-  )} ${time.format(window.endsAt)}`;
-}
 
 /**
  * Declare unavailability. The subject is always the acting driver: PRD cap 7 is a

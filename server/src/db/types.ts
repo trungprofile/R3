@@ -155,6 +155,10 @@ export interface Session {
 }
 
 export interface Shift {
+  /**
+   * I20 staff-assign exemption: Staff confirmed through an eligibility conflict when setting this owner. Drives S1.3's persistent banner for the owner. Never set by self-select or materialization, both of which are gated by eligible() and so can never produce a conflicting assignment.
+   */
+  assigned_over_conflict: Generated<boolean>;
   created_at: Generated<Timestamp>;
   created_by: string;
   ends_at: Timestamp;

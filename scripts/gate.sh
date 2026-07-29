@@ -121,6 +121,32 @@ else
   ok
 fi
 
+# 4b. Nothing imports the `@r3/shared` package alias.
+#
+#     Agents build in git worktrees that share one node_modules by symlink
+#     (build-plan §3), so `node_modules/@r3/shared` resolves to the MAIN
+#     checkout's `shared/src` — not the copy in the worktree doing the work. A
+#     lane editing shared types then typechecks against a DIFFERENT FILE than the
+#     one it is writing, silently, right up until merge.
+#
+#     Wave 2's pwa lane proved this with `tsc --traceResolution` (A78) after the
+#     identity lane had already hit it from the server side (A34). Both waves
+#     worked around it by convention; a convention that has been rediscovered
+#     twice is one the gate should hold instead. Server code imports
+#     `shared/src/<area>.ts` by relative path; client code goes through
+#     `client/src/api/shared.ts`.
+#
+#     Comments naming the alias are fine — this looks for imports only.
+step "no @r3/shared package imports (worktrees resolve it to the wrong tree)"
+ALIAS=$(grep -rnE "(from|import|require)[[:space:]]*\(?[[:space:]]*['\"]@r3/shared" \
+          server/src server/test client/src shared/src 2>/dev/null || true)
+if [ -n "$ALIAS" ]; then
+  fail "import the source by relative path instead — see A34 / A78:"
+  echo "$ALIAS"
+else
+  ok
+fi
+
 # 5. Generated types are not hand-edited. Schema flows one direction only:
 #    DDL -> migration -> database -> generated types (architecture.md §4.6).
 #    Editing types.ts to silence an error desyncs code from where invariants

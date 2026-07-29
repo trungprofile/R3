@@ -178,6 +178,7 @@ CREATE TABLE shift (
   pickup_completed_at   timestamptz,                           -- I27 handoff milestone; gate is service-layer
   note                  text,                                  -- Shift.note: one run-level note, driver-authored (Domain Modeling §2.3)
   staff_note            text,                                  -- coordinator→driver note, staff-authored, shown on driver's shift detail (PRD cap 11)
+  assigned_over_conflict boolean NOT NULL DEFAULT false,        -- I20 staff-assign exemption; drives S1.3's persistent banner (migration 0008)
   created_by            uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,  -- = recurrence_pattern.created_by for minted shifts
   updated_by            uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
   created_at            timestamptz NOT NULL DEFAULT now(),
@@ -185,6 +186,7 @@ CREATE TABLE shift (
   CONSTRAINT uq_shift_occurrence UNIQUE (recurrence_pattern_id, occurrence_date),  -- idempotency: what makes the materialization sweep safe to re-run
   CONSTRAINT ck_shift_window     CHECK (ends_at > starts_at),
   CONSTRAINT ck_shift_truck      CHECK (truck_id IS NULL OR status IN ('IN_PROGRESS','COMPLETED')),  -- I8
+  CONSTRAINT ck_shift_conflict_flag CHECK (assigned_over_conflict = false OR owner_id IS NOT NULL),  -- the flag cannot outlive the owner it warns
   CONSTRAINT ck_shift_owner      CHECK (                                           -- I7 / Domain Modeling §2.2 (LOCKED)
        (status = 'OPEN'                                  AND owner_id IS NULL)
     OR (status IN ('CLAIMED','IN_PROGRESS','COMPLETED')  AND owner_id IS NOT NULL)

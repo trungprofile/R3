@@ -346,18 +346,29 @@ needs `services/session.ts` and `jobs/` in the same tree, which first happens no
   static `<link rel="manifest">` and an `<link rel="apple-touch-icon">` in `client/index.html`, which
   no lane owns.
 
-### The lead owes three things before Wave 3 spawns
+### The lead's three pre-Wave-3 chores — **all done 2026-07-28**
 
 None is a lane's to do — each touches a lead-owned file or would otherwise be written twice.
 
-1. **The `shift` conflict-flag migration** (below) — `server/migrations/` is lead-owned.
-2. **Hoist the local-to-instant timezone conversion (A56)** out of `services/availability.ts` into a
-   shared module. Wave 3's recurrence materialization needs the identical arithmetic; two copies
-   drift at exactly the DST edges no test covers.
-3. **Make the `@r3/shared` resolution structural (A34 / A78).** A78 proved with
-   `tsc --traceResolution` that inside a worktree the alias resolves to the **main checkout**, so a
-   lane can silently typecheck against another tree. Wave 2 worked around it twice — once per side —
-   which is the signal it should stop being a convention.
+1. ~~The `shift` conflict-flag migration~~ — **done.** `0008_shift_conflict_flag.sql` adds
+   `shift.assigned_over_conflict boolean NOT NULL DEFAULT false`, plus
+   `ck_shift_conflict_flag CHECK (assigned_over_conflict = false OR owner_id IS NOT NULL)` so the
+   flag cannot outlive the owner it warns — release, cancel and staff-unassign all clear
+   `owner_id`, and the flag now clears with them instead of lingering to banner the next driver
+   about a conflict that was never theirs. Boolean, not a timestamp: S1.3's banner asks *is this
+   flagged*, never *when*. **Semantics are Wave 3's** — this only makes the flag storable.
+   `data-model.md §9` documents the column and the constraint.
+2. ~~Hoist the local-to-instant timezone conversion (A56)~~ — **done.** New `server/src/time.ts` holds `localToInstant`, the calendar/clock parsers, and `formatRange` (A7's pre-formatted `when`,
+   which Wave 3's reminders need too). Wave 3's materialization now imports the same arithmetic
+   rather than writing a second copy that would agree on every ordinary test and diverge only at the
+   spring-forward gap and the doubled autumn hour.
+3. ~~Make the `@r3/shared` resolution structural (A34 / A78)~~ — **done, as a gate step.** `gate.sh` now fails on any
+   *import* of the alias in `server/src`, `server/test`, `client/src` or `shared/src` (comments naming
+   it are fine). Chosen over a tsconfig `paths` mapping deliberately: `paths` would have changed
+   module resolution for tsx and Vite mid-build to fix a problem that only bites inside worktrees,
+   whereas a gate step makes the mistake unmergeable without touching runtime behaviour. The
+   convention was rediscovered twice — A34 from the server side, A78 from the client — which is the
+   signal it should stop being a convention.
 
 **On (1), the migration.** Surfaced by attempt 1's **eligible** lane and independent of H3, so it
 survived the re-run: I20's

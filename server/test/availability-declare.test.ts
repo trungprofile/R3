@@ -14,9 +14,10 @@ import {
   declareAvailability,
   expandDeclaration,
   listAvailability,
-  localToInstant,
   withdrawAvailability,
 } from '../src/services/availability.js';
+// Hoisted out of the service before wave 3, which needs the same conversion (A56).
+import { localToInstant } from '../src/time.js';
 import { eligible } from '../src/services/eligibility.js';
 import {
   makeAdmin,
