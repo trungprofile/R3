@@ -14,7 +14,7 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 | Field | Value |
 | :---- | :---- |
 | Current wave | **2 — attempt 2, re-spawned after H3** |
-| Wave status | wave 1 **passed** and pushed (`add4e13`); H2 resolved 2026-07-28; wave 2 **attempt 1 aborted** by H3 (environment lockout) with nothing committed and no lane report; worktrees archived and removed, baseline re-gated green at `0d91d12`; **attempt 2 spawning from `0d91d12`** |
+| Wave status | wave 1 **passed** and pushed (`add4e13`); H2 resolved 2026-07-28; wave 2 **attempt 1 aborted** by H3 (environment lockout) with nothing committed and no lane report; worktrees archived and removed, baseline re-gated green at `0d91d12`; **attempt 2 in flight, all four branched from `0a6fa3e`**, awaiting reports |
 | Branch | `phase-1` |
 | Loop armed | **yes** — re-armed 2026-07-28 after H3 cleared |
 | Consecutive gate failures | 0 (no wave-2 gate has run; wave 1 passed on the first round) |
