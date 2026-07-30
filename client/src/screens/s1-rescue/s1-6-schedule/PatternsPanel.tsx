@@ -84,7 +84,11 @@ export function PatternsPanel({ editPatternId, onEditConsumed }: PatternsPanelPr
 
       {form !== null ? (
         <>
+          {/* Both are keyed by which repeating run is open: each holds a month and a
+              draft range in local state, and switching between two patterns without
+              remounting would carry one's working state onto the other. */}
           <PatternForm
+            key={form.patternId ?? 'new'}
             form={form}
             onChange={setForm}
             routes={routes.data ?? []}
@@ -92,6 +96,7 @@ export function PatternsPanel({ editPatternId, onEditConsumed }: PatternsPanelPr
           />
           {form.patternId !== null ? (
             <TerminateRangeForm
+              key={`terminate-${form.patternId}`}
               patternId={form.patternId}
               today={today}
               onTerminated={patterns.reload}

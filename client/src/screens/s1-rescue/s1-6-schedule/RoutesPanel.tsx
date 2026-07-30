@@ -82,17 +82,18 @@ export function RoutesPanel() {
       </div>
 
       {form !== null ? (
-        <>
-          <RouteBuilder
-            form={form}
-            onChange={setForm}
-            onSaved={() => {
-              routes.reload();
-              setForm(null);
-            }}
-            onClose={() => setForm(null)}
-          />
-        </>
+        // Keyed by which route is open: the builder holds the drag state and the
+        // inline problem message locally, and neither belongs to the next route.
+        <RouteBuilder
+          key={form.routeId ?? 'new'}
+          form={form}
+          onChange={setForm}
+          onSaved={() => {
+            routes.reload();
+            setForm(null);
+          }}
+          onClose={() => setForm(null)}
+        />
       ) : (
         <Button
           variant="secondary"
@@ -315,25 +316,35 @@ function RouteBuilder({
         </ol>
       )}
 
-      {donors.error ? <ErrorBlock error={donors.error} onRetry={donors.reload} /> : null}
-
-      <ChoiceList
-        label={COPY.routeAdd}
-        items={addable.map((donor) => ({
-          id: donor.id,
-          label: donor.name,
-          ...(donor.address !== null ? { detail: donor.address } : {}),
-        }))}
-        value={null}
-        onSelect={(donorId) => {
-          const donor = addable.find((candidate) => candidate.id === donorId);
-          if (donor) {
-            setProblem(null);
-            onChange({ ...form, stops: addStop(form.stops, donor) });
-          }
-        }}
-        empty={COPY.routeAddEmpty}
-      />
+      {/* The store list owes all three states like any other (§3). Its EMPTY state
+          is a real sentence — "Every store is already on this route." — so showing
+          it while the stores are still arriving would state something false; the
+          skeleton stands in until the list is actually known. */}
+      {donors.error ? (
+        <ErrorBlock error={donors.error} onRetry={donors.reload} />
+      ) : donors.data === null ? (
+        donors.showLoading ? (
+          <SkeletonRows rows={3} label="Loading stores" />
+        ) : null
+      ) : (
+        <ChoiceList
+          label={COPY.routeAdd}
+          items={addable.map((donor) => ({
+            id: donor.id,
+            label: donor.name,
+            ...(donor.address !== null ? { detail: donor.address } : {}),
+          }))}
+          value={null}
+          onSelect={(donorId) => {
+            const donor = addable.find((candidate) => candidate.id === donorId);
+            if (donor) {
+              setProblem(null);
+              onChange({ ...form, stops: addStop(form.stops, donor) });
+            }
+          }}
+          empty={COPY.routeAddEmpty}
+        />
+      )}
 
       {problem ? (
         <p className="s16-problem" role="alert">

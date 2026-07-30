@@ -11,7 +11,7 @@
 // I24 makes the pattern edit the only thing that changes it — and the prompt is what
 // stops staff performing one while intending the other.
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   EmptyState,
@@ -23,7 +23,7 @@ import {
   SkeletonRows,
   StatusChip,
 } from '../../../components/index.ts';
-import { useAsyncData, useSession, useToast } from '../../../app/index.ts';
+import { useAsyncData, useSession } from '../../../app/index.ts';
 import type { RouteDetail, ShiftSummary } from '../../../api/shared.ts';
 import { PublishForm } from './PublishForm.tsx';
 import { RunEditor } from './RunEditor.tsx';
@@ -46,7 +46,6 @@ export interface RunsPanelProps {
 
 export function RunsPanel({ onEditPattern }: RunsPanelProps) {
   const { timezone } = useSession();
-  const toast = useToast();
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   /** The scope prompt for a repeating run, held until staff answers it. */
   const [scopeFor, setScopeFor] = useState<ShiftSummary | null>(null);
@@ -69,6 +68,16 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
     mode.kind === 'edit'
       ? (runs.data ?? []).find((run) => run.id === mode.shiftId) ?? null
       : null;
+
+  // A run being edited can leave the list under staff's feet — someone else
+  // cancelled it, or it moved out of the window. Without this the panel sits in
+  // edit mode with nothing to edit AND no primary action, since the Publish button
+  // is hidden while editing.
+  useEffect(() => {
+    if (mode.kind === 'edit' && runs.data !== null && editing === null) {
+      setMode({ kind: 'list' });
+    }
+  }, [mode, runs.data, editing]);
 
   const open = (run: ShiftSummary) => {
     if (needsEditScope(run)) setScopeFor(run);
@@ -104,7 +113,11 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
       ) : null}
 
       {mode.kind === 'edit' && editing !== null ? (
+        // Keyed by the run: the editor holds the note field's draft in local state,
+        // and switching runs without remounting would show one run's note over
+        // another's.
         <RunEditor
+          key={editing.id}
           run={editing}
           today={today}
           timeZone={timezone}
@@ -141,12 +154,11 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
               <Button
                 variant="primary"
                 onClick={() => {
-                  const patternId = scopeFor.recurrencePatternId;
-                  setScopeFor(null);
                   // Non-null by construction: the prompt only opens for a run that
                   // came from a pattern (`needsEditScope`).
+                  const patternId = scopeFor.recurrencePatternId;
+                  setScopeFor(null);
                   if (patternId !== null) onEditPattern(patternId);
-                  else toast.error(COPY.repeatEmpty);
                 }}
               >
                 {COPY.editThePattern}

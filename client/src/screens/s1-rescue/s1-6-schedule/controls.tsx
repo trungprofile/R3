@@ -13,8 +13,13 @@
 // None of them ever produces an instant. A day is `YYYY-MM-DD` and a time is
 // `HH:MM`, both pantry-local, both passed to the server as text (`logic.ts` header).
 
-import { formatMonthLabel, formatTimeLabel, monthGrid, WEEKDAY_INITIALS } from './logic.ts';
-import { WEEKDAY_NAMES } from './logic.ts';
+import {
+  WEEKDAY_INITIALS,
+  WEEKDAY_NAMES,
+  formatMonthLabel,
+  formatTimeLabel,
+  monthGrid,
+} from './logic.ts';
 
 // ---------------------------------------------------------------------------
 // A month of days
