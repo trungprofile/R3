@@ -350,21 +350,30 @@ describe('I25 — born CLAIMED only if ownerDefault is set AND eligible() holds'
 
   it('born OPEN for an instance overlapping a run the owner already holds', async () => {
     const driver = await makeDriver();
+    // The owned series starts LATER than the one under test, and that ordering is
+    // load-bearing rather than arbitrary. An occurrence is only minted if its window
+    // has not already begun, so a series starting at 09:00 silently loses today's
+    // instance whenever the suite runs between 09:00 and 10:00 pantry-local. With the
+    // owned series earlier, the second series then had a today instance overlapping
+    // nothing, was correctly born CLAIMED, and this test failed for one hour a day.
+    // Ordering it this way makes "the second series was minted today" imply "so was
+    // the first", at every time of day.
     const { pattern: first } = await makeUnmaterializedPattern({
-      weekdays: EVERY_DAY,
-      ownerDefaultId: driver.id,
-      startTime: '09:00',
-      endTime: '11:00',
-    });
-    await materializePattern(first.id);
-
-    // A second series in the same window. Every one of its instances overlaps an
-    // instance of the first that this driver now owns (I20).
-    const { pattern: second } = await makeUnmaterializedPattern({
       weekdays: EVERY_DAY,
       ownerDefaultId: driver.id,
       startTime: '10:00',
       endTime: '12:00',
+    });
+    await materializePattern(first.id);
+
+    // A second series overlapping the first's window (10:00–11:00 is shared). Every
+    // one of its instances overlaps an instance of the first that this driver now
+    // owns (I20).
+    const { pattern: second } = await makeUnmaterializedPattern({
+      weekdays: EVERY_DAY,
+      ownerDefaultId: driver.id,
+      startTime: '09:00',
+      endTime: '11:00',
     });
     const result = await materializePattern(second.id);
 
