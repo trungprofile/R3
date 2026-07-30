@@ -26,7 +26,7 @@ import {
   COPY,
   RANGE_OPEN_ENDED,
   RELEASE_CHOICES,
-  releaseCount,
+  releaseConfirmLabel,
   releaseRangeOptions,
 } from './detail.ts';
 import type { ReleaseChoice } from './detail.ts';
@@ -82,7 +82,6 @@ export function ReleaseDialog({ shift, busy, onCancel, onConfirm }: ReleaseDialo
   }
 
   const rangeOptions = releaseRangeOptions(shift, seriesRuns);
-  const count = releaseCount(shift, seriesRuns, choice, through);
 
   const request: ReleaseRequest =
     choice === 'ONE'
@@ -100,7 +99,7 @@ export function ReleaseDialog({ shift, busy, onCancel, onConfirm }: ReleaseDialo
       onCancel={onCancel}
       actions={
         <Button variant="danger" loading={busy} onClick={() => onConfirm(request)}>
-          {count > 1 ? COPY.releaseConfirmMany : COPY.releaseConfirmOne}
+          {releaseConfirmLabel(choice)}
         </Button>
       }
     >

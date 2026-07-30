@@ -50,6 +50,7 @@ import {
   shouldReloadAfter,
   stopLines,
   timeRange,
+  todayInZone,
 } from './detail.ts';
 import type { DetailViewer, ReassignCandidate, StopLine } from './detail.ts';
 import { ReassignDialog } from './ReassignDialog.tsx';
@@ -193,7 +194,11 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
   return (
     <div className="s13">
       <header className="s13__head">
-        <p className="s13__day">{dayHeading(shift.occurrenceDate)}</p>
+        {/* The pantry's day decides whether this run is "Today" (A120), not the
+            device's — `occurrenceDate` is stated in the pantry's frame. */}
+        <p className="s13__day">
+          {dayHeading(shift.occurrenceDate, todayInZone(timezone ?? undefined))}
+        </p>
         <h1 className="s13__title">{shift.routeName}</h1>
         <p className="s13__when">
           {timeRange(shift.startsAt, shift.endsAt, timezone ?? undefined)}
@@ -215,6 +220,12 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
         </p>
       ) : null}
 
+      {/* I10 makes CANCELLED terminal, so this is the first thing worth knowing
+          about the run — above its details rather than under them (§1.7). */}
+      {shift.status === 'CANCELLED' ? (
+        <EmptyState title={COPY.cancelled}>{COPY.cancelledBody}</EmptyState>
+      ) : null}
+
       <Card ariaLabel={COPY.whenLabel}>
         <dl className="s13__facts">
           <dt>{COPY.driverLabel}</dt>
@@ -234,7 +245,13 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
       <section className="s13__stops" aria-label={COPY.stopsLabel}>
         <h2 className="s13__section">{COPY.stopsLabel}</h2>
         {stops.lines.length === 0 ? (
-          <EmptyState title={COPY.noStops}>{COPY.noStopsBody}</EmptyState>
+          // A started run's list is frozen (I5), so "ask staff to add a store" is
+          // only true before the run started — afterwards nothing could reach it.
+          stops.source === 'SNAPSHOT' ? (
+            <EmptyState title={COPY.noStopsLive}>{COPY.noStopsLiveBody}</EmptyState>
+          ) : (
+            <EmptyState title={COPY.noStops}>{COPY.noStopsBody}</EmptyState>
+          )
         ) : (
           <>
             <p className="s13-label">
@@ -244,10 +261,6 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
           </>
         )}
       </section>
-
-      {shift.status === 'CANCELLED' ? (
-        <EmptyState title={COPY.cancelled}>{COPY.cancelledBody}</EmptyState>
-      ) : null}
 
       <div className="s13__actions">
         {capabilities.openRun !== null ? (

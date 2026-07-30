@@ -80,6 +80,10 @@ export const COPY = {
   stopsLive: "The driver's list, in the order they are working it.",
   noStops: 'This route has no stores yet.',
   noStopsBody: 'Staff add stores to a route on the schedule screen.',
+  /** A started run whose route was empty. Its list is frozen (I5), so telling
+   *  anyone to go and add a store would be false — it could not reach this run. */
+  noStopsLive: 'This run started with no stores on its route.',
+  noStopsLiveBody: 'There is nothing to pick up, and nothing to move.',
   storeNoteLabel: 'Store note',
   stopNoteLabel: 'Note for the pantry',
   statusToDo: 'To do',
@@ -192,6 +196,34 @@ function addDays(date: string, days: number): string {
   const shifted = parseCalendarDate(date);
   shifted.setDate(shifted.getDate() + days);
   return todayCalendarDate(shifted);
+}
+
+/**
+ * Today as a PANTRY-local calendar slot (A120), which is the frame every
+ * `occurrenceDate` is stated in.
+ *
+ * The device's date is not interchangeable with it. Two places on this screen would
+ * be wrong without this: the day heading, which would read "Tomorrow" for the
+ * pantry's today to anyone whose phone has already rolled over; and the reassign
+ * picker, which bounds a fetch by day and would ask for the wrong day's runs
+ * outright. Falls back to the device only when no zone has arrived yet, since there
+ * is nothing else to use.
+ */
+export function todayInZone(timeZone?: string, now: Date = new Date()): string {
+  if (!timeZone) return todayCalendarDate(now);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const part = (type: string): string =>
+    parts.find((candidate) => candidate.type === type)?.value ?? '';
+  const year = part('year');
+  const month = part('month');
+  const day = part('day');
+  if (year === '' || month === '' || day === '') return todayCalendarDate(now);
+  return `${year}-${month}-${day}`;
 }
 
 /** "August 4" — the short form used inside a sentence. */
@@ -396,16 +428,19 @@ export interface StopListView {
 /**
  * The stop list as this screen renders it.
  *
- * The run's own stops win whenever there are any: from `IN_PROGRESS` onward they
- * are the truth, including a reorder the driver made and a stop staff already
- * moved. The route template is what a not-yet-started run has instead.
+ * The run's own stops win whenever there IS a run — not merely when it has stops.
+ * I5 freezes the snapshot at start, so a started run with an empty list has an
+ * empty list: falling back to the template there would show stores the driver
+ * never got, because a route edited after the run started cannot reach those rows.
+ * The template is what a not-yet-started run has instead, and it is also the
+ * graceful answer for a viewer the run is not readable by.
  */
 export function stopLines(
   shift: ShiftDetail,
   run: RunDetail | null,
   capabilities: Pick<DetailCapabilities, 'canReassignStops'>,
 ): StopListView {
-  if (run && run.stops.length > 0) {
+  if (run) {
     const ordered = [...run.stops].sort((a, b) => a.position - b.position);
     return {
       source: 'SNAPSHOT',
@@ -465,20 +500,18 @@ export function releaseRangeOptions(
   ];
 }
 
-/** How many runs a chosen scope will hand back, so the confirm can be honest about
- *  whether it is one or several. Counts this run plus the days inside the range. */
-export function releaseCount(
-  shift: ShiftSummary,
-  seriesRuns: readonly ShiftSummary[],
-  choice: ReleaseChoice,
-  through: string,
-): number {
-  if (choice === 'ONE') return 1;
-  const options = releaseRangeOptions(shift, seriesRuns).filter(
-    (option) => option.value !== RANGE_OPEN_ENDED,
-  );
-  if (through === RANGE_OPEN_ENDED) return 1 + options.length;
-  return 1 + options.filter((option) => option.value <= through).length;
+/**
+ * The confirm button's words, keyed to the SCOPE and never to a count.
+ *
+ * A count would have to come from the second request that reads the series' days,
+ * and when that request fails the count reads as 1 — so a "this and future" release
+ * would offer a button saying "Release run" and then hand back every run ahead of
+ * it. That is the one outcome worth ruling out on a destructive confirm, and the
+ * scope is known locally and always right. Which days are involved is already on
+ * screen: the range control lists them.
+ */
+export function releaseConfirmLabel(choice: ReleaseChoice): string {
+  return choice === 'ONE' ? COPY.releaseConfirmOne : COPY.releaseConfirmMany;
 }
 
 // ---------------------------------------------------------------------------

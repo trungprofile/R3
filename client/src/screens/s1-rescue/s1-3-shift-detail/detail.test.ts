@@ -19,12 +19,13 @@ import {
   dayHeading,
   monthDay,
   reassignCandidates,
-  releaseCount,
+  releaseConfirmLabel,
   releaseRangeOptions,
   stopLines,
   stopStatusLabel,
   timeRange,
   todayCalendarDate,
+  todayInZone,
 } from './detail.ts';
 import type { DetailViewer } from './detail.ts';
 import type {
@@ -245,6 +246,24 @@ describe('the stop list', () => {
     expect(view.lines[0]?.disposition).toBe('PENDING');
   });
 
+  it('stays on the frozen snapshot when a started run has no stops (I5)', () => {
+    // The route may have gained a store after the run started. That edit cannot
+    // reach these rows, so falling back to the template would show the driver
+    // stops they never had.
+    const started = shift({ status: 'IN_PROGRESS' });
+    const view = stopLines(started, run({ stops: [] }), { canReassignStops: true });
+    expect(view.source).toBe('SNAPSHOT');
+    expect(view.lines).toEqual([]);
+  });
+
+  it('falls back to the template when the run itself could not be read', () => {
+    // A viewer who is neither the owner nor staff still sees what the route is.
+    const started = shift({ status: 'IN_PROGRESS' });
+    const view = stopLines(started, null, { canReassignStops: false });
+    expect(view.source).toBe('TEMPLATE');
+    expect(view.lines).toHaveLength(2);
+  });
+
   it('keeps a moved stop on the list, struck through and out of every action', () => {
     const started = shift({ status: 'IN_PROGRESS' });
     const view = stopLines(started, run({ stops: [stop({ disposition: 'REASSIGNED' })] }), {
@@ -410,10 +429,13 @@ describe('the release range', () => {
     expect(releaseRangeOptions(repeating, [])).toHaveLength(1);
   });
 
-  it('counts what a scope will hand back', () => {
-    expect(releaseCount(repeating, series, 'ONE', RANGE_OPEN_ENDED)).toBe(1);
-    expect(releaseCount(repeating, series, 'FUTURE', RANGE_OPEN_ENDED)).toBe(3);
-    expect(releaseCount(repeating, series, 'FUTURE', '2026-08-11')).toBe(2);
+  it('never labels a "this and future" release as one run', () => {
+    // The days come from a second request. When it fails there is nothing to count,
+    // and a singular button in front of a release that hands back every run ahead
+    // is the one wrong answer worth pinning: the scope decides the words.
+    expect(releaseConfirmLabel('ONE')).toBe(COPY.releaseConfirmOne);
+    expect(releaseConfirmLabel('FUTURE')).toBe(COPY.releaseConfirmMany);
+    expect(releaseConfirmLabel('FUTURE')).not.toBe(COPY.releaseConfirmOne);
   });
 });
 
@@ -447,6 +469,19 @@ describe('when a run is', () => {
 
   it('shapes today like the calendar slots the server sends', () => {
     expect(todayCalendarDate(new Date(2026, 7, 4))).toBe('2026-08-04');
+  });
+
+  it('reads today in the pantry zone, not the device one (A120)', () => {
+    // 03:00 UTC on the 5th is still 23:00 on the 4th at the pantry. A device that
+    // has rolled over must not make the pantry's today read as yesterday — the day
+    // heading and the "out today" driver picker both hang off this.
+    const justAfterUtcMidnight = new Date('2026-08-05T03:00:00Z');
+    expect(todayInZone('America/New_York', justAfterUtcMidnight)).toBe('2026-08-04');
+    expect(todayInZone('UTC', justAfterUtcMidnight)).toBe('2026-08-05');
+  });
+
+  it('falls back to the device day only when no zone has arrived', () => {
+    expect(todayInZone(undefined, new Date(2026, 7, 4))).toBe('2026-08-04');
   });
 });
 

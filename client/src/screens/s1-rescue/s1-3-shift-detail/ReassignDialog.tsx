@@ -27,7 +27,7 @@ import {
 } from '../../../components/index.ts';
 import type { ShiftSummary } from '../../../api/shared.ts';
 import { fetchShiftsOn } from './api.ts';
-import { COPY, reassignCandidates, todayCalendarDate } from './detail.ts';
+import { COPY, reassignCandidates, todayInZone } from './detail.ts';
 import type { ReassignCandidate, StopLine } from './detail.ts';
 
 export interface ReassignDialogProps {
@@ -48,9 +48,11 @@ export function ReassignDialog({
   const { timezone } = useSession();
   const [picked, setPicked] = useState<ReassignCandidate | null>(null);
 
-  // Today's runs. The device's date only bounds what is fetched; every candidate is
-  // checked again by the server, which is where the rule lives.
-  const today = todayCalendarDate();
+  // Today's runs, in the PANTRY's day (A120) — "out today" is a fact about the
+  // pantry's calendar, and a device that has already rolled over midnight would
+  // otherwise ask for tomorrow's runs and find nobody. Every candidate is checked
+  // again by the server, which is where the rule lives.
+  const today = todayInZone(timezone ?? undefined);
   const load = useCallback((signal: AbortSignal) => fetchShiftsOn(today, signal), [today]);
   const state = useAsyncData<ShiftSummary[]>(load);
 
