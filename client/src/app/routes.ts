@@ -20,6 +20,10 @@ export type ScreenId =
   | 'reschedule' // S1.7
   | 'admin' // S1.8
   | 'inbox' // S1.9
+  | 'receive-runs' // S2.1b
+  | 'receive-stop' // S2.2
+  | 'receive-done' // S2.2b
+  | 'donation' // S2.3
   | 'report' // S3.1
   | 'metrics'; // S3.2
 
@@ -44,8 +48,8 @@ export interface RouteDef {
   fullScreen?: boolean;
 }
 
-/** Bump as phases ship. Phase 1 is the rescue loop + scheduling (build plan §2). */
-export const CURRENT_PHASE = 1;
+/** Bump as phases ship. Phase 2 adds receiving (`product-requirement.md §4`). */
+export const CURRENT_PHASE = 2;
 
 export const ROUTES: readonly RouteDef[] = [
   { id: 'login', path: '/login', spec: 'S1.1', phase: 1, fullScreen: true },
@@ -71,12 +75,54 @@ export const ROUTES: readonly RouteDef[] = [
   },
   { id: 'admin', path: '/admin', spec: 'S1.8', phase: 1, requires: { tier: 'ADMIN' } },
   { id: 'inbox', path: '/inbox', spec: 'S1.9', phase: 1 },
+
+  // Phase 2 — receiving. Canonical on the shared tablet in landscape; the
+  // responsive matrix marks weight entry and unscheduled donation `n/a` on a
+  // phone, so these are the only screens in the app with no phone target.
+  //
+  // `anyDuty: ['RECEIVE']` throughout: receiving is a duty, and I2 makes duties
+  // set membership, so an Admin without it is not a receiver.
+  {
+    id: 'receive-runs',
+    path: '/receive',
+    spec: 'S2.1b',
+    phase: 2,
+    requires: { anyDuty: ['RECEIVE'] },
+  },
+  {
+    id: 'receive-stop',
+    path: '/receive/:shiftId/stops/:stopId',
+    spec: 'S2.2',
+    phase: 2,
+    requires: { anyDuty: ['RECEIVE'] },
+  },
+  {
+    id: 'receive-done',
+    path: '/receive/:shiftId/done',
+    spec: 'S2.2b',
+    phase: 2,
+    requires: { anyDuty: ['RECEIVE'] },
+  },
+  {
+    id: 'donation',
+    path: '/donations/new',
+    spec: 'S2.3',
+    phase: 2,
+    requires: { anyDuty: ['RECEIVE'] },
+  },
+
   { id: 'report', path: '/report', spec: 'S3.1', phase: 3, requires: { anyDuty: ['REPORT'] } },
   { id: 'metrics', path: '/metrics', spec: 'S3.2', phase: 3, requires: { tier: 'ADMIN' } },
 ];
 
 /** Where a signed-in user lands. The board is the adoption centerpiece (S1.2)
- *  and the one screen everyone can open. */
+ *  and the one screen everyone can open.
+ *
+ *  `ui-ux-spec.md §4` wants a receiver at the shared tablet to land on weight entry
+ *  instead ("Login goes straight to weight entry, Phase 2"), and that redirect lands
+ *  WITH the S2.x screens rather than ahead of them: the tablet has no nav at all
+ *  (`nav.tsx`), so pointing it at a screen the registry does not yet hold would
+ *  replace a working board with a placeholder whose only affordance is Logout. */
 export const HOME_PATH = '/board';
 
 export type RouteParams = Readonly<Record<string, string>>;
