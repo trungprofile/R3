@@ -13,29 +13,37 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **4b — all 4 lanes RESUMED and running as of 2026-07-30**, after the spend limit stopped them mid-write on 2026-07-29. Each inherited a preserved commit and was briefed that the inherited code is untested. **Do not respawn any of them; the worktrees in `git worktree list` are the running lanes.** Next lead action is to await the four `reports/4b-*.md`, then merge in report order. Wave 4a is PROMOTED and closed; 4b is the last of Phase 1's build scope |
-| Wave status | **Wave 4a promoted 2026-07-29 at `697e01b`, pushed `233fc22..697e01b`.** All four §5.3 criteria met: `gate.sh` green both halves, **`doc-qa` round 2 clean — zero findings**, all five lanes reported `complete`, and every `Assumed:` (A117–A129) recorded below. All five worktrees and branches removed; `git worktree list` shows only the main checkout. Two lead chores have landed since, each gated and doc-qa'd on its own: **A120** (the pantry timezone, `c085738`) and **the segmented-control promotion** (`3b6f237`) |
+| Current wave | **NONE — Wave 4b is PROMOTED and Phase 1's build scope is CLOSED.** All four lanes merged clean in report order, both halves of the gate green, all four worktrees and branches removed (`git worktree list` shows only the main checkout). §5.4's remaining act is the PR to `main`. **Do not start Wave 5; there is no Wave 5.** Phase 2 is a new plan, and the human's instruction on 2026-07-30 was to stop when this wave finished |
+| Wave status | **Wave 4b promoted 2026-07-30. All four §5.3 criteria met:** `gate.sh` green both halves, **`doc-qa` clean on the second pass — zero findings**, all four lanes reported `complete`, and every `Assumed:` (A132–A155) recorded below. Merged in report order, `--no-ff`, no conflict in any of the four. Wave 4a was promoted 2026-07-29 at `697e01b` |
 | Branch | `phase-1` |
-| Loop armed | **yes** — restarted 2026-07-28 on the human's go-ahead; resumed 2026-07-29 |
-| doc-qa (gate part 2) | **Clean on everything committed.** Wave 4a round 2 zero findings; the segmented promotion clean with one non-blocking note (the §3 bullet claimed S1.8 was tabbed when S1.8's prose said only "sub-screen") — **fixed in the same commit rather than deferred**, by giving S1.8 a Layout line |
-| Consecutive gate failures | 0. Worth noting for the next lead: **nearly every `doc-qa` finding this session came from the lead's own changes, not from a lane.** Keep `doc-qa` on lead chores, not only on waves — the segmented promotion is the latest example, and it was a lead chore |
+| Loop armed | **NO — stopped 2026-07-30 on the human's instruction** ("stop when finish current wave, credit running out"), with Phase 1's build scope complete. Restarting it is a human's call |
+| doc-qa (gate part 2) | **Clean on everything committed.** Wave 4b took **one fix round of three allowed**: three findings, all real, all fixed in `e754532`, then verified clean. Wave 4a round 2 was zero findings |
+| Consecutive gate failures | 0. **Two of Wave 4b's three findings were the lead's own work** — the incomplete pantry-day threading in a commit the lead wrote *and* asked doc-qa to check, and a stale `shared/` comment. The pattern from every wave holds: **keep `doc-qa` on lead chores, not only on lanes.** The third came from a lane reporting an asymmetry instead of working around it |
 | Halted | **no — H4 cleared 2026-07-28.** Both questions answered by the human; see H4 for what each changed |
 
 ### The one thing the next lead must do first
 
-> **THE LOOP STOPS WHEN 4b IS PROMOTED — the human's instruction, 2026-07-30, credit running out.**
-> Finish 4b properly (merge in report order, both halves of the gate, `main.tsx` wiring, push, remove
-> the worktrees) and then **stop**. Do **not** start §5.4, do not open the PR, do not re-run `ui-test`,
-> do not begin Phase 2. A green 4b is where this session ends, not where the next task begins.
+> **NOTHING. Phase 1's build scope is closed and the loop is stopped.** Do not spawn a wave, do not
+> start Phase 2, and do not "finish" anything in this file by writing code. The PR to `main` is open
+> and **must not be merged by an agent** — §5.4 says open one and stop.
 >
-> If credit runs out mid-merge, the priority order is: **commit what is merged, then push it**, then
-> write here what is left. A pushed half-merge that is honestly labelled costs the next lead an hour;
-> an unpushed one costs it everything.
+> If you were invoked to continue Phase 1: it is done, and the remaining items below are **a human's
+> to do**, not a wave's. Read "What Phase 1 shipped without" and take instructions from the human.
 
-**All four 4b lanes are running (resumed 2026-07-30). The next action is to collect their reports and
-merge.** Do not spawn anything. If you arrive here with no memory of the wave: four worktrees on disk
-means four live lanes, and each already holds a commit of preserved work — a respawn would duplicate
-the screen and throw away everything the lane had read.
+**Wave 4b closed Phase 1's build scope on 2026-07-30.** All nine S1.x screens exist, are registered in
+`main.tsx`'s `SCREENS`, and are reachable through the shell.
+
+### §5.4 — checked item by item, 2026-07-30
+
+| Criterion | Status |
+| :---- | :---- |
+| Caps 1–11, 13 (minus truck-inbound) and 17 built | **yes**, with one edge: accounts/donors/trucks/categories (S1.8), scheduling incl. recurring (S1.6), shared board (S1.2), claim/self-select/assign (S1.2 + S1.6), availability (S1.4), release + bulk release (S1.3/S1.4), reschedule (S1.7), pickup execution with route + truck selection (S1.5), directional notes both ways (S1.3), lifecycle/reminder/at-risk notifications (S1.9 + `jobs/`), install/onboarding (`pwa/`). The edge is **A66**, the `apple-touch-icon` PNG — a binary asset only a human can produce |
+| S1.1–S1.9 exist and are reachable through the shell | **yes.** S1.5 is reached only through S1.3 (A139), which `doc-qa` confirmed matches `ui-ux-spec.md §4`'s own wording — Pickup is reached "while a route is active", not from the nav |
+| The gate passes on `phase-1` | **yes**, both halves — eight mechanical checks green, `doc-qa` zero findings |
+| No stubbed service, no `TODO` in `server/src/services/` | **yes** — both greps clean |
+| `phase-1-state.md` lists no blocked lane | **yes** — every lane of every wave reported `complete` |
+
+**Then: push `phase-1`, open ONE PR to `main`, stop. Do not merge it.** Done 2026-07-30.
 
 **Wave 4a is closed**; nothing from it is outstanding.
 
@@ -1190,10 +1198,30 @@ stores were still loading.
 | :---- | :---- | :---- |
 | **A138** | **The board's day is the PANTRY's, not the device's.** New `client/src/app/pantry-day.ts` (`todayInZone`, `deviceToday`), consumed by S1.2 for its `?from=` fetch bound *and* its day headings. This **fixes a real defect in an already-promoted Wave-4a screen**: A121 had the board on the device date, justified by "the client has no access to `app_config.timezone`" — which stopped being true when A120 put the pantry zone on the session. Found because S1.3's lane computed the pantry day and said so. | **RESOLVED at `fcaa4f0` + `e754532`.** The first commit fixed the fetch bound and left the *headings* still defaulting to the device day; `doc-qa` caught that residue — the lead had asked it to check exactly that, and it was still worth asking |
 
-## What still stands between a green 4b and §5.4
+## What Phase 1 shipped without — all three are a human's to close
 
-Recorded here because a green 4b gate will *look* like Phase 1 finishing, and it is not. §5.4 has five
-criteria; these are the ones known not to hold:
+These do not fail §5.4 and they did not block the PR. They are the honest edges of a green gate, and
+**none can be closed by an agent**: the first needs a browser, the second needs a person's judgement
+about words, the third needs a binary asset.
+
+1. **No rendered DOM has ever been confirmed.** The gate proves the code typechecks and its units
+   behave; it cannot prove a screen renders. `ui-tester` had no browser tool available in its session
+   and **said so rather than fabricating a click-through**, so it tested the live HTTP surface and read
+   source. There has been **no visual layout check, no console-on-load, no real keyboard focus test, no
+   200%-zoom pass** on any of the nine screens. The app is runnable (`npm run dev`), so the blocker is
+   gone — this is now just work nobody has done. **Do this first if you do anything.**
+2. **Nine screens of user-visible copy have never been read by a human** (A6/A45/A70/A92/A107/A129,
+   A137, A155). S1.6 alone is ~90 sentences. The load-bearing ones are named in the individual ledger
+   entries — S1.7's release-no-replacement sentence and its three cannot-be-moved explanations are the
+   ones where a wrong word teaches a driver something false about what the system just did.
+3. **A66 — the `apple-touch-icon` PNG.** `client/public/` holds only SVGs, so the installed iOS icon is
+   the browser's screenshot fallback.
+
+### The record of what a green 4b did not mean (kept — it was right)
+
+This section was written *before* 4b merged, to stop a green gate from reading as Phase 1 being
+finished. It was correct to write, and item 1 below is the one that turned out to matter most: the dev
+script it demanded is what exposed the `IdlePrompt` blocker four green gates had missed.
 
 1. **~~No dev script~~ — CLOSED 2026-07-29 at `6180b52`. The app runs, and running it found a blocker.**
    `npm run dev` (→ `scripts/dev.sh`) brings up Express + the scheduler on :3000 and Vite on :5173 with
