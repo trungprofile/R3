@@ -43,7 +43,10 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 | No stubbed service, no `TODO` in `server/src/services/` | **yes** — both greps clean |
 | `phase-1-state.md` lists no blocked lane | **yes** — every lane of every wave reported `complete` |
 
-**Then: push `phase-1`, open ONE PR to `main`, stop. Do not merge it.** Done 2026-07-30.
+**Then: push `phase-1`, open ONE PR to `main`, stop. Do not merge it.** Done 2026-07-30 —
+**[PR #1](https://github.com/trungprofile/R3/pull/1)**, 117 commits, open and awaiting a human.
+**No agent merges it.** Its body names the three things Phase 1 shipped without, so a reviewer meets
+them before the diff rather than after.
 
 **Wave 4a is closed**; nothing from it is outstanding.
 
