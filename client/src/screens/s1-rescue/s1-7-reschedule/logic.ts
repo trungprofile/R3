@@ -538,6 +538,19 @@ export function isReleaseConflict(error: unknown): boolean {
 }
 
 /**
+ * Whether a refusal means the RUN changed rather than the request being wrong.
+ *
+ * "Only a run that has not started can be moved.", "That run just changed. Reload and
+ * try again." and a 404 all describe a row that no longer matches what is on screen,
+ * so the screen re-reads it. A 400 from `resolveWindow` describes the form instead —
+ * re-reading then would throw away nothing and fetch for no reason.
+ */
+export function runMayHaveChanged(error: unknown): boolean {
+  const kind = toApiError(error).kind;
+  return kind === 'conflict' || kind === 'not-found';
+}
+
+/**
  * What to show when a move is refused.
  *
  * S1.7 fixes the conflict wording, and `rescheduleConflictMessage()` in

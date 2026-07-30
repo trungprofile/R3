@@ -34,6 +34,7 @@ import {
   moveRefusal,
   moveSummary,
   movedMessage,
+  runMayHaveChanged,
   sameWindow,
   timeOptions,
   todayInZone,
@@ -348,6 +349,15 @@ describe('the pre-confirm conflict', () => {
     // S1.7's voice: the cause and the consequence in one breath.
     expect(sentence).toContain('Karen marked themselves away then.');
     expect(sentence).toContain('releases their run back to the board');
+  });
+
+  it('re-reads the run only when the refusal was about the run', () => {
+    // "Only a run that has not started can be moved." and "That run just changed."
+    // are 409s about the row; a 400 from `resolveWindow` is about the form, and
+    // re-fetching then would be a request for nothing.
+    expect(runMayHaveChanged(conflict409('That run just changed.'))).toBe(true);
+    expect(runMayHaveChanged(new ApiError('not-found', { status: 404 }))).toBe(true);
+    expect(runMayHaveChanged(new ApiError('invalid', { status: 400 }))).toBe(false);
   });
 
   it('falls back to the plain message when the server sent no sentence', () => {

@@ -51,6 +51,7 @@ import {
   moveRefusal,
   moveSummary,
   movedMessage,
+  runMayHaveChanged,
   timeOptions,
   todayInZone,
   validateMove,
@@ -154,10 +155,10 @@ function MoveRun({ run, timeZone, onStale, onDone }: MoveRunProps) {
       }
       setPending(null);
       setProblem(failureMessage(cause));
-      // Anything else is the run having changed underneath — started, cancelled, or
-      // moved by someone else. Re-read it so the screen stops describing a run that
-      // is no longer there.
-      onStale();
+      // A refusal about the RUN — started, cancelled, or moved by someone else — means
+      // the screen is describing a row that no longer exists in that shape, so re-read
+      // it. A refusal about the REQUEST leaves the run alone and needs no fetch.
+      if (runMayHaveChanged(cause)) onStale();
     } finally {
       setSaving(false);
     }
