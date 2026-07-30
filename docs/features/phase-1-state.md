@@ -23,6 +23,15 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 ### The one thing the next lead must do first
 
+> **THE LOOP STOPS WHEN 4b IS PROMOTED — the human's instruction, 2026-07-30, credit running out.**
+> Finish 4b properly (merge in report order, both halves of the gate, `main.tsx` wiring, push, remove
+> the worktrees) and then **stop**. Do **not** start §5.4, do not open the PR, do not re-run `ui-test`,
+> do not begin Phase 2. A green 4b is where this session ends, not where the next task begins.
+>
+> If credit runs out mid-merge, the priority order is: **commit what is merged, then push it**, then
+> write here what is left. A pushed half-merge that is honestly labelled costs the next lead an hour;
+> an unpushed one costs it everything.
+
 **All four 4b lanes are running (resumed 2026-07-30). The next action is to collect their reports and
 merge.** Do not spawn anything. If you arrive here with no memory of the wave: four worktrees on disk
 means four live lanes, and each already holds a commit of preserved work — a respawn would duplicate
