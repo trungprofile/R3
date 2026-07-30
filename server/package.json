@@ -23,6 +23,8 @@
   "scripts": {
     "migrate:up": "node-pg-migrate up -m migrations --migration-file-language sql -j sql",
     "codegen": "kysely-codegen --dialect postgres --out-file src/db/types.ts --log-level error",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts"
   }
 }

@@ -13,6 +13,28 @@ import { Button, Modal } from '../components/index.ts';
 import { duration } from '../tokens/index.ts';
 import { useSession } from './SessionProvider.tsx';
 
+/**
+ * `setTimeout` stores its delay in a 32-bit signed integer, so a delay above this
+ * **fires immediately** instead of waiting — it does not throw, and nothing warns
+ * in a browser.
+ *
+ * This is not a theoretical limit here, it is the common case: a Volunteer on their
+ * own phone gets a 30-day window (`session.ts`'s `computeExpiry`), which is 2.59e9
+ * ms and comfortably over the ceiling. Left unclamped, "Still here?" appeared within
+ * milliseconds of signing in, on every load, counting down from 2,591,970 seconds —
+ * and answering it re-read a session that was still 30 days out, so it came straight
+ * back. Staff (7 days) and any shared device (30 min idle / 12 h cap) stayed under
+ * the ceiling, which is why it hid: it broke for exactly the driver-on-a-phone
+ * persona the rescue loop is canonical for, and for nobody else.
+ */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
+/** How long to sleep before re-checking. Capped so the wait is re-armed in chunks
+ *  rather than overflowing; each wake recomputes against the real clock. */
+export function idleTimerDelay(msUntilPrompt: number): number {
+  return Math.min(msUntilPrompt, MAX_TIMEOUT_MS);
+}
+
 export function IdlePrompt() {
   const { status, expiresAt, refresh, signOut } = useSession();
   const [showing, setShowing] = useState(false);
@@ -23,14 +45,23 @@ export function IdlePrompt() {
       setShowing(false);
       return;
     }
-    const msUntilPrompt = expiresAt - Date.now() - duration.idlePromptMs;
-    if (msUntilPrompt <= 0) {
-      setShowing(true);
-      return;
-    }
-    setShowing(false);
-    const timer = setTimeout(() => setShowing(true), msUntilPrompt);
-    return () => clearTimeout(timer);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Re-arms itself until the prompt is actually due. Recomputing the remaining
+    // time on each wake also means a laptop that slept through several chunks
+    // corrects on the next one instead of drifting.
+    const arm = () => {
+      const msUntilPrompt = expiresAt - Date.now() - duration.idlePromptMs;
+      if (msUntilPrompt <= 0) {
+        setShowing(true);
+        return;
+      }
+      setShowing(false);
+      timer = setTimeout(arm, idleTimerDelay(msUntilPrompt));
+    };
+    arm();
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+    };
   }, [status, expiresAt]);
 
   // Count down while the prompt is up, and when it runs out let the server have

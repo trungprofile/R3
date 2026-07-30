@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { atLeastTier, canSee, hasAnyDuty, hasDuty, tierRank } from './access.ts';
+import { idleTimerDelay } from './IdlePrompt.tsx';
 import { navItemsFor } from './nav.tsx';
 import { buildPath, matchPath, resolvePath, ROUTES } from './routes.ts';
 import type { CurrentUser } from '../api/session.ts';
@@ -140,5 +141,26 @@ describe('navigation derived from tier and duty (UI §4)', () => {
       expect(ids(person, 'phone')).toContain('inbox');
       expect(ids(person, 'desktop')).toContain('inbox');
     }
+  });
+});
+
+describe('idle-prompt timer', () => {
+  // Regression: the un-clamped version passed `expiresAt - now - 30s` straight to
+  // setTimeout. For a Volunteer on a personal phone that is ~30 days, which
+  // overflows setTimeout's 32-bit delay and fires IMMEDIATELY rather than throwing
+  // — so "Still here?" appeared seconds after every sign-in.
+  const MAX = 2_147_483_647;
+
+  it('caps a delay that would overflow setTimeout', () => {
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000 - 30_000;
+    expect(thirtyDays).toBeGreaterThan(MAX);
+    expect(idleTimerDelay(thirtyDays)).toBe(MAX);
+  });
+
+  it('leaves a delay that fits alone, so short windows still warn on time', () => {
+    // A shared device idles out in 30 minutes; the warning must land at 29:30, not
+    // be rounded to anything.
+    const thirtyMinutes = 30 * 60 * 1000 - 30_000;
+    expect(idleTimerDelay(thirtyMinutes)).toBe(thirtyMinutes);
   });
 });
