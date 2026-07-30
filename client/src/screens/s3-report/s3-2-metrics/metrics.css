@@ -1,0 +1,358 @@
+/* S3.2 — Admin metrics.
+ *
+ * Tokens only (`ui-ux-spec.md §2`): no literal hex, and no literal px where a
+ * spacing or size token exists. The numbers that do appear are §1's — the 44px
+ * minimum target with an 8px gap between adjacent ones, 18px body, relative units
+ * so 200% zoom does not break a table.
+ *
+ * Class prefix `s32-` because this file ships beside the screen rather than in
+ * `components/`, and two screens must never fight over a name.
+ *
+ * CANONICAL DEVICE: the shared desktop, and the responsive matrix marks metrics
+ * `n/a` on phone and `usable` on tablet. So there is no phone layout here on
+ * purpose — but "canonical on desktop" is not licence to break on a tablet, so
+ * every row wraps and every table scrolls inside its own box rather than pushing
+ * the page sideways.
+ *
+ * The bars are hand-rolled CSS widths. S3.2 asks for "simple bar/line, no heavy
+ * dashboard", and Phase 3 added no dependency — a charting package for a dozen
+ * horizontal bars would be the heavy dashboard the same sentence rules out.
+ */
+
+.s32 {
+  max-width: 68rem;
+}
+
+.s32-title {
+  font-size: var(--font-h1);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.s32-heading {
+  font-size: var(--font-h2);
+  margin: 0;
+}
+
+.s32-subheading {
+  font-size: var(--font-h3);
+  margin: var(--space-6) 0 var(--space-3) 0;
+}
+
+.s32-lede {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0 0 var(--space-4) 0;
+  max-width: 44rem;
+}
+
+.s32-note {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.s32-panel {
+  margin-top: var(--space-5);
+}
+
+/* Heading and the panel's one primary action on one line, wrapping rather than
+ * shrinking the button below §1.2's floor. */
+.s32-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+/* --- The period, shared by both tabs -------------------------------------- */
+
+.s32-period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  margin-bottom: var(--space-5);
+}
+
+.s32-period__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.s32-period__label {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* §1.2: 8px minimum between adjacent targets. */
+.s32-period__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.s32-period__range {
+  font-size: var(--font-h3);
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  flex: 1 1 16rem;
+}
+
+/* --- Tables ---------------------------------------------------------------
+ *
+ * The table scrolls inside its own box. A page that scrolls sideways loses the
+ * left-hand column, which on both of these tables is the only thing naming the
+ * row.
+ */
+
+.s32-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.s32-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-body);
+  background: var(--surface);
+}
+
+.s32-table th,
+.s32-table td {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.s32-table thead th {
+  background: var(--surface-paper);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* The column's own one-line explainer. The two figures either side of the key
+ * data boundary (PRD §3) are four words apart in the header; this is what stops
+ * them being read as the same number. */
+.s32-th__hint {
+  display: block;
+  font-size: var(--font-label);
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: normal;
+  max-width: 12rem;
+}
+
+.s32-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* §2: numbers are tabular, so a column of them lines up digit under digit. */
+.s32-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.s32-total td {
+  border-top: 2px solid var(--border);
+  font-weight: 700;
+  background: var(--surface-paper);
+}
+
+/* A store with no earlier figure. Muted, and never a warning colour: no prior
+ * period is an absence of information, not a problem (`shared/src/metrics.ts`). */
+.s32-trend--none {
+  color: var(--text-muted);
+}
+
+/* --- Bars ----------------------------------------------------------------- */
+
+.s32-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+
+.s32-bar {
+  display: grid;
+  grid-template-columns: minmax(6rem, 12rem) 1fr;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.s32-bar__name {
+  font-size: var(--font-label);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* The full-width track a bar is drawn against, so short bars still read as a
+ * share of the largest rather than as a bar of unknown scale. */
+.s32-bar__track {
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  height: var(--space-6);
+  overflow: hidden;
+}
+
+.s32-bar__fill {
+  display: flex;
+  height: 100%;
+}
+
+/* The split that makes the boundary visible: the part that goes to the food
+ * bank, and the part that does not. */
+.s32-bar__reported {
+  background: var(--success);
+  height: 100%;
+}
+
+.s32-bar__unreported {
+  background: var(--border);
+  height: 100%;
+}
+
+.s32-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-label);
+  color: var(--text);
+}
+
+.s32-legend__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.s32-legend__swatch {
+  width: var(--space-4);
+  height: var(--space-4);
+  border-radius: var(--space-1);
+  border: 1px solid var(--border);
+}
+
+.s32-legend__swatch--reported {
+  background: var(--success);
+}
+
+.s32-legend__swatch--unreported {
+  background: var(--border);
+}
+
+/* --- Coverage counts ------------------------------------------------------ */
+
+/* Two cards, never one. Rolled together the count says nothing about what to do;
+ * split, it is either a scheduling problem or a conversation with one person. */
+.s32-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-4) 0 var(--space-6) 0;
+}
+
+.s32-count {
+  flex: 1 1 18rem;
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+}
+
+.s32-count__label {
+  font-size: var(--font-h3);
+  font-weight: 700;
+  margin: 0;
+}
+
+.s32-count__value {
+  font-size: var(--font-numeric);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: var(--space-1) 0;
+}
+
+.s32-count__rate,
+.s32-count__means {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* --- Tallies (by driver, by route) ---------------------------------------- */
+
+.s32-tallies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+}
+
+.s32-tally {
+  flex: 1 1 20rem;
+}
+
+.s32-tally__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.s32-tally__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  /* Not a target — nothing on this tab is editable — but it reads beside the
+   * 56px rows elsewhere in R3, so it keeps the same rhythm. */
+  min-height: var(--target-min);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.s32-tally__list li:last-child .s32-tally__row {
+  border-bottom: 0;
+}
+
+.s32-tally__name {
+  font-weight: 600;
+}
+
+.s32-tally__count {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Filters -------------------------------------------------------------- */
+
+.s32-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.s32-filter__label {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2) 0;
+}
