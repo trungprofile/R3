@@ -13,7 +13,7 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **4b — all 4 lanes spawned 2026-07-29 (2nd attempt; the 1st left nothing on disk). Wave 4a is PROMOTED and closed.** 4b is the last of Phase 1's build scope. Run `git worktree list` first — it is the only lane↔branch mapping |
+| Current wave | **4b — all 4 lanes SPAWNED AND STOPPED by the spend limit; work preserved, none reported. RESUME them, do not respawn.** See "THE 4b STOP" below for the agent ids and what each was mid-way through. Wave 4a is PROMOTED and closed; 4b is the last of Phase 1's build scope |
 | Wave status | **Wave 4a promoted 2026-07-29 at `697e01b`, pushed `233fc22..697e01b`.** All four §5.3 criteria met: `gate.sh` green both halves, **`doc-qa` round 2 clean — zero findings**, all five lanes reported `complete`, and every `Assumed:` (A117–A129) recorded below. All five worktrees and branches removed; `git worktree list` shows only the main checkout. Two lead chores have landed since, each gated and doc-qa'd on its own: **A120** (the pantry timezone, `c085738`) and **the segmented-control promotion** (`3b6f237`) |
 | Branch | `phase-1` |
 | Loop armed | **yes** — restarted 2026-07-28 on the human's go-ahead; resumed 2026-07-29 |
@@ -65,12 +65,41 @@ needs a binary asset. **This is a human's to produce**, which is why four waves 
 **PARTIALLY SPAWNED 2026-07-29 from `1856e33`.** Four lanes planned, all `isolation: worktree`, all
 branching from `phase-1`'s HEAD. Recorded *before* any lane reports, per §5.6.
 
-| Lane | Screen | Worktree branch | Reported | Merged? |
-| :---- | :---- | :---- | :---- | :---- |
-| `s1-3-shift-detail` | S1.3 Shift detail | see `git worktree list` | no | no |
-| `s1-6-schedule` | S1.6 Shift & route scheduling | see `git worktree list` | no | no |
-| `s1-7-reschedule` | S1.7 Reschedule | see `git worktree list` | no | no |
-| `s1-8-admin` | S1.8 Admin — accounts, donors, trucks, categories | see `git worktree list` | no | no |
+| Lane | Screen | Worktree branch | Work preserved at | Reported | Merged? |
+| :---- | :---- | :---- | :---- | :---- | :---- |
+| `s1-3-shift-detail` | S1.3 Shift detail | `worktree-agent-a70288ce91b7420c8` | `62f8e2f` (12 files) | no | no |
+| `s1-6-schedule` | S1.6 Shift & route scheduling | `worktree-agent-ac1471e654deb59e1` | `573cf10` (11 files) | no | no |
+| `s1-7-reschedule` | S1.7 Reschedule | `worktree-agent-a67bac95e181243b0` | `9efd4cc` (9 files) | no | no |
+| `s1-8-admin` | S1.8 Admin — accounts, donors, trucks, categories | `worktree-agent-ac5c863926923ab41` | `905039a` (7 files) | no | no |
+
+### THE 4b STOP — spend limit again, 2026-07-29. RESUME, DO NOT RESTART.
+
+**All four lanes were killed mid-write by the account's monthly spend limit**, the same external
+billing stop that hit Wave 4a. **This is NOT a §5.5 HALT** — every §5.5 condition is about the *work*
+being wrong (red gate, merge conflict, doc contradiction, unauthorized dependency). None applies. The
+work is unfinished, not unsound.
+
+**The lead committed each lane's uncommitted work in its own worktree before doing anything else**
+(SHAs above, 39 files total), because it existed only as untracked files in four checkouts and any
+cleanup would have destroyed it. It is **untested and ungated** — a starting point, not a deliverable.
+No lane wrote a report.
+
+**Resume from the transcripts, do not respawn.** `SendMessage` to a stopped agent revives it with its
+context intact, so each lane keeps what it already read and decided; a fresh spawn re-derives all of it
+and pays for the reading twice. The four agent ids are the `agent-<id>` component of each worktree path
+above. Tell each resumed lane: its work was committed for it, **the inherited code is untested and
+reviewing it is part of the job**, and to commit partial work itself if the limit is hit again.
+
+Wave 3's schedule lane and Wave 4a's four lanes are both precedent: a resumed lane found four real
+defects in what it inherited, which is exactly the return a restart throws away.
+
+Depth at the stop, from the preserved commits — all four were **past scaffolding and into tests**,
+which is further along than 4a's stop:
+
+- **`s1-3-shift-detail`** — 12 files, was writing its API-shape test.
+- **`s1-6-schedule`** — 11 files, was writing the assign-driver component (the I20 warning-and-confirm path).
+- **`s1-7-reschedule`** — 9 files, was writing its tests.
+- **`s1-8-admin`** — 7 files, was writing the account form.
 
 > **A first spawn attempt on 2026-07-29 was lost, and left NOTHING behind.** The session exhausted its
 > credit between the second and third spawn. On resume, `git worktree list` showed **only the main
@@ -1060,13 +1089,35 @@ the wave** (A117, A118, A119) — the rest are open and non-blocking.
 Recorded here because a green 4b gate will *look* like Phase 1 finishing, and it is not. §5.4 has five
 criteria; these are the ones known not to hold:
 
-1. **"Screens S1.1–S1.9 exist and are reachable through the shell" is verified only structurally.**
-   Typecheck, registry wiring and unit tests all pass — but **no one has ever loaded a page.** Neither
-   workspace defines a `dev` or `start` script, so `doc-qa` has now twice declined to run UI tests for
-   the honest reason that the app cannot be started. Five screens are built and four more are coming.
-   **This is the largest unverified surface in Phase 1** and it should be closed before the PR, not
-   after: a dev script is a small chore, and the alternative is discovering nine screens' worth of
-   runtime problems at once.
+1. **~~No dev script~~ — CLOSED 2026-07-29 at `6180b52`. The app runs, and running it found a blocker.**
+   `npm run dev` (→ `scripts/dev.sh`) brings up Express + the scheduler on :3000 and Vite on :5173 with
+   `/api` proxied, against a persistent `r3_dev` database; `scripts/dev-seed.ts --seed` puts four
+   accounts, four donors, two trucks, two routes and four unclaimed runs in it. **No new dependency** —
+   vite, its config and tsx were already installed, so this was scripts only.
+
+   The seed goes through the **real services**, not `server/test/fixtures.ts`: the fixture factory
+   writes a placeholder `credential_hash` on purpose, so a fixture-built account **cannot log in**,
+   which is useless to a seed whose entire point is a working login.
+
+   **Verified live, not assumed:** roster, login as a PIN volunteer, `/me`, the board, the Vite proxy,
+   and default-deny (401 unauthenticated). `timezone` comes back `America/Chicago` on the session and a
+   09:00 pantry-local run serialises as `14:00Z` — **A120 confirmed working end to end.**
+
+   **What it found — and this is the argument for having done it:** `IdlePrompt.tsx` passed
+   `expiresAt - now - 30s` straight to `setTimeout`, which stores its delay in a 32-bit signed integer
+   and **silently fires immediately** above ~24.8 days rather than throwing. A Volunteer on a personal
+   phone gets a **30-day** window, so "Still here?" appeared milliseconds after every sign-in, counting
+   down from 2,591,970 seconds — and answering it re-read a session still 30 days out, so it came
+   straight back. Staff (7 days) and shared devices (30 min / 12 h) stay under the ceiling, **which is
+   why four waves of green gates never saw it**: it broke for exactly the driver-on-a-phone persona the
+   rescue loop is canonical for, and for nobody else. Fixed by re-arming the wait in capped chunks, with
+   a regression test on both the overflow and the short-window case.
+
+   **Still open:** the browser half. `ui-tester` had no browser tool available in its session and said
+   so instead of fabricating a click-through, so it tested via the live HTTP surface and a source read.
+   **Nothing has yet confirmed a rendered DOM** — no visual layout, no console-on-load, no real keyboard
+   focus, no 200%-zoom check. Re-run `ui-test` once a browser tool is available; the app is now runnable,
+   so the blocker to doing so is gone.
 2. **Nine screens of user-visible copy will be unread by a human** (A6/A45/A70/A92/A107/A129).
    Non-blocking for the gate; worth naming in the PR.
 3. **A66 — the `apple-touch-icon` PNG** needs a human to produce a binary asset.
