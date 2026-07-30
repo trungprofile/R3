@@ -113,6 +113,13 @@ export const reportRoutes = [
    * The report toggle from the drill-in. A plain field edit, last write wins (cap 15)
    * — the same service the receiver's S2.3 calls, because it is the same operation and
    * a second implementation would be a second set of I16b checks free to disagree.
+   *
+   * `enforceWindow: false` is what makes this the Reporter's route rather than a
+   * second receiver's. After the receiver's window closes this drill-in is the ONLY
+   * remaining way to correct the entry (cap 15, S3.1) — sharing the service without
+   * this flag made the toggle uneditable by *anyone* past the window, which is the
+   * reverse of the rule, and it shipped because the weight path had a post-window test
+   * and this one did not.
    */
   defineRoute({
     method: 'patch',
@@ -128,6 +135,7 @@ export const reportRoutes = [
         actorOf(req),
         String(req.params['id']),
         reportable,
+        { enforceWindow: false },
       );
       res.json(updated);
     },

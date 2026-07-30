@@ -388,6 +388,6 @@ Caps 15–16. Canonical device: shared desktop. Pure aggregation over Phase 1+2 
 
 1. **No tare math in v1.** Volunteers currently subtract tare by hand (visible on the sheet). Left out per "nothing not needed"; can add a per-entry tare helper later.  
 2. **No duty-picker modal.** Nav is derived from role/duty because each shared device hosts one duty workflow. If a future device hosts two, a picker returns.  
-3. **AGFP→NTFB category mapping** is maintained in the Report screen (or Admin). Confirm where you want it to live.
+3. **AGFP→NTFB category mapping** is maintained in the Report screen (or Admin). Confirm where you want it to live. *(Phase 3 built it on S3.1 under the `report` duty — a Reporter who hits an unmapped category mid-report can fix it without changing screens and tiers. Recorded as `phase-3-build-plan.md` D11 / `phase-3-state.md` A183, and still yours to override: moving it to S1.8 is a route-access change and a screen move, not a data change.)*
 
  

@@ -490,12 +490,31 @@ async function requireEditable(tx: Tx, id: string): Promise<void> {
  * weight and has no prior value worth preserving as a row, and the PRD says so in as
  * many words. The boundary it controls is the one S2.3 has to make visible: ON feeds
  * the NTFB report, OFF is counted in the pantry's own totals and never reported.
+ *
+ * ## Who may still flip it, and when
+ *
+ * `enforceWindow` is the whole of the difference between the two callers, and getting
+ * it wrong makes the flag permanently uneditable rather than merely restricted:
+ *
+ *   - **The receiver (S2.3)** passes it `true`. Their access ends `N` days after the
+ *     shift starts (`domain-modeling.md §2.3`: "receiver-editable in window, then
+ *     Reporter only").
+ *   - **The Reporter (S3.1)** passes it `false`. After the window closes their
+ *     drill-in is the ONLY remaining way to correct the entry — PRD cap 15 and
+ *     `ui-ux-spec.md` S3.1 both say so, and S3.1 names the reportable toggle in the
+ *     same breath as the weight edit.
+ *
+ * One service rather than two so I16b is checked in exactly one place; the window is
+ * the only thing the callers disagree about, so it is the only thing parameterised.
  */
 export async function setReportable(
   actor: DonationActor,
   id: string,
   reportable: boolean,
+  options: { enforceWindow?: boolean } = {},
 ): Promise<DonationSummary> {
+  const enforceWindow = options.enforceWindow ?? true;
+
   return writeTransaction(async (tx) => {
     const existing = await tx
       .selectFrom('unscheduled_donation')
@@ -504,7 +523,7 @@ export async function setReportable(
       .executeTakeFirst();
 
     if (!existing) throw notFound('No such donation.');
-    await requireEditable(tx, id);
+    if (enforceWindow) await requireEditable(tx, id);
 
     // I16b: turning reporting ON for an anonymous row would violate the CHECK. Say
     // why instead of letting the constraint surface as a 500.

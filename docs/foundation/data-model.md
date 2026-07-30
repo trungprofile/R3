@@ -112,6 +112,44 @@ CREATE TABLE truck (
 
 Hard-delete is attempted as a real `DELETE`; FK-RESTRICT from all children (incl. provenance stamps) blocks it iff history exists (I21). No stored "has history" flag. **No truck exclusivity** (I22): double-booking a truck across concurrent shifts is allowed, so no unique constraint ties a truck to a time window.
 
+### 4.1 `ntfb_category` + the AGFP→NTFB mapping (co-owned with the reporting doc)
+
+Added in Phase 3 (migration 0012) for PRD cap 15's "in-app AGFP→NTFB mapping". Stated
+here the way §11 states the notification tables: the *reporting* doc owns what these
+mean, this doc owns their shape, and that doc is still deferred.
+
+```sql
+CREATE TABLE ntfb_category (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name           text NOT NULL,
+  code           text,                                -- Meal Connect may key on a code; null until known
+  deactivated_at timestamptz,                        -- ACTIVE ⇄ ARCHIVED, same shape as the §4 masters
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE category ADD COLUMN ntfb_category_id uuid REFERENCES ntfb_category(id) ON DELETE RESTRICT;
+```
+
+**Ships empty.** The 11 AGFP category names are the pantry's and are seeded at launch
+(migration 0010); NTFB's are the food bank's and appear in no doc here, so the table is
+created and nothing is inserted. A Reporter fills it in on S3.1.
+
+**A column, not a join table.** The cardinality is many-to-one — several AGFP
+categories may report under one NTFB bucket — so a join table would permit one AGFP
+category mapped to two NTFB ones, a state the report has no way to interpret. Same
+instinct as §1's native enums: make it unrepresentable rather than check for it.
+
+`NULL` means "not mapped yet", which is every row's launch state. An unmapped category
+carrying weight **blocks the export** rather than being dropped from it
+(`phase-3-build-plan.md` D12).
+
+**Soft-delete follows the §4 masters by analogy, not by I21.** I21 enumerates Donor /
+Category / Truck / User and does not mention this table — it did not exist when the
+invariant was written. The shape is the same and the reasoning is the same (a mapping
+or an exported week may reference it), but the citation is an analogy and is recorded
+as one.
+
 ---
 
 ## 5. Scheduling — Route, RouteStop, RecurrencePattern, Shift
@@ -476,6 +514,11 @@ Added in reconciliation. `device_id` set (with `user_id` null) models the device
 -- active-only pickers (I21 masters): partial on the soft-delete predicate
 CREATE INDEX ix_donor_active    ON donor    (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_category_active ON category (id) WHERE deactivated_at IS NULL;
+-- §4.1, Phase 3: the NTFB mapping. Name is a vocabulary, so duplicates are a
+-- data-entry mistake; partial so an archived name can be reused.
+CREATE INDEX ix_ntfb_active     ON ntfb_category (id) WHERE deactivated_at IS NULL;
+CREATE INDEX ix_category_ntfb   ON category (ntfb_category_id);
+CREATE UNIQUE INDEX uq_ntfb_name ON ntfb_category (lower(name)) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_truck_active    ON truck    (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_route_active    ON route    (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_user_active     ON app_user (id) WHERE deactivated_at IS NULL;

@@ -25,8 +25,12 @@
 -- Up Migration
 
 -- NTFB's own category vocabulary. Master data like `category`, and soft-deleted the
--- same way (I21): once a mapping or a past report references one, it is archived
--- rather than removed.
+-- same way: once a mapping references one, it is archived rather than removed.
+--
+-- By ANALOGY to I21, not under it. I21 enumerates Donor / Category / Truck / User and
+-- does not mention this table — it did not exist when the invariant was written. The
+-- shape and the reasoning are the same; the citation is an analogy and is recorded as
+-- one in `data-model.md §4.1`.
 CREATE TABLE ntfb_category (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name           text NOT NULL,

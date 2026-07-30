@@ -28,7 +28,7 @@ import {
   weeklyReport,
 } from '../src/services/report.js';
 import { intakeMetrics } from '../src/services/metrics.js';
-import { createDonation } from '../src/services/donation.js';
+import { createDonation, setReportable } from '../src/services/donation.js';
 import { addWeight } from '../src/services/receive.js';
 import {
   makeCategory,
@@ -403,6 +403,48 @@ describe("the Reporter's correction (cap 15)", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ voided: true, weight: '100.00' });
     expect(rows[1]).toMatchObject({ voided: false, weight: '120.00' });
+  });
+
+  it('lets the Reporter flip the report toggle after the window has closed', async () => {
+    // The gap that let a real bug ship: the weight path had a post-window test and
+    // the toggle did not, so the toggle quietly inherited the RECEIVER's window gate
+    // through the shared service and became uneditable by anyone — the reverse of
+    // cap 15, which makes this drill-in the only remaining way to correct an entry.
+    const { shift, actor, produce } = await scene();
+    const reporter = await makeReceiver();
+    const donor = await makeDonor('Corner Market');
+
+    const donation = await createDonation(actor, {
+      donorId: donor.id,
+      categoryId: produce.id,
+      weight: '25',
+    });
+    await db
+      .updateTable('unscheduled_donation')
+      .set({ received_date: '2026-08-04', shift_id: shift.id })
+      .where('id', '=', donation.id)
+      .execute();
+
+    await db
+      .updateTable('shift')
+      .set({ starts_at: new Date(Date.now() - 90 * 24 * 3600 * 1000) })
+      .where('id', '=', shift.id)
+      .execute();
+
+    // The receiver is out of time...
+    await expect(setReportable({ id: actor.id }, donation.id, false)).rejects.toThrow(
+      /time to change this run has passed/i,
+    );
+
+    // ...and the Reporter is not, which is the entire point of S3.1's edit.
+    const updated = await setReportable({ id: reporter.id }, donation.id, false, {
+      enforceWindow: false,
+    });
+    expect(updated.reportable).toBe(false);
+
+    // And it took effect: the week's reported total drops by the toggled-off donation.
+    const report = await weeklyReport(WEEK);
+    expect(report.unreportedTotal).toBe('25.00');
   });
 
   it('refuses to revise an already-voided entry', async () => {
