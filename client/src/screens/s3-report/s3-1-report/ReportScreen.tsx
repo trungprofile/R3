@@ -251,7 +251,15 @@ export function ReportScreen(_props: ScreenProps) {
 
             {/* §1.1: exactly one high-emphasis button per screen, and on the
                 report panel it is Export. While the week is blocked there is no
-                Export at all — the primary above belongs to the block instead. */}
+                Export at all — the primary above belongs to the block instead.
+
+                An open drill-in yields it too. The drill-in's weight edit carries
+                its own primary (Save), and the two render at the same time — which
+                is the §1.1 violation `doc-qa` caught. Export steps down rather than
+                the form's Save, because a Reporter with an entry open is inspecting
+                or correcting a number, and exporting the week mid-correction is the
+                wrong thing to point at. Zero high-emphasis buttons is allowed; two
+                is not. */}
             {canExport(report) ? (
               <div className="s31-export">
                 {state === 'EXPORTED' ? (
@@ -260,7 +268,7 @@ export function ReportScreen(_props: ScreenProps) {
                   </p>
                 ) : null}
                 <Button
-                  variant="primary"
+                  variant={openCategoryId === null ? 'primary' : 'secondary'}
                   onClick={() => void runExport(report)}
                   loading={exporting}
                 >
