@@ -1,0 +1,409 @@
+/* S1.6 — Staff, shift & route scheduling.
+ *
+ * Tokens only (`ui-ux-spec.md §2`): no literal hex, and no literal px where a
+ * spacing or size token exists. The numbers that do appear are §1's — the 44px
+ * minimum target with an 8px gap between adjacent ones, 18px body, and relative
+ * units throughout so 200% zoom does not break the calendar or the stop list.
+ *
+ * Class prefix `s16-` because this file ships beside the screen rather than in
+ * `components/`, and two screens must never fight over a name.
+ *
+ * Desktop is this screen's canonical surface and the layout is wider than the
+ * phone screens', but nothing here is desktop-only: the responsive matrix marks
+ * Scheduling "usable" on a tablet and "cramped" on a phone, so every row wraps
+ * rather than assuming a mouse and a wide viewport.
+ */
+
+.s16 {
+  max-width: 56rem;
+}
+
+.s16-title {
+  font-size: var(--font-h1);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.s16-heading {
+  font-size: var(--font-h3);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.s16-tabpanel {
+  margin-top: var(--space-4);
+}
+
+.s16-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.s16-panel > * + * {
+  margin-top: var(--space-4);
+}
+
+.s16-label {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.s16-hint {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: var(--space-2) 0 0 0;
+}
+
+/* §6: plain and recoverable, never a code. */
+.s16-problem {
+  font-size: var(--font-body);
+  color: var(--danger);
+  margin: var(--space-3) 0;
+}
+
+/* I20's staff-assign warning is NOT an error — it is a fact staff confirms
+ * through, so it reads as attention rather than refusal (§2's `--warning` is a
+ * fill behind dark text, never text itself). */
+.s16-warning {
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--warning);
+  border-radius: var(--radius-control);
+  padding: var(--space-3);
+  margin: var(--space-3) 0;
+}
+
+/* The soft duplicate-run notice and the pattern-edit report: things that happened
+ * and are worth reading, on screen rather than in a toast (§3 — a toast is never
+ * the only signal for something that mattered). */
+.s16-notice {
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
+  margin: var(--space-3) 0;
+}
+
+.s16-notice p {
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s16-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+/* --- Runs list ------------------------------------------------------------ */
+
+.s16-day__heading {
+  font-size: var(--font-h3);
+  margin: var(--space-5) 0 var(--space-2) 0;
+}
+
+.s16-run__owner {
+  color: var(--text);
+}
+
+.s16-run__tag {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.s16-run__tag--warn {
+  color: var(--text);
+  background: var(--warning);
+  border-color: var(--warning);
+}
+
+/* --- One run's editor ----------------------------------------------------- */
+
+.s16-editor__title {
+  font-size: var(--font-h3);
+  margin: 0;
+}
+
+.s16-editor__when {
+  font-size: var(--font-body);
+  margin: var(--space-1) 0 0 0;
+}
+
+.s16-editor__owner {
+  font-size: var(--font-body);
+  color: var(--text-muted);
+  margin: var(--space-1) 0 var(--space-4) 0;
+}
+
+.s16-assign {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+/* --- The computed "starting" sentence ------------------------------------- */
+
+/* Read-only by construction — a paragraph, not a control. A pattern has no stored
+ * start date (`domain-modeling.md §5.3`), so this states which date creating it
+ * works out to rather than asking for one. */
+.s16-starting {
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
+  margin: var(--space-4) 0 0 0;
+}
+
+.s16-starting__label {
+  color: var(--text-muted);
+}
+
+/* --- Choices: routes, drivers, stores, stop conditions -------------------- */
+
+.s16-choices,
+.s16-times,
+.s16-weekdays {
+  border: 0;
+  margin: var(--space-4) 0 0 0;
+  padding: 0;
+}
+
+.s16-choices__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.s16-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-height: var(--row-min);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font: inherit;
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.s16-choice__detail {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* Selected: an orange edge and weight. The label stays `--text` on a light
+ * background — orange never carries text (§2, 2.9:1). */
+.s16-choice--active,
+.s16-time--active,
+.s16-weekday--active {
+  border-color: var(--brand-orange);
+  box-shadow: inset 0 -4px 0 0 var(--brand-orange);
+  font-weight: 600;
+}
+
+.s16-times__grid,
+.s16-weekdays__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.s16-time,
+.s16-weekday {
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+/* --- Day picker ----------------------------------------------------------- */
+
+.s16-calendar {
+  border: 0;
+  margin: var(--space-4) 0 0 0;
+  padding: 0;
+}
+
+.s16-calendar__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.s16-calendar__month {
+  font-size: var(--font-h3);
+}
+
+.s16-calendar__nav,
+.s16-calendar__spacer {
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  font: inherit;
+  font-size: var(--font-h3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.s16-calendar__spacer {
+  border-color: transparent;
+  background: transparent;
+}
+
+.s16-calendar__weekdays,
+.s16-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1);
+}
+
+.s16-calendar__weekdays {
+  margin-top: var(--space-3);
+}
+
+.s16-calendar__weekday {
+  text-align: center;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.s16-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  font: inherit;
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.s16-day--today {
+  font-weight: 700;
+}
+
+.s16-day--in-range {
+  border-color: var(--brand-orange);
+  background: var(--surface-paper);
+}
+
+.s16-day--edge {
+  box-shadow: inset 0 -4px 0 0 var(--brand-orange);
+  font-weight: 700;
+}
+
+/* Days already gone, and the grid's filler cells: present so the columns line up
+ * under their headers, not offered as targets. */
+.s16-day--gone {
+  color: var(--text-muted);
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
+
+.s16-day--blank {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* --- The route builder's ordered stop list -------------------------------- */
+
+.s16-stops {
+  list-style: none;
+  margin: var(--space-2) 0 0 0;
+  padding: 0;
+}
+
+.s16-stop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-height: var(--row-min);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: grab;
+}
+
+.s16-stop + .s16-stop {
+  margin-top: var(--space-2);
+}
+
+/* Where a dragged store would land. An edge rather than a colour change, so the
+ * signal does not depend on hue. */
+.s16-stop--over {
+  border-color: var(--brand-orange);
+  box-shadow: inset 0 3px 0 0 var(--brand-orange);
+}
+
+/* The drag affordance §S1.6 asks for: large, and decorative only — the Move
+ * up/Move down buttons beside it are what a keyboard or touch user operates, and
+ * they do the same thing. */
+.s16-stop__handle {
+  font-size: var(--font-h2);
+  line-height: 1;
+  color: var(--text-muted);
+  padding: 0 var(--space-1);
+}
+
+.s16-stop__position {
+  min-width: 1.5em;
+  font-size: var(--font-body);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.s16-stop__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 12rem;
+}
+
+.s16-stop__name {
+  font-size: var(--font-body);
+}
+
+.s16-stop__address {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.s16-stop__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
