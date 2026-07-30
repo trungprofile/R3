@@ -30,14 +30,23 @@ import { getPantryTimezone } from '../server/src/services/config.js';
 const PIN = '4321';
 const PASSWORD = 'dev-password';
 
-/** Same list and same reason as `fixtures.ts`: `app_config` is a migration-seeded
- *  singleton, and wiping it removes the horizon the scheduler reads. */
+/** Nearly the same list and the same reason as `fixtures.ts`: `app_config` is a
+ *  migration-seeded singleton, and wiping it removes the horizon the scheduler reads.
+ *
+ *  `category` is excluded here for that same reason but NOT in `fixtures.ts`, and the
+ *  divergence is deliberate. Migration 0010 seeds the 11 AGFP categories at launch
+ *  (cap 17), so they are migration-owned data like `app_config` — truncating them here
+ *  would leave a dev database with an empty S1.8 Categories tab and, in Phase 2, an
+ *  empty weight-entry keypad, with no way back short of a `--reset`. A test suite wants
+ *  the opposite: `masters-category.test.ts` creates all eleven itself and asserts the
+ *  table then holds exactly eleven, which is only true from empty. Dev wants a usable
+ *  world; a suite wants a known one. */
 async function truncateAll(): Promise<void> {
   await sql`
     TRUNCATE TABLE
       notification, session, push_subscription, availability_block,
       shift_stop, shift, recurrence_pattern, route_stop, route, device,
-      truck, category, donor, user_duty, app_user
+      truck, donor, user_duty, app_user
     RESTART IDENTITY CASCADE
   `.execute(db);
 }
