@@ -1131,7 +1131,64 @@ and none of them made it.
 
 **For the wiring:** `import { RescheduleScreen } from './screens/s1-rescue/s1-7-reschedule/index.ts'`
 under screen id `reschedule`. S1.3 and S1.6 need only `go('reschedule', { shiftId })` — it loads the
-run itself and takes no props beyond the URL param.
+run itself and takes no props beyond the URL param. **DONE at `a385050`** — all four screens are in
+`main.tsx`'s `SCREENS`.
+
+### `s1-3-shift-detail` (reported 2nd, merged clean at `d0d2849`)
+
+13 entries in `reports/4b-s1-3-shift-detail.md`. **Reviewing the preserved draft found four real
+defects**, the strongest argument yet for resuming over respawning: the stop list fell back to the
+route template when a started run had zero stops (I5 freezes the snapshot, so a route edited after
+start would have shown the driver stops they never had); the release confirm could read "Release run"
+while releasing *every* future run, because its label was keyed to a count from a second request that
+reads as 1 when that request fails; "Today" was the device's day in the heading **and in the reassign
+picker's fetch bound**; and the cancelled notice sat below a full page of detail about a run I10 makes
+terminal.
+
+| # | Assumption | Status |
+| :---- | :---- | :---- |
+| **A139** | **S1.3 carries the ONLY link to S1.5.** Nothing else in the shell navigates to `/pickup/:shiftId` — S1.2's Mine row and S1.4's run list both open S1.3. Without it S1.5 is unreachable and §5.4's "reachable through the shell" fails. Rendered *secondary* (primary only when Release is absent) so one high-emphasis button remains and S1.3's stated primary stays Release. | **confirmed by `doc-qa`** against `ui-ux-spec.md §4`, which parenthesizes Pickup as reached "while a route is active" rather than as a nav item. Satisfies §5.4 |
+| **A140** | **`todayInZone()` extends A120 from times to the day boundary.** A120 ruled *times* render in the pantry zone; it did not say the same about which calendar day is "today". | **RESOLVED at `fcaa4f0`/`e754532` — see A138.** The lane was right, and the board was the one that was wrong |
+| **A141** | **Release is not duty-gated client-side**, breaking the mirror-the-server convention on purpose: an owner whose DRIVE duty was removed after claiming would otherwise see a run they cannot hand back at all. | **confirmed by `doc-qa`**: S1.3 states no duty condition on Release, and §4.5 makes client checks communication only. The server still refuses, honestly, rather than the button silently vanishing |
+| **A142** | **The already-weighed Reassign branch is unexercisable in Phase 1 and is not built as a branch.** `WEIGHED` is an I12 read-time projection and `weight_entry` is Phase 2 (D3), so no `COLLECTED` stop can be weighed yet. The movable set is exactly the server's `['PENDING','COLLECTED']`, with a comment naming where Phase 2 subtracts. | non-blocking, D3-consistent |
+| **A143** | **`PATCH /shifts/:id/note` is the DRIVER's whole-run note** (`Shift.note`, `anyDuty: ['DRIVE']`), not the coordinator's — the coordinator→driver note is `staffNote` on `PATCH /shifts/:id` at `tier: 'STAFF'`. A correction to the lead's brief, not a blocker; both endpoints exist. | **the second wrong endpoint in a lead brief this wave** (see A132). Check an endpoint's signature before naming it in a brief |
+
+### `s1-8-admin` (reported 3rd, merged clean at `028fef0`)
+
+15 entries in `reports/4b-s1-8-admin.md`. The lane reviewed its inherited draft and fixed three things,
+including `FieldGroup` duplicating its visible label into `aria-label` instead of `aria-labelledby`.
+Eight of its own tests failed on first run from one bad fixture — **fixed in the test, nothing relaxed**.
+
+| # | Assumption | Status |
+| :---- | :---- | :---- |
+| **A144** | **A deactivated user account could not be reactivated, because nothing could do it** — no `active` on `UpdateUserRequest`, no restore route — while donors, trucks and categories all restore via `PATCH { active: true }`. The lane reported the asymmetry rather than working around it. | **RESOLVED at `e754532`.** `domain-modeling.md:182` says `User | ACTIVE ⇄ DEACTIVATED`, so the return arrow was genuinely missing — the locked doc wins. `active: true` now clears `deactivated_at`; **`active: false` is refused** and points at Delete, because deactivating owes I21's hard-delete-vs-deactivate decision *and* session destruction (§4.2), both of which live in `removeUser` and a PATCH would skip |
+| **A145** | **No Devices sub-screen and no Routes sub-screen**, though four are named. Devices: S1.5 puts the receiver tablet's registration in Phase 2. Routes: `/routes` is S1.6's. **Consequence: no Phase-1 screen registers a shared device at all.** | **ruled NOT a gap by `doc-qa`** — S1.8's Layout line names exactly Accounts, Donors, Trucks, Categories (A131 wrote it), and Phase-2 device registration is explicit in S1.5 and consistent with §4.2. Intentional |
+| **A146** | **The username preview reimplements §5.1 in client code** (normalize → base → collision suffix on the assembled string), using the accounts on screen as the "taken" set, because S1.8 requires the auto username be shown read-only at create time and **no preview endpoint exists**. Preview only — the server's returned username is what the screen reports. | open, non-blocking. A second implementation of a named algorithm is a divergence risk; the mitigation is that the server's answer always wins on screen |
+| **A147** | **`ADMIN` is not offered in the create form's tier row** (Volunteer/Staff only); the edit form offers all three. S1.8 says "(Volunteer/Staff/Admin)", cap 1 says "non-admin accounts", and `services/user.ts` answers 403 — so an admin is reached by promoting an existing account, never minted. | non-blocking; matches the dev seed's own two-step path |
+| **A148** | Four further screen-local calls: the In-use ⇄ Archived toggle is offered on **all three** master forms, not only Categories (I21 makes it a field edit); a credential-only edit uses `POST /users/:id/credential` while any other change carries the credential inside one `PATCH`; **PIN digits are shown in the clear** while an admin sets someone's PIN, passwords stay masked; the open tab is local state, not in the URL (`/admin` has no sub-path). | open, non-blocking |
+| **A149** | **`CreatedAccount` is declared locally** — `shared/src` has no type for `POST /users`' 201 body. Five controls are built in-folder (`FieldGroup`, `ReadOnlyValue`, `InactiveChip`, `DutyToggles`, `CredentialField`). | open, non-blocking; `shared/` is lead-owned so the lane could not add the type |
+| **A150** | **`services/donor.ts` says "'deactivated since' is information the admin screen shows"**, but no such field is on the wire and no screen shows a date. | **ruled a stale internal comment by `doc-qa`**, not a doc-vs-code conflict — no foundation doc requires the date. Left as-is; code-review territory, not gate territory |
+
+### `s1-6-schedule` (reported 4th, merged clean at `24dbf6b`)
+
+12 entries in `reports/4b-s1-6-schedule.md`. **Reviewing the inherited draft found six defects**, the
+worst being that the Runs panel could sit in edit mode with no editor *and* no primary action when the
+edited run left the list, and that the store list said "Every store is already on this route." while
+stores were still loading.
+
+| # | Assumption | Status |
+| :---- | :---- | :---- |
+| **A151** | **The route builder ships BOTH drag-and-drop and Move up / Move down, reading A117 as specific to S1.5.** S1.6 says "drag-and-drop ordering with large handles" and cap 4 — the higher-authority doc — says "(drag-and-drop ordering)", so drag is specified for *this* screen by both. A117 removed drag from S1.5, a driver's `ShiftStop` list on a phone in a moving truck; it amended neither cap 4 nor S1.6. Native HTML5 drag events, so no dependency and no hand-rolled pointer drag (§1.5). The buttons are not a fallback but the required equivalent: HTML5 drag does not fire on touch at all, the responsive matrix marks Scheduling "usable" on a tablet, and a keyboard user has no drag gesture. Both paths go through the same two pure functions so they cannot disagree about what an order is. | **confirmed by `doc-qa`** against cap 4 and S1.6. A117 was scoped to S1.5's context; the buttons are an accessibility addition, not a substitution |
+| **A152** | **Staff-assign sets only `shift.owner_id`, never the pattern's `ownerDefault`.** Cap 6 could be read as also setting the series default, and `shared/src/schedule.ts` commented `ownerDefaultId` as "Set by claim-all / **staff-assign**" — but `POST /shifts/:id/assign` takes no scope, `services/coverage.ts` sets `owner_default_id` only on the driver's claim-all path, and S1.6's own gloss is "Same owner field as self-select". | **RESOLVED at `e754532` — the comment was stale, not the code.** `doc-qa` confirmed §5.3's Operations table lists only claim-all and that cap 6's "same owner field" language agrees. Comment rewritten; `domain-modeling.md` needed no change |
+| **A153** | **The computed "starting" date mirrors materialization's "window has already begun" filter**, so a Tuesday rule saved on a Tuesday afternoon displays *next* Tuesday. Naming today would name a run `services/recurrence.ts` will not mint, and the point of a read-only sentence is that it is true. | non-blocking; extends A111's ruling rather than reopening it |
+| **A154** | **Four controls built in-folder — `DayPicker`, `TimeChoice`, `WeekdayChoice`, `ChoiceList`** — of which day and time are now duplicated with S1.4 and S1.7. Plus a three-tab layout, one-primary-per-mode, route delete/archive/restore living here, the runs list bounded to today forward, and duplicated calendar helpers. | open — **folds into A134.** Three screens now hold their own calendar code, which is the promotion signal; still deliberately not acted on this session |
+| **A155** | **~90 sentences of unreviewed user-visible copy** on S1.6 alone, including the I24 pattern-edit report sentences. | open — folds into the standing copy-review item |
+
+### The lead's own chore inside 4b
+
+| # | Assumption | Status |
+| :---- | :---- | :---- |
+| **A138** | **The board's day is the PANTRY's, not the device's.** New `client/src/app/pantry-day.ts` (`todayInZone`, `deviceToday`), consumed by S1.2 for its `?from=` fetch bound *and* its day headings. This **fixes a real defect in an already-promoted Wave-4a screen**: A121 had the board on the device date, justified by "the client has no access to `app_config.timezone`" — which stopped being true when A120 put the pantry zone on the session. Found because S1.3's lane computed the pantry day and said so. | **RESOLVED at `fcaa4f0` + `e754532`.** The first commit fixed the fetch bound and left the *headings* still defaulting to the device day; `doc-qa` caught that residue — the lead had asked it to check exactly that, and it was still worth asking |
 
 ## What still stands between a green 4b and §5.4
 
