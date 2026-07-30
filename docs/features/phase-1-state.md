@@ -13,7 +13,7 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Field | Value |
 | :---- | :---- |
-| Current wave | **4b — all 4 lanes SPAWNED AND STOPPED by the spend limit; work preserved, none reported. RESUME them, do not respawn.** See "THE 4b STOP" below for the agent ids and what each was mid-way through. Wave 4a is PROMOTED and closed; 4b is the last of Phase 1's build scope |
+| Current wave | **4b — all 4 lanes RESUMED and running as of 2026-07-30**, after the spend limit stopped them mid-write on 2026-07-29. Each inherited a preserved commit and was briefed that the inherited code is untested. **Do not respawn any of them; the worktrees in `git worktree list` are the running lanes.** Next lead action is to await the four `reports/4b-*.md`, then merge in report order. Wave 4a is PROMOTED and closed; 4b is the last of Phase 1's build scope |
 | Wave status | **Wave 4a promoted 2026-07-29 at `697e01b`, pushed `233fc22..697e01b`.** All four §5.3 criteria met: `gate.sh` green both halves, **`doc-qa` round 2 clean — zero findings**, all five lanes reported `complete`, and every `Assumed:` (A117–A129) recorded below. All five worktrees and branches removed; `git worktree list` shows only the main checkout. Two lead chores have landed since, each gated and doc-qa'd on its own: **A120** (the pantry timezone, `c085738`) and **the segmented-control promotion** (`3b6f237`) |
 | Branch | `phase-1` |
 | Loop armed | **yes** — restarted 2026-07-28 on the human's go-ahead; resumed 2026-07-29 |
@@ -23,9 +23,12 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 ### The one thing the next lead must do first
 
-**Wave 4a is closed. The next action is Wave 4b's merge-and-gate, or its spawn if the lanes below are
-not yet running.** Nothing from 4a is outstanding. `git worktree list` showing only the main checkout
-is the confirmation.
+**All four 4b lanes are running (resumed 2026-07-30). The next action is to collect their reports and
+merge.** Do not spawn anything. If you arrive here with no memory of the wave: four worktrees on disk
+means four live lanes, and each already holds a commit of preserved work — a respawn would duplicate
+the screen and throw away everything the lane had read.
+
+**Wave 4a is closed**; nothing from it is outstanding.
 
 **Wave 4b is the last of Phase 1's build scope.** After it merges green, §5.4's checklist is what
 remains — and two of its five items are known not to hold yet (see "What still stands between 4b and
@@ -89,6 +92,17 @@ context intact, so each lane keeps what it already read and decided; a fresh spa
 and pays for the reading twice. The four agent ids are the `agent-<id>` component of each worktree path
 above. Tell each resumed lane: its work was committed for it, **the inherited code is untested and
 reviewing it is part of the job**, and to commit partial work itself if the limit is hit again.
+
+**DONE 2026-07-30: all four were resumed this way**, each briefed with the three points above plus the
+two or three clauses in its own screen most likely to have been built wrong while interrupted.
+
+> **Address a stopped lane by its raw agent id, not by its lane name.** `SendMessage` to
+> `s1-3-shift-detail` returned "No agent named … is reachable" for all four; `SendMessage` to
+> `a70288ce91b7420c8` resumed it immediately. The lane names in the table above are this document's
+> labels for the work, not handles the harness resolves. Read the id off the worktree path.
+>
+> Probe with the real message, not a one-liner. A bare "are you reachable?" *counts* as the resume —
+> the agent wakes and spends a turn on it — so the first thing sent should be the full briefing.
 
 Wave 3's schedule lane and Wave 4a's four lanes are both precedent: a resumed lane found four real
 defects in what it inherited, which is exactly the return a restart throws away.
