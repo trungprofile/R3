@@ -1,0 +1,215 @@
+/* S1.7 — Staff, reschedule.
+ *
+ * Every value is a token (`ui-ux-spec.md §2`); no literal hex and no literal px,
+ * per `client/src/tokens/`. Sizes are relative units because §1 principle 3 says
+ * the screen must survive 200% zoom.
+ *
+ * Desktop is canonical and phone is "cramped" (responsive matrix), so this is one
+ * column with a reading width — no second layout to keep in step. The calendar and
+ * the time grids reflow by `auto-fill`, which is what keeps them usable rather than
+ * merely present on a narrow screen.
+ */
+
+.s17-screen {
+  max-width: 40rem;
+}
+
+.s17-title {
+  margin: 0 0 var(--space-4);
+}
+
+.s17-heading {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-h3);
+}
+
+.s17-label {
+  display: block;
+  padding: 0;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.s17-hint {
+  margin: var(--space-1) 0 var(--space-3);
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* --- Where the run stands now --------------------------------------------- */
+
+.s17-now__label {
+  margin: 0;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.s17-now__route {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-h3);
+}
+
+.s17-now__when {
+  margin: var(--space-1) 0 0;
+}
+
+.s17-now__owner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+}
+
+.s17-now__driver {
+  font-weight: 600;
+}
+
+/* --- The form ------------------------------------------------------------- */
+
+.s17-form {
+  margin-top: var(--space-5);
+}
+
+.s17-days,
+.s17-times {
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  border: 0;
+}
+
+.s17-summary {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-paper);
+}
+
+.s17-error {
+  margin: var(--space-3) 0 0;
+  color: var(--danger);
+}
+
+.s17-actions {
+  display: flex;
+  flex-wrap: wrap;
+  /* §1 principle 2: 8px minimum between adjacent targets. */
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+/* --- Calendar ------------------------------------------------------------- */
+
+.s17-calendar {
+  max-width: 24rem;
+}
+
+.s17-calendar__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.s17-calendar__nav,
+.s17-calendar__spacer {
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+}
+
+.s17-calendar__nav {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-h3);
+  cursor: pointer;
+}
+
+.s17-calendar__month {
+  font-size: var(--font-h3);
+}
+
+.s17-calendar__weekdays,
+.s17-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(var(--target-min), 1fr));
+  gap: var(--space-1);
+}
+
+.s17-calendar__weekday {
+  text-align: center;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.s17-day {
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-body);
+  cursor: pointer;
+}
+
+.s17-day--blank {
+  border: 0;
+  background: none;
+}
+
+/* A day that cannot be picked is shown, not hidden, so the month keeps its shape. */
+.s17-day--gone {
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  color: var(--disabled-text);
+}
+
+.s17-day--today {
+  font-weight: 700;
+}
+
+/* Where the run stands now — an outline, so it reads as a marker rather than as a
+ * second selection. */
+.s17-day--current {
+  border-color: var(--text-muted);
+}
+
+/* The picked day. §2: orange as a fill, with the `--text-on-brand` label that is
+ * the only text colour legible on it. */
+.s17-day--picked {
+  border-color: var(--action-fill);
+  background: var(--action-fill);
+  color: var(--text-on-brand);
+  font-weight: 700;
+}
+
+/* --- Time grids ----------------------------------------------------------- */
+
+.s17-times__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.s17-time {
+  min-height: var(--target-min);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-body);
+  cursor: pointer;
+}
+
+.s17-time--active {
+  border-color: var(--action-fill);
+  background: var(--action-fill);
+  color: var(--text-on-brand);
+  font-weight: 700;
+}
