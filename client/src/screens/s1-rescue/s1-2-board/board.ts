@@ -241,9 +241,11 @@ export function actionFor(shift: ShiftSummary, viewer: BoardViewer, mine: boolea
     if (viewer.canDrive) return 'CLAIM';
     return viewer.isStaff ? 'DETAIL' : 'NONE';
   }
-  // "On a Mine row, the row opens S1.3." Mine is the CLAIMED overlay (§3); an
-  // IN_PROGRESS run of your own is explicitly "no action from the board".
-  if (mine && shift.status === 'CLAIMED') return 'DETAIL';
+  // "On a Mine row, the row opens S1.3" — S1.2's "who may open a row" rule, which
+  // is about ownership, not status. The states list's "no action for a driver" is
+  // about someone ELSE's in-progress run; your own opens S1.3, which is the only
+  // link to S1.5 (A139) and so the board's way back into a run you left.
+  if (mine && (shift.status === 'CLAIMED' || shift.status === 'IN_PROGRESS')) return 'DETAIL';
   // S1.3 names staff as one of its two users, and the board is the only screen that
   // links there (see the report's `Assumed:`).
   return viewer.isStaff ? 'DETAIL' : 'NONE';

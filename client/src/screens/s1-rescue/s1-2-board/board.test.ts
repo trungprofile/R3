@@ -218,8 +218,17 @@ describe('what each row offers (S1.2 states)', () => {
     expect(actionFor(shift({ status: 'CLAIMED', ownerId: 'other' }), driver, false)).toBe('NONE');
   });
 
-  it('gives an in-progress row no action from the board, even the viewer own one', () => {
-    expect(actionFor(shift({ status: 'IN_PROGRESS', ownerId: ME }), driver, true)).toBe('NONE');
+  it('opens the viewer own in-progress row into S1.3 — the board way back into a run', () => {
+    // S1.2's "who may open a row" rule is about ownership, not status. Left dead,
+    // a driver who navigates away mid-run finds nothing on the board, which is the
+    // screen they look at first.
+    expect(actionFor(shift({ status: 'IN_PROGRESS', ownerId: ME }), driver, true)).toBe('DETAIL');
+  });
+
+  it('still gives a driver no action on someone else in-progress row', () => {
+    expect(actionFor(shift({ status: 'IN_PROGRESS', ownerId: 'other' }), driver, false)).toBe(
+      'NONE',
+    );
   });
 
   it('gives a Done row no action — read-only, and unreachable in Phase 1 (D1)', () => {
