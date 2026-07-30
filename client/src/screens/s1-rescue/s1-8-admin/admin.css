@@ -1,0 +1,204 @@
+/* S1.8 — Admin.
+ *
+ * Tokens only (`ui-ux-spec.md §2`): no literal hex, and no literal px where a
+ * spacing or size token exists. The numbers that do appear are §1's — the 44px
+ * minimum target with an 8px gap between adjacent ones, 18px body, relative units
+ * so 200% zoom does not break a form.
+ *
+ * Class prefix `s18-` because this file ships beside the screen rather than in
+ * `components/`, and two screens must never fight over a name.
+ *
+ * Desktop-canonical (responsive matrix), so the column is wider than the phone
+ * screens' — but everything below still stacks, because "canonical on desktop"
+ * is not licence to break on a tablet.
+ */
+
+.s18 {
+  max-width: 48rem;
+}
+
+.s18-title {
+  font-size: var(--font-h1);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.s18-panel {
+  margin-top: var(--space-4);
+}
+
+.s18-subheading {
+  font-size: var(--font-h2);
+  margin: 0;
+}
+
+/* Heading and the list's one primary action on one line, wrapping rather than
+ * shrinking the button below §1.2's floor. */
+.s18-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-5) 0 var(--space-4) 0;
+}
+
+/* --- Forms ---------------------------------------------------------------- */
+
+.s18-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  max-width: 34rem;
+}
+
+.s18-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Matches `TextInput`'s visible label above the control (§3), so a group of
+ * buttons reads as the same kind of field as a text box. */
+.s18-group__label {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.s18-hint {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.s18-hint--strong {
+  color: var(--text);
+}
+
+.s18-error {
+  font-size: var(--font-body);
+  color: var(--danger);
+  margin: 0;
+}
+
+/* A generated, immutable value — the username (I3). Deliberately not a disabled
+ * input: a greyed field invites "editable later", and there is no later. */
+.s18-readonly {
+  font-size: var(--font-body);
+  color: var(--text);
+  font-weight: 600;
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--space-3) var(--space-4);
+  margin: 0;
+  min-height: var(--input-height);
+  display: flex;
+  align-items: center;
+  word-break: break-all;
+}
+
+.s18-readonly--empty {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* --- Duty toggles (I2: set membership, so each is its own button) --------- */
+
+.s18-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  /* §1.2: 8px minimum between adjacent targets. */
+  gap: var(--space-2);
+}
+
+.s18-toggle {
+  min-height: var(--target-min);
+  min-width: 7rem;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-body);
+  font-family: inherit;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* The same selected look the segmented control uses (§2's sanctioned pairing:
+ * --action-fill behind --text-on-brand at 5.0:1), so "chosen" means one thing on
+ * this screen whether it is one-of-many or many-of-many. */
+.s18-toggle.is-on {
+  background: var(--action-fill);
+  color: var(--text-on-brand);
+  border-color: var(--action-fill);
+  font-weight: 600;
+}
+
+.s18-toggle:disabled {
+  background: var(--disabled-fill);
+  color: var(--disabled-text);
+  border-color: var(--border);
+  cursor: default;
+}
+
+/* --- PIN being set for someone else --------------------------------------- */
+
+/* Shown in the clear, unlike S1.1's dots: the admin is setting a number for
+ * another person and has to read it back to them. */
+.s18-pin {
+  font-size: var(--font-numeric);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.25em;
+  color: var(--text);
+  margin: 0;
+  min-height: calc(var(--font-numeric) * var(--line-height));
+}
+
+/* --- Notices -------------------------------------------------------------- */
+
+.s18-notice {
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  margin: 0;
+}
+
+/* The one-time PIN. Orange is fill-or-accent only (§2), so it is a left edge
+ * rather than a background carrying text. */
+.s18-notice--strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-left: var(--space-1) solid var(--brand-orange);
+  margin-bottom: var(--space-4);
+}
+
+.s18-notice__text {
+  margin: 0;
+  flex: 1 1 18rem;
+}
+
+/* --- Actions -------------------------------------------------------------- */
+
+.s18-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+/* Remove sits below the save row and behind a confirm, so the destructive path is
+ * never where a stray click lands (§6). */
+.s18-danger-zone {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+  margin-top: var(--space-2);
+}

@@ -7,18 +7,19 @@
 // What is NOT here, because §3 already ships it: Button, TextInput, ListRow,
 // Segmented, Modal/ConfirmModal, the numeric keypad, and the three list blocks.
 
+import { useId } from 'react';
 import type { ReactNode } from 'react';
 import { NumericKeypad, TextInput } from '../../../components/index.ts';
-import { PIN_LENGTH } from '../../../api/shared.ts';
-import { COPY, DUTY_LABELS, toggleDuty } from './logic.ts';
-import { DUTIES } from '../../../api/shared.ts';
-import type { CredentialPlan } from './logic.ts';
+import { DUTIES, PIN_LENGTH } from '../../../api/shared.ts';
 import type { Duty } from '../../../api/shared.ts';
+import { COPY, DUTY_LABELS, toggleDuty } from './logic.ts';
+import type { CredentialPlan } from './logic.ts';
 
 /**
  * A labelled group around something that is not a single input — the tier row, the
- * duty toggles, the PIN keypad. `role="group"` with the label as its accessible
- * name, because a `<label>` can only point at one control.
+ * duty toggles, the PIN keypad. `role="group"` labelled BY the visible text rather
+ * than by a copy of it in `aria-label`: a `<label>` can only point at one control,
+ * and two copies of the same sentence drift.
  */
 export function FieldGroup({
   label,
@@ -31,9 +32,12 @@ export function FieldGroup({
   error?: string | null;
   children: ReactNode;
 }) {
+  const id = useId();
   return (
-    <div className="s18-group" role="group" aria-label={label}>
-      <p className="s18-group__label">{label}</p>
+    <div className="s18-group" role="group" aria-labelledby={id}>
+      <p className="s18-group__label" id={id}>
+        {label}
+      </p>
       {children}
       {hint !== undefined ? <p className="s18-hint">{hint}</p> : null}
       {error !== undefined && error !== null ? (

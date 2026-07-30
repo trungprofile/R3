@@ -133,6 +133,9 @@ export const COPY = {
     save: 'Save',
     create: 'Add',
     remove: 'Remove',
+    saved: 'Saved.',
+    /** §3.3's ACTIVE ⇄ DEACTIVATED toggle, which is a field edit and not a
+     *  removal — I21 allows it whatever the record's history. */
     status: 'In use',
     inUse: 'In use',
     /** Cancel out of a form. */

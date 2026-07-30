@@ -8,7 +8,12 @@
 // Nothing here decides a domain rule. Removal is the server's answer (I21) and the
 // active toggle is an ordinary field edit, which I21 always allows.
 
-import type { CategorySummary, DonorSummary, RemovalOutcome, TruckSummary } from '../../../api/shared.ts';
+import type {
+  CategorySummary,
+  DonorSummary,
+  RemovalOutcome,
+  TruckSummary,
+} from '../../../api/shared.ts';
 import {
   createCategory,
   createDonor,
@@ -39,7 +44,6 @@ export interface MasterConfig {
   loadingLabel: string;
   emptyTitle: string;
   emptyBody: string;
-  /** Names the removal in the confirm's question, e.g. "Remove Kroger?" */
   fields: readonly MasterFieldSpec[];
   load: (signal: AbortSignal) => Promise<MasterRecordView[]>;
   create: (values: Readonly<Record<string, string>>) => Promise<void>;
