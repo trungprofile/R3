@@ -1,0 +1,205 @@
+/* S1.3 shift detail.
+ *
+ * Every colour, type step, spacing step and radius is a token (`tokens/tokens.css`)
+ * — no hex and no literal from those scales. Hairline borders and ornament sizes are
+ * literals, the way `components.css` writes them; this lane does not own `tokens/`.
+ *
+ * One layout for both of S1.3's users. The responsive matrix has no separate row for
+ * shift detail: it is opened from the board, which is canonical on the phone and
+ * usable on the desktop, so this is a single readable column that stops growing
+ * rather than a phone view and a desktop view. What differs between owner and staff
+ * is which controls exist, not where anything sits (§1 principle 4).
+ */
+
+.s13 {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding-bottom: var(--space-7);
+}
+
+/* --- head ----------------------------------------------------------------- */
+
+.s13__head {
+  margin-bottom: var(--space-4);
+}
+
+.s13__day {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+.s13__title {
+  margin: 0;
+  font-size: var(--font-h1);
+  line-height: 1.2;
+}
+
+.s13__when {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-h3);
+}
+
+.s13__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+.s13__repeats {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+/* --- the conflict flag (I20's staff-assign exemption) ----------------------
+ * Warning fill behind dark text (§2: --warning is a fill, never text). It is
+ * persistent and informational; nothing on the screen is disabled because of it.
+ */
+
+.s13__conflict {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--warning);
+  color: var(--text);
+  font-size: var(--font-body);
+}
+
+/* --- facts ---------------------------------------------------------------- */
+
+.s13__facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.s13__facts dt {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+  font-weight: 600;
+}
+
+.s13__facts dd {
+  margin: 0;
+}
+
+.s13-label {
+  display: block;
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-label);
+  font-weight: 600;
+}
+
+/* --- the coordinator's note ----------------------------------------------- */
+
+.s13-note__body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.s13-note__editor {
+  margin-top: var(--space-2);
+}
+
+.s13-actions {
+  display: flex;
+  flex-wrap: wrap;
+  /* §1 principle 2: 8px minimum between adjacent targets. */
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* --- stops ---------------------------------------------------------------- */
+
+.s13__section {
+  margin: var(--space-6) 0 var(--space-2);
+  font-size: var(--font-h2);
+}
+
+.s13-stop {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.s13-stop__number {
+  display: inline-block;
+  min-width: 1.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.s13-stop__name {
+  font-weight: 600;
+}
+
+.s13-stop__status {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+/* A stop staff moved to another driver (I30). Struck through and out of every
+ * action, but still on the list — a stop never silently disappears from a list
+ * two people are reading. */
+.s13-stop--moved .s13-stop__name {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.s13-stop__aside {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-4);
+  font-size: var(--font-label);
+}
+
+/* --- the screen's actions ------------------------------------------------- */
+
+.s13__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+@media (min-width: 1024px) {
+  /* On the desktop the two actions sit side by side and stop stretching: a
+     full-bleed red button at 1024px reads as an alarm, not a choice. */
+  .s13__actions {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+  }
+
+  .s13__actions > .r3-btn--block {
+    width: auto;
+  }
+}
+
+/* --- release dialog ------------------------------------------------------- */
+
+.s13-release__range {
+  margin-top: var(--space-4);
+}
+
+.s13-release__consequence {
+  margin: var(--space-4) 0 0;
+}
+
+/* --- reassign dialog ------------------------------------------------------ */
+
+.s13-reassign p {
+  margin: 0 0 var(--space-3);
+}
+
+/* The picked driver. Orange as a fill-adjacent accent bar, never as text (§2). */
+.s13-pick--on {
+  border-left: 4px solid var(--brand-orange);
+  background: var(--surface-paper);
+  border-radius: var(--radius-control);
+}
+
+.s13-reassign__consequence {
+  margin-top: var(--space-3);
+}
