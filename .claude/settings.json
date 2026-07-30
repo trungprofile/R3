@@ -18,7 +18,8 @@
       "Bash(git tag*)"
     ],
     "deny": [],
-    "defaultMode": "bypassPermissions"
+    "defaultMode": "default",
+    "disableBypassPermissionsMode": "disable"
   },
   "sandbox": {
     "network": {
