@@ -32,7 +32,7 @@ import {
   useToast,
 } from '../../../app/index.ts';
 import type { ScreenProps } from '../../../app/index.ts';
-import { atLeastTier, hasDuty } from '../../../app/index.ts';
+import { atLeastTier, hasDuty, todayInZone } from '../../../app/index.ts';
 import { displayName } from '../../../api/index.ts';
 import { toApiError } from '../../../api/index.ts';
 import type { ClaimResult, ClaimScope, ShiftSummary } from '../../../api/shared.ts';
@@ -43,7 +43,6 @@ import {
   groupByDay,
   skippedLines,
   timeRange,
-  todayCalendarDate,
   weekdayName,
   withOptimisticClaim,
 } from './board.ts';
@@ -77,7 +76,10 @@ export function BoardScreen(_props: ScreenProps) {
   const [partial, setPartial] = useState<ClaimResult | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
 
-  const today = todayCalendarDate();
+  // The PANTRY's today, not the device's (A138). This bounds `?from=`, so a device
+  // that has rolled over past midnight would otherwise ask for tomorrow and drop
+  // the runs still open today.
+  const today = todayInZone(timezone);
   const load = useCallback(
     (signal: AbortSignal) => fetchBoard(filter, today, signal),
     [filter, today],

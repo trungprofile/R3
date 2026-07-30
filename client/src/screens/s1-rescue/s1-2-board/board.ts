@@ -128,9 +128,11 @@ export function weekdayName(date: string): string {
   return weekdayLabel([isoWeekday(date)]);
 }
 
-/** Today as a pantry-local-shaped calendar slot. The device's own date: the client
- *  has no access to `app_config.timezone`, and this only bounds which runs are
- *  fetched — it decides nothing (see the report's `Assumed:`). */
+/** Today by the DEVICE's clock. A121 chose this because the client had no access to
+ *  `app_config.timezone` — which stopped being true when A120 put the pantry's zone on
+ *  the session. Kept only as the fallback inside `app/pantry-day.ts`'s `todayInZone`,
+ *  and as the default for callers holding no session; the screen passes the pantry's
+ *  day (A138). Do not reach for this one. */
 export function todayCalendarDate(now: Date = new Date()): string {
   const month = `${now.getMonth() + 1}`.padStart(2, '0');
   const day = `${now.getDate()}`.padStart(2, '0');
@@ -270,6 +272,9 @@ export function groupByDay(
   shifts: readonly ShiftSummary[],
   viewer: BoardViewer,
   nowMs: number = Date.now(),
+  /** The pantry's today (A138). Defaults to the device's only for callers with no
+   *  session in hand; the screen always passes the real one. */
+  today: string = todayCalendarDate(),
 ): DayGroup[] {
   const byDate = new Map<string, BoardRow[]>();
 
@@ -283,7 +288,7 @@ export function groupByDay(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, rows]) => ({
       date,
-      heading: dayHeading(date),
+      heading: dayHeading(date, today),
       rows: rows.sort(compareRows),
     }));
 }
@@ -331,10 +336,13 @@ export interface SkippedLine {
 
 /** I20 refuses a conflicting run rather than force-claiming it, so a series claim
  *  reports what it skipped instead of pretending it took everything (PRD cap 6). */
-export function skippedLines(skipped: readonly SkippedShift[]): SkippedLine[] {
+export function skippedLines(
+  skipped: readonly SkippedShift[],
+  today: string = todayCalendarDate(),
+): SkippedLine[] {
   return skipped.map((run) => ({
     shiftId: run.shiftId,
-    when: dayHeading(run.occurrenceDate),
+    when: dayHeading(run.occurrenceDate, today),
     routeName: run.routeName,
     reason: COPY.skipReason(run.reasons),
   }));

@@ -33,5 +33,6 @@ export { OfflineBanner } from './OfflineBanner.tsx';
 export { IdlePrompt } from './IdlePrompt.tsx';
 export { useViewport } from './useViewport.ts';
 export type { Viewport } from './useViewport.ts';
+export { todayInZone, deviceToday } from './pantry-day.ts';
 export { useAsyncData } from './useAsyncData.ts';
 export type { AsyncData } from './useAsyncData.ts';
