@@ -81,7 +81,7 @@ branching from `phase-1`'s HEAD. Recorded *before* any lane reports, per §5.6.
 | :---- | :---- | :---- | :---- | :---- | :---- |
 | `s1-3-shift-detail` | S1.3 Shift detail | `worktree-agent-a70288ce91b7420c8` | `62f8e2f` (12 files) | no | no |
 | `s1-6-schedule` | S1.6 Shift & route scheduling | `worktree-agent-ac1471e654deb59e1` | `573cf10` (11 files) | no | no |
-| `s1-7-reschedule` | S1.7 Reschedule | `worktree-agent-a67bac95e181243b0` | `9efd4cc` (9 files) | no | no |
+| `s1-7-reschedule` | S1.7 Reschedule | `worktree-agent-a67bac95e181243b0` | `9efd4cc` → **complete at `b3783af`** | **1st** | **merged, clean** (253 client tests, 41 this lane's) |
 | `s1-8-admin` | S1.8 Admin — accounts, donors, trucks, categories | `worktree-agent-ac5c863926923ab41` | `905039a` (7 files) | no | no |
 
 ### THE 4b STOP — spend limit again, 2026-07-29. RESUME, DO NOT RESTART.
@@ -1106,6 +1106,32 @@ the wave** (A117, A118, A119) — the rest are open and non-blocking.
 | **A130** | **The promoted segmented control uses ONE selected-state look — `--action-fill` with a `--text-on-brand` label — in both its filter and tabs behaviours, which changed S1.4's shipped appearance from an inset orange bar to a fill.** §2 sanctions orange as a fill *and* as a selected bar, so the two Wave-4a copies were both legal and no doc ruled between them. The lead chose the fill because it is the one that reads at arm's length in a truck (§1 principle 1), and because one control with two looks is the duplication the promotion existed to end. `doc-qa` confirmed §2 permits it and that the deleted bar's "§2 forbids a label on orange" comment was a misreading. | non-blocking, but it is a **visible change to a screen that already passed a gate**, and the first thing a human will notice on S1.4 |
 | **A131** | **`ui-ux-spec.md` S1.8 gained a Layout line** saying its four sub-screens are selected by the §3 segmented control in tabs mode. S1.8 previously said only "sub-screen" and "Primary action varies per sub-screen", with **no statement of how a user moves between the four**. Written by the lead rather than left to the 4b lane, because the alternative was an invented navigation pattern arriving as an `Assumed:` after the fact. §1.5 rules out a dropdown and four is small enough to show at once, so the segmented control is the only §3 control that fits. | non-blocking; raised by `doc-qa` as its one note on the promotion and fixed in the same commit |
 | **A67** | **`client/public/` is lead-owned** — RATIFIED 2026-07-29, alongside `tokens/` and `components/`. Open since Wave 2, where the pwa lane created it as a declared exception. No 4b lane touches it. | **RESOLVED** |
+
+## Open assumptions — Wave 4b
+
+### `s1-7-reschedule` (reported 1st, merged clean at `b3783af`)
+
+Full text in `reports/4b-s1-7-reschedule.md` (11 entries). The lane found one real defect in the draft
+it inherited — `onStale()` refetched on *every* failure including a 400, where nothing changed — which
+is the return that a respawn would have thrown away. These are the ones that outlive the wave:
+
+| # | Assumption | Status |
+| :---- | :---- | :---- |
+| **A132** | **`GET /shifts/:id/eligibility` cannot serve as S1.7's pre-confirm conflict check, so the unconfirmed `POST /shifts/:id/reschedule` is used instead. The lane was right and the lead's brief was wrong.** Verified by the lead, not taken on trust: `previewAssignment(shiftId, driverId)` in `services/coverage.ts` loads the shift's **currently stored** window and accepts no proposed date/time, so against a reschedule it answers about the window the owner already works — "eligible" to almost every real conflict, which is worse than useless. The unconfirmed POST is the two-step flow `routes/shifts.ts` was built for, and it is non-mutating on conflict because the `throw` precedes the `UPDATE` inside `writeTransaction`. **Not blocked** — the surface satisfying PRD cap 9 exists; only the endpoint named in the brief was wrong. | **non-blocking, resolved in the lane's favour.** The lesson is for the lead: a brief that names an endpoint should be checked against that endpoint's signature before it is written |
+| **A133** | **A consequence of A132: the conflict warning appears when staff press "Confirm new time", not inline as they pick a time.** A speculative probe is impossible — an unconfirmed POST that finds *no* conflict performs the move, so probing as the form changes would move the run with nobody confirming anything. Cap 9 and S1.7 are both structured surface-then-confirm and nothing has changed when the warning appears, so this satisfies "before confirm". **A real dry-run (`?preview=true`, or a proposed window on the eligibility read) would let the warning render inline, which is the better screen.** A lane may not add an endpoint. | **open — needs a human or a Phase-2 lead.** Not a Phase-1 blocker: the rule is enforced and surfaced before anything changes. It is a screen-quality improvement with a server cost |
+| **A134** | **Three copies of calendar/time-picking code now exist across S1.2, S1.4 and S1.7** — `DayPicker.tsx` (single-select) against S1.4's `DayRangePicker` (range), `TimeGrid.tsx` against S1.4's private `TimeChoice`, and `logic.ts` re-implementing the calendar helpers, because a screen folder is private to its lane. **Two lanes independently wanting a calendar is the promotion signal**, the same one that produced `components/Segmented.tsx`. | **open — a lead chore, deliberately NOT done in this session.** The segmented promotion was worth its cost because two copies had *diverged in behaviour*; nothing yet says these have. Promote when a third consumer appears or a divergence is found, not on count alone |
+| **A135** | **The 409's `conflicts[]` array is dropped by `api/client.ts`** and this lane did not extend it — that is a lead-owned file. Recorded because it bounds how much detail *any* screen can show off a refusal, not just this one. | open, non-blocking; a known ceiling rather than a defect |
+| **A136** | Four screen-local judgement calls no doc rules on: a window crossing pantry midnight is **clamped to `23:59`** on the form (the server builds both instants from one `date`, so such a window cannot be expressed — the alternative was a silent 400); the day picker offers **today forward in the pantry's zone plus the run's own current day** even if past (client-only courtesy, server has no lower bound); **Confirm with nothing changed** says "Pick a different day or time first." rather than sending; a successful move **navigates to S1.3** for both outcomes, kept and released. | open, non-blocking, all four visible on screen |
+| **A137** | **All user-visible copy on S1.7 is the lane's own, unread by a human** — same standing as A6/A45/A70/A92/A107/A129. Two pieces are load-bearing: the `releaseNoReplacement` sentence and the three cannot-be-moved explanations. The conflict warning is **not** in this set; it is the server's. | open — folds into the standing copy-review item |
+
+The lane also flagged that **`doc-qa` cannot be run from inside a lane** (no `Agent` tool in that
+context), so it ran the checks by hand. Build-plan §5.2 puts `doc-qa` over the *merged* diff on the
+lead regardless, so this changes nothing — but it means a lane's "I ran doc-qa" would be a false claim,
+and none of them made it.
+
+**For the wiring:** `import { RescheduleScreen } from './screens/s1-rescue/s1-7-reschedule/index.ts'`
+under screen id `reschedule`. S1.3 and S1.6 need only `go('reschedule', { shiftId })` — it loads the
+run itself and takes no props beyond the URL param.
 
 ## What still stands between a green 4b and §5.4
 
