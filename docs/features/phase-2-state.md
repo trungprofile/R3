@@ -103,6 +103,35 @@ hard-deleting the donor or category it names would take the audit trail with it 
 `ON DELETE RESTRICT` would refuse the delete anyway, turning a soft-delete decision into a
 foreign-key error. Not stated by any doc.
 
+### A170 — the truck alert deep-links to `/receive`, not to the shift
+
+Every other event in the matrix deep-links to its shift, which is S1.9's "tap to act".
+`TRUCK_INBOUND` does not, and for the reason that makes it exceptional at all: it is
+addressed to a **device**, so whoever taps it is whoever is standing at the dock.
+`/shifts/:id` is the driver's and staff's view of a run and would ask a receiver to be
+someone they are not. No doc states a destination for this event.
+
+### A171 — a push now also reaches the open page, not just the OS
+
+S2.4 wants a full-width in-page banner on the tablet that "banners above without
+stealing the keypad". The OS notification `sw.ts` already showed is the right surface
+for a phone in a pocket and the wrong one for a tablet lying face-up with R3 open, so
+the worker now **also** posts the message to every open window (`onForegroundAlert`).
+
+Two consequences worth stating: the page may show a banner for an alert the OS is
+*also* showing, and the message goes to every open window rather than one, so a
+handler must be idempotent and must not navigate on its own. Nothing focuses or
+navigates on arrival — a push is not a tap.
+
+### A172 — the S2.1b screen's own assumptions
+
+Ten more, recorded in `reports/phase2-s2-1b.md` rather than repeated here. The four
+that change what a person sees: dates are absolute and never relative (no "Today", even
+from the pantry's clock); a fourth status dot for `REASSIGNED`, since the spec names
+three and `ReceiveStopState` has five; oldest-occurrence-first list order, so an
+unclosed run from last week does not sink; and a stop re-read on every tap, costing one
+round trip so two receivers do not land on the same store.
+
 ## Bugs found and fixed during the build
 
 - **`a <= b = true`.** Two raw predicates used Kysely's three-argument `where`, which appends

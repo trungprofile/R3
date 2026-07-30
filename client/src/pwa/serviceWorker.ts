@@ -80,6 +80,47 @@ export function onServiceWorkerNavigate(handler: (url: string) => void): () => v
   return () => navigator.serviceWorker.removeEventListener('message', listener);
 }
 
+/** One alert as it reaches an already-open page. Mirrors `sw.ts`'s `PushMessage`. */
+export interface ForegroundAlert {
+  title: string;
+  body: string;
+  url: string;
+  event: string;
+  notificationId: string;
+}
+
+/**
+ * An alert arriving while R3 is already open.
+ *
+ * Distinct from `onServiceWorkerNavigate` above, and the difference matters: that one
+ * fires when someone TAPS an OS banner, so acting on it is what they asked for. This
+ * one fires when a push merely ARRIVES, so the page has been told something and
+ * nobody has asked for anything. Only a surface that can interrupt gently should use
+ * it — S2.4's dock banner is the one the spec asks for.
+ *
+ * Delivered to every open window (`sw.ts` posts to all matched clients), so a handler
+ * must be idempotent and must not navigate on its own.
+ */
+export function onForegroundAlert(handler: (alert: ForegroundAlert) => void): () => void {
+  if (!('serviceWorker' in navigator)) return () => undefined;
+
+  const listener = (event: MessageEvent) => {
+    const data = event.data as Partial<ForegroundAlert> & { type?: unknown };
+    if (data?.type !== 'alert') return;
+    if (typeof data.event !== 'string' || typeof data.title !== 'string') return;
+    handler({
+      title: data.title,
+      body: typeof data.body === 'string' ? data.body : '',
+      url: typeof data.url === 'string' && data.url.startsWith('/') ? data.url : '/inbox',
+      event: data.event,
+      notificationId: typeof data.notificationId === 'string' ? data.notificationId : '',
+    });
+  };
+
+  navigator.serviceWorker.addEventListener('message', listener);
+  return () => navigator.serviceWorker.removeEventListener('message', listener);
+}
+
 // ---------------------------------------------------------------------------
 // Installability
 // ---------------------------------------------------------------------------

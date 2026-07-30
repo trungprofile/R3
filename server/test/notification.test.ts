@@ -482,6 +482,45 @@ describe('banner copy obeys ui-ux-spec.md §7', () => {
     }
   });
 
+  it('sends the dock to receiving, not to the driver view of the run', () => {
+    // TRUCK_INBOUND is the one device-addressed event, so whoever taps it is
+    // whoever is standing at the dock — `/shifts/:id` is the driver's and staff's
+    // view of a run and would ask a receiver to be someone they are not (A170).
+    const message = renderPush({
+      id: 'n1',
+      event: 'TRUCK_INBOUND',
+      recipientId: null,
+      subscriptionId: 'sub1',
+      shiftId: 's1',
+      payload: { who: 'Karen', route: 'Tuesday North' },
+      attempts: 0,
+    });
+
+    expect(message.url).toBe('/receive');
+    expect(message.title).toBe('Truck inbound');
+    expect(message.body).toContain('Karen');
+    expect(message.body).toContain('Tuesday North');
+  });
+
+  it('still says something useful when the truck alert has no run detail', () => {
+    // The dock may have nobody logged in, so this copy has to stand alone.
+    const message = renderPush({
+      id: 'n1',
+      event: 'TRUCK_INBOUND',
+      recipientId: null,
+      subscriptionId: 'sub1',
+      shiftId: 's1',
+      payload: {},
+      attempts: 0,
+    });
+
+    expect(message.body.length).toBeGreaterThan(0);
+    const text = `${message.title} ${message.body}`.toLowerCase();
+    for (const word of FORBIDDEN) {
+      expect(text, `"${word}" is forbidden in UI copy`).not.toContain(word.toLowerCase());
+    }
+  });
+
   it('falls back to the inbox when the event has no subject run', () => {
     const message = renderPush({
       id: 'n1',

@@ -380,6 +380,16 @@ export function renderPush(notification: PendingNotification): PushMessage {
       title = 'A run is still open for tomorrow';
       body = run !== '' ? `${run}. Tap to take it.` : 'Tap to see it on the board.';
       break;
+    case 'TRUCK_INBOUND':
+      // S2.4's banner. Addressed to a dock that may have nobody logged in, so the
+      // copy has to stand alone — "who" is the driver heading back, and the route
+      // says which run, because a receiver may be expecting more than one.
+      title = 'Truck inbound';
+      body =
+        who != null && who !== ''
+          ? `${who} is heading back${route != null && route !== '' ? ` from ${route}` : ''}.`
+          : 'A driver is heading back with a pickup.';
+      break;
     default:
       title = 'R3';
       body = detail;
@@ -389,8 +399,23 @@ export function renderPush(notification: PendingNotification): PushMessage {
   return {
     title,
     body,
-    url: notification.shiftId !== null ? `/shifts/${notification.shiftId}` : '/inbox',
+    url: deepLinkFor(notification),
     event: notification.event,
     notificationId: notification.id,
   };
+}
+
+/**
+ * Where tapping the banner lands.
+ *
+ * Every person-addressed event deep-links to its shift, which is S1.9's "tap to act".
+ * `TRUCK_INBOUND` is the exception, and for the reason that makes it exceptional at
+ * all: it is addressed to a DEVICE, so the person who taps it is whoever is standing
+ * at the dock. `/shifts/:id` is the driver's and staff's view of a run and would ask
+ * a receiver to be someone they are not; `/receive` is the screen they actually need,
+ * and it is where they would have gone anyway (Phase-2 A170).
+ */
+function deepLinkFor(notification: PendingNotification): string {
+  if (notification.event === 'TRUCK_INBOUND') return '/receive';
+  return notification.shiftId !== null ? `/shifts/${notification.shiftId}` : '/inbox';
 }

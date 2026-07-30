@@ -71,17 +71,40 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+/**
+ * Tell any open window what just arrived.
+ *
+ * The OS banner below is the right surface for a phone in someone's pocket. It is the
+ * wrong one for the shared receiver tablet, which sits face-up on the dock with R3
+ * already open: `ui-ux-spec.md` S2.4 asks for a full-width in-page banner there,
+ * loud enough to notice across a room and — critically — one that "banners above
+ * without stealing the keypad" from whoever is mid-weighing.
+ *
+ * So the page gets the same message, and decides for itself whether it has a surface
+ * for it. Posting to every matched client rather than focusing one: nothing has been
+ * tapped here, and stealing focus on a push would be hostile.
+ */
+async function tellOpenWindows(message: PushMessage): Promise<void> {
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of windows) {
+    client.postMessage({ type: 'alert', ...message });
+  }
+}
+
 self.addEventListener('push', (event) => {
   const message = parse(event);
   event.waitUntil(
-    self.registration.showNotification(message.title, {
-      body: message.body,
-      // At-least-once delivery means the same alert can arrive twice. Tagging by the
-      // server's row id collapses the repeat into one banner instead of suppressing
-      // the send — the trade `architecture.md §4.4` chose deliberately.
-      tag: message.notificationId !== '' ? message.notificationId : message.event,
-      data: { url: message.url },
-    }),
+    Promise.all([
+      self.registration.showNotification(message.title, {
+        body: message.body,
+        // At-least-once delivery means the same alert can arrive twice. Tagging by the
+        // server's row id collapses the repeat into one banner instead of suppressing
+        // the send — the trade `architecture.md §4.4` chose deliberately.
+        tag: message.notificationId !== '' ? message.notificationId : message.event,
+        data: { url: message.url },
+      }),
+      tellOpenWindows(message),
+    ]),
   );
 });
 
