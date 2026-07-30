@@ -11,12 +11,15 @@
     <!-- Declared statically rather than injected at runtime (wave-2 A66). The pwa
          lane could not touch this file, so `linkManifest()` added the link from
          main.tsx; that call is idempotent and is now a no-op. A browser that reads
-         the head before scripts run sees the manifest either way.
-         STILL MISSING: <link rel="apple-touch-icon">, which iOS uses for the
-         home-screen icon instead of the manifest. It needs a PNG — the only icons
-         in client/public/ are SVG, which iOS will not accept — so the installed
-         icon on iOS is the browser's screenshot fallback until one is added. -->
+         the head before scripts run sees the manifest either way. -->
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- A66 closed. iOS ignores the manifest for the home-screen icon and takes
+         this link instead, and it will not accept the SVG the manifest points at —
+         without it the installed icon was a screenshot of the page. 180×180 is the
+         size iOS asks for and downscales from. Deliberately full-bleed and opaque:
+         iOS applies its own corner mask, so icon.svg's rounded corners are painted
+         white here rather than left transparent, which would composite to black. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>R3 — Amazing Grace Food Pantry</title>
   </head>
   <body>
