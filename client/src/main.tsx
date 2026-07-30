@@ -35,6 +35,8 @@ import { WeightEntryScreen } from './screens/s2-receive/s2-2-weight-entry/index.
 import { ReceiveDoneScreen } from './screens/s2-receive/s2-2b-receive-done/index.ts';
 import { DonationScreen } from './screens/s2-receive/s2-3-donation/index.ts';
 import { TruckInboundHost } from './screens/s2-receive/s2-4-truck-inbound/index.ts';
+import { ReportScreen } from './screens/s3-report/s3-1-report/index.ts';
+import { MetricsScreen } from './screens/s3-report/s3-2-metrics/index.ts';
 import './tokens/tokens.css';
 
 const SCREENS: ScreenRegistry = {
@@ -54,6 +56,10 @@ const SCREENS: ScreenRegistry = {
   'receive-stop': WeightEntryScreen, // S2.2
   'receive-done': ReceiveDoneScreen, // S2.2b
   donation: DonationScreen, // S2.3
+  // Phase 3. The registry is now complete: every screen in `ui-ux-spec.md §8` has
+  // an entry, and `AppShell`'s Placeholder is unreachable through the nav.
+  report: ReportScreen, // S3.1
+  metrics: MetricsScreen, // S3.2
 };
 
 linkManifest();

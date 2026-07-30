@@ -88,7 +88,7 @@ export function reviseWeight(
   entryId: string,
   body: ReviseWeightRequest,
 ): Promise<ReceiveStopDetail> {
-  return put<ReceiveStopDetail>(weightPath(shiftId, stopId, entryId), body);
+  return api.put<ReceiveStopDetail>(weightPath(shiftId, stopId, entryId), { body });
 }
 
 /** Take a number off the sheet. The server voids the row and retains it (I13);
@@ -109,72 +109,4 @@ export function skipStop(
   body: SkipStopRequest = {},
 ): Promise<ReceiveStopDetail> {
   return api.post<ReceiveStopDetail>(`${stopPath(shiftId, stopId)}/skip`, { body });
-}
-
-// ---------------------------------------------------------------------------
-// PUT, until the shared client has one
-// ---------------------------------------------------------------------------
-
-/**
- * `api` exposes get/post/patch/delete and no `put`, while the revise route is
- * registered as a PUT (`routes/receive.ts`: "a PUT, not a PATCH, because the
- * entry is replaced rather than merged"). This lane may not edit
- * `client/src/api/client.ts`, so the verb is bridged here.
- *
- * It behaves identically to `client.ts`'s own `send` and reuses that module's
- * exported primitives rather than re-deciding anything: same cookie mode, same
- * `ApiError` shape (§6), same offline reporting that raises the blocking banner,
- * same activity ping on an accepted request. **The intended fix is a one-line
- * `put` on `api`**, after which this function and its one call site collapse to
- * `api.put` — reported to the lead rather than made here.
- */
-async function put<T>(path: string, body: unknown): Promise<T> {
-  if (!isOnline()) throw new ApiError('offline');
-
-  let response: Response;
-  try {
-    response = await fetch(`/api${path}`, {
-      method: 'PUT',
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch (cause) {
-    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
-    reportNetworkFailure();
-    throw new ApiError('offline');
-  }
-
-  reportNetworkSuccess();
-  // A request the server accepted slid the sign-in clock; a refused one did not.
-  if (response.ok) reportActivity();
-
-  if (!response.ok) {
-    const detail = await readMessage(response);
-    throw new ApiError(kindForStatus(response.status), {
-      status: response.status,
-      ...(detail === null ? {} : { detail }),
-    });
-  }
-
-  try {
-    return (await response.json()) as T;
-  } catch {
-    throw new ApiError('server', { status: response.status });
-  }
-}
-
-/** The server's own sentence for a refusal, if it sent one. Never the code and
- *  never the correlation identifier (§6). */
-async function readMessage(response: Response): Promise<string | null> {
-  try {
-    const parsed: unknown = await response.json();
-    if (parsed !== null && typeof parsed === 'object' && 'message' in parsed) {
-      const message = (parsed as { message?: unknown }).message;
-      if (typeof message === 'string') return message;
-    }
-  } catch {
-    // No body, or not JSON. The per-kind message covers it.
-  }
-  return null;
 }

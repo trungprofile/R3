@@ -48,8 +48,16 @@ export interface RouteDef {
   fullScreen?: boolean;
 }
 
-/** Bump as phases ship. Phase 2 adds receiving (`product-requirement.md §4`). */
-export const CURRENT_PHASE = 2;
+/**
+ * Bump as phases ship. Phase 3 adds report and metrics — the last of the three
+ * (`product-requirement.md §4`), so every route in this table is now reachable.
+ *
+ * Bumped WITH the screens, never ahead of them: `nav.tsx` offers a nav entry the
+ * moment a route's phase has shipped, so a premature bump puts Report and Metrics in
+ * the desktop nav pointing at the shell's placeholder. Phase 2 learned this from a
+ * `doc-qa` finding about the tablet home path and the rule has held since.
+ */
+export const CURRENT_PHASE = 3;
 
 export const ROUTES: readonly RouteDef[] = [
   { id: 'login', path: '/login', spec: 'S1.1', phase: 1, fullScreen: true },

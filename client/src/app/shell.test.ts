@@ -129,11 +129,14 @@ describe('navigation derived from tier and duty (UI §4)', () => {
     expect(ids(receiver, 'phone')).not.toContain('my-shifts');
   });
 
-  it('does not offer screens from a later phase', () => {
-    // Admin holds the `report` duty, but Report and Metrics are Phase 3 and a
-    // nav item leading nowhere is worse than an absent one.
-    expect(ids(admin, 'desktop')).not.toContain('report');
-    expect(ids(admin, 'desktop')).not.toContain('metrics');
+  it('offers Report and Metrics now that Phase 3 has shipped', () => {
+    // Through Phases 1 and 2 this asserted the OPPOSITE — that both were absent,
+    // because a nav item leading to the shell's placeholder is worse than no item.
+    // Phase 3 registered both screens and bumped CURRENT_PHASE in the same commit,
+    // which is the ordering `shipped()` exists to enforce, so the assertion flips
+    // rather than being deleted.
+    expect(ids(admin, 'desktop')).toContain('report');
+    expect(ids(admin, 'desktop')).toContain('metrics');
   });
 
   it('offers the inbox to everyone — it is the source of truth for events', () => {

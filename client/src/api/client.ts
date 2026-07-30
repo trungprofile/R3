@@ -115,6 +115,17 @@ export const api = {
     send<T>('POST', path, options),
   patch: <T>(path: string, options: RequestOptions = {}): Promise<T> =>
     send<T>('PATCH', path, options),
+  /**
+   * PUT — replace rather than amend.
+   *
+   * Added late, and the reason is worth keeping: two screen lanes (S2.2's weight
+   * overwrite and S3.1's Reporter correction) each wrote their own local bridge for
+   * this verb because it was missing here, both reproducing the cookie mode, the
+   * `ApiError` shape and the offline/activity reporting by hand. Two copies of the
+   * transport is exactly what this module exists to prevent.
+   */
+  put: <T>(path: string, options: RequestOptions = {}): Promise<T> =>
+    send<T>('PUT', path, options),
   delete: <T>(path: string, options: RequestOptions = {}): Promise<T> =>
     send<T>('DELETE', path, options),
 };

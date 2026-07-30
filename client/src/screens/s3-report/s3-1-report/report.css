@@ -1,0 +1,417 @@
+/* S3.1 — Report generation.
+ *
+ * Tokens only (`ui-ux-spec.md §2`): no literal hex, and no literal px where a
+ * spacing or size token exists. Sizes are relative units so 200% zoom reflows
+ * rather than breaks (§1.3).
+ *
+ * CANONICAL DEVICE: the shared DESKTOP. The responsive matrix marks "Report +
+ * metrics" `n/a` on a phone and `usable` on a tablet, so there is no phone
+ * breakpoint here. What there is instead: every horizontal row wraps, and every
+ * grid collapses to one column below the tablet's own width — which is also what
+ * makes the desktop layout survive 200% zoom, since a doubled type scale is the
+ * same problem as a halved viewport.
+ *
+ * Class prefix `s31-` because this file ships beside the screen rather than in
+ * `components/`, and two screens must never fight over a name.
+ */
+
+.s31 {
+  max-width: 68rem;
+  margin: 0 auto;
+}
+
+.s31-title {
+  font-size: var(--font-h1);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.s31-subheading {
+  font-size: var(--font-h3);
+  margin: 0 0 var(--space-2) 0;
+}
+
+/* Non-critical explanation. Muted is §2's rule for a label; never body text that
+ * carries a decision on its own. */
+.s31-note {
+  font-size: var(--font-body);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3) 0;
+  max-width: 46rem;
+}
+
+.s31-error {
+  font-size: var(--font-body);
+  color: var(--danger);
+  margin: var(--space-2) 0;
+}
+
+/* --- picking a week ------------------------------------------------------- */
+
+.s31-week {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* §1.2: at least an 8px gap between adjacent targets, and these three sit in a
+   * row. `--space-3` keeps them apart even when the labels grow at 200% zoom. */
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.s31-week__label {
+  flex: 1 1 16rem;
+  text-align: center;
+}
+
+.s31-week__name {
+  font-size: var(--font-h2);
+  margin: 0;
+}
+
+.s31-week__range {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0;
+}
+
+.s31-panel {
+  margin-top: var(--space-4);
+}
+
+/* --- the block that stops the export -------------------------------------- */
+
+/* Warning fill behind dark text (§2): this needs attention, but nothing has gone
+ * wrong — the report is simply not finished. Given the whole width and put above
+ * everything it blocks, because a short report is invisible at the far end (D12). */
+.s31-blocked {
+  background: var(--surface-paper);
+  border-left: var(--space-1) solid var(--warning);
+  border-radius: var(--radius-card);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.s31-blocked__title {
+  font-size: var(--font-h2);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s31-blocked__body {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0 0 var(--space-3) 0;
+  max-width: 46rem;
+}
+
+.s31-blocked__detail {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0 0 var(--space-4) 0;
+  max-width: 46rem;
+}
+
+.s31-blocked__label {
+  display: block;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* --- open runs (surfaced, never blocking — A184) --------------------------- */
+
+.s31-open-runs {
+  margin-bottom: var(--space-5);
+}
+
+.s31-open-runs__list {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--font-body);
+  color: var(--text);
+}
+
+/* --- the two totals, never conflated (PRD §3) ------------------------------ */
+
+.s31-totals {
+  display: grid;
+  /* Three side by side on the desktop, stacking on their own as the column gets
+   * narrower — at tablet width, and equally at 200% zoom. */
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.s31-total {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+/* The reported figure is the one the export carries, so it is the one with
+ * emphasis. The others stay full-size and fully labelled — the emphasis says
+ * which number leaves the building, not which number matters. */
+.s31-total--primary {
+  border-top-width: var(--space-1);
+  border-top-color: var(--brand-orange);
+}
+
+.s31-total__label {
+  font-size: var(--font-body);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.s31-total__value {
+  margin: var(--space-2) 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.s31-total__note {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* --- the report table ------------------------------------------------------ */
+
+.s31-table {
+  margin-top: var(--space-5);
+}
+
+.s31-table__hint {
+  font-size: var(--font-body);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.s31-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.s31-line__name {
+  font-size: var(--font-h3);
+  margin: 0;
+}
+
+.s31-line__total {
+  white-space: nowrap;
+}
+
+.s31-line__sub {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  font-weight: 400;
+  margin: var(--space-3) 0 var(--space-2) 0;
+}
+
+/* One of our categories inside a food bank line — the drill-in's target. Full
+ * row is the target, and it is a real button so the keyboard reaches it. */
+.s31-agfp {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--row-min);
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  font: inherit;
+  font-size: var(--font-body);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.s31-agfp:hover {
+  border-color: var(--border);
+}
+
+.s31-agfp[aria-expanded='true'] {
+  border-color: var(--brand-orange);
+}
+
+.s31-agfp__name {
+  font-weight: 600;
+}
+
+.s31-agfp__weight {
+  white-space: nowrap;
+}
+
+/* --- the drill-in ---------------------------------------------------------- */
+
+.s31-drill {
+  border-left: var(--space-1) solid var(--brand-orange);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-2) 0 var(--space-4) var(--space-3);
+}
+
+.s31-day {
+  margin-bottom: var(--space-4);
+}
+
+.s31-day__heading {
+  font-size: var(--font-body);
+  color: var(--text-muted);
+  font-weight: 600;
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s31-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--row-min);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.s31-entry__facts {
+  flex: 1 1 14rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.s31-entry__store {
+  font-size: var(--font-body);
+  font-weight: 600;
+}
+
+.s31-entry__meta {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.s31-entry__weight {
+  white-space: nowrap;
+}
+
+.s31-entry__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* §1.2 again: the edit button and the report switch are adjacent targets. */
+  gap: var(--space-2);
+}
+
+.s31-edit {
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  margin: var(--space-3) 0;
+  max-width: 26rem;
+}
+
+.s31-edit__title {
+  font-size: var(--font-h3);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s31-edit__hint,
+.s31-edit__prior {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s31-edit__draft {
+  margin: 0 0 var(--space-3) 0;
+  min-height: var(--target-min);
+}
+
+.s31-edit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.s31-drill__total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  font-size: var(--font-h3);
+  margin: var(--space-3) 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+/* --- the matching editor --------------------------------------------------- */
+
+.s31-mapping section + section {
+  margin-top: var(--space-6);
+}
+
+.s31-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.s31-target {
+  font-size: var(--font-body);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* Not matched yet — the state that blocks the export. Danger would say something
+ * broke; this is a gap, so it takes the warning role's dark-on-light treatment. */
+.s31-target--none {
+  color: var(--text);
+  background: var(--surface-paper);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+}
+
+.s31-archived {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.s31-form {
+  max-width: 34rem;
+}
+
+.s31-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.s31-form__danger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+/* --- the one primary action ------------------------------------------------ */
+
+.s31-export {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
