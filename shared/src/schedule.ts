@@ -199,7 +199,11 @@ export interface RecurrencePatternSummary {
   /** `YYYY-MM-DD` or null. The ONLY stop condition: there is deliberately no
    *  separate active/paused flag (`domain-modeling.md §5.3`). */
   endDate: string | null;
-  /** "Claim all future" target. Set by claim-all / staff-assign, not at create. */
+  /** "Claim all future" target. Set by claim-all ONLY, and not at create.
+   *  Staff-assign is per-run: it writes `shift.owner_id` and never this
+   *  (`domain-modeling.md §5.3`'s Operations table lists only claim-all, and PRD
+   *  cap 6 gives staff-assign "the same owner field as self-select"). There is no
+   *  endpoint that sets a series-level default on staff's behalf, by design. */
   ownerDefaultId: string | null;
   ownerDefaultName: string | null;
   createdAt: string;

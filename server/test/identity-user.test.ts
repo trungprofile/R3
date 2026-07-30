@@ -6,6 +6,7 @@ import { db, pool } from '../src/db/index.js';
 import { login, resetLoginThrottle, verifyCredential } from '../src/services/auth.js';
 import {
   createUser,
+  listRosterUsers,
   listUsers,
   normalizeNamePart,
   removeUser,
@@ -83,6 +84,45 @@ describe('generate_username', () => {
     const first = await volunteer('Zero', 'History');
     expect(await removeUser(first.user.id)).toBe('DELETED');
     expect((await volunteer('Zero', 'History')).user.username).toBe('zerohistory');
+  });
+});
+
+// §3.3's User lifecycle is ACTIVE ⇄ DEACTIVATED. Until Wave 4b's S1.8 lane reported
+// it, only the outbound arrow existed: an account could be deactivated and never
+// brought back, while every other §3.3 entity could. Found by doc-qa over the 4b diff.
+describe('reactivation (§3.3)', () => {
+  it('brings a deactivated account back, and the old credential still works', async () => {
+    const created = await volunteer('Back', 'Again', '4321');
+    await makeShift({ createdBy: created.user.id });
+    expect(await removeUser(created.user.id)).toBe('DEACTIVATED');
+
+    // Deactivated accounts are absent from the login roster (the active read).
+    const beforeNames = (await listRosterUsers()).map((r) => r.user.username);
+    expect(beforeNames).not.toContain(created.user.username);
+
+    await updateUser(created.user.id, { active: true });
+
+    const afterNames = (await listRosterUsers()).map((r) => r.user.username);
+    expect(afterNames).toContain(created.user.username);
+
+    // Reactivation does not reset the credential — the person signs in with what
+    // they already had.
+    const session = await login({
+      username: created.user.username,
+      credential: '4321',
+      deviceId: null,
+      clientIp: IP,
+    });
+    expect(session.sessionId).toBeTruthy();
+  });
+
+  it('refuses `active: false` and points at Delete, so I21 is not bypassed', async () => {
+    const created = await volunteer('Stay', 'Put');
+    await expect(updateUser(created.user.id, { active: false })).rejects.toThrow(/Delete/);
+
+    // Still active: the refusal changed nothing.
+    const names = (await listRosterUsers()).map((r) => r.user.username);
+    expect(names).toContain(created.user.username);
   });
 });
 

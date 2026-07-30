@@ -110,8 +110,10 @@ export function BoardScreen(_props: ScreenProps) {
     const shown = claimedNow
       ? withOptimisticClaim(shifts, claimedNow, { id: user.id, name: displayName(user) })
       : shifts;
-    return groupByDay(shown, viewer);
-  }, [state.data, claimedNow, viewer, user]);
+    // `today` is the pantry's, not the device's (A138) — it decides which heading
+    // reads "Today"/"Tomorrow", so passing it is not optional dressing.
+    return groupByDay(shown, viewer, Date.now(), today);
+  }, [state.data, claimedNow, viewer, user, today]);
 
   async function runClaim(shift: ShiftSummary, scope: ClaimScope) {
     setScopePrompt(null);
@@ -197,7 +199,7 @@ export function BoardScreen(_props: ScreenProps) {
       ) : null}
 
       {showSkipped && partial ? (
-        <SkippedRuns result={partial} onClose={() => setShowSkipped(false)} />
+        <SkippedRuns result={partial} today={today} onClose={() => setShowSkipped(false)} />
       ) : null}
     </div>
   );
@@ -415,8 +417,17 @@ function PartialSummary({
   );
 }
 
-function SkippedRuns({ result, onClose }: { result: ClaimResult; onClose: () => void }) {
-  const lines = skippedLines(result.skipped);
+function SkippedRuns({
+  result,
+  today,
+  onClose,
+}: {
+  result: ClaimResult;
+  /** The pantry's today (A138) — the skipped list dates runs too. */
+  today: string;
+  onClose: () => void;
+}) {
+  const lines = skippedLines(result.skipped, today);
 
   return (
     <Modal

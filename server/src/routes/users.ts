@@ -109,6 +109,8 @@ export const userRoutes = [
         ...(input['credential'] !== undefined
           ? { credential: input['credential'] as string }
           : {}),
+        // Reactivation only; the service refuses `false` and points at Delete.
+        ...(input['active'] !== undefined ? { active: input['active'] as boolean } : {}),
       });
       res.json(shapeUser(updated.user, updated.duties, viewerOf(req)));
     },

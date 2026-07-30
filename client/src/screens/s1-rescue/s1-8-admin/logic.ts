@@ -82,6 +82,10 @@ export const COPY = {
     adminNotRemovable: 'An admin account is not removed here.',
     deactivated:
       "This account is deactivated. It can't sign in, and its runs and history are kept.",
+    /** §3.3's ACTIVE ⇄ DEACTIVATED return arrow. Says what happens to the sign-in
+     *  details, because that is the first thing the admin will be asked. */
+    reactivate: 'Bring this account back',
+    reactivated: 'Account brought back. They sign in with the same details as before.',
     firstName: 'First name',
     lastName: 'Last name',
     username: 'Username',

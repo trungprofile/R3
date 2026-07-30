@@ -196,6 +196,16 @@ export interface UpdateUserRequest {
   address?: string | null;
   /** Required when a tier change crosses the PIN/password boundary. */
   credential?: string;
+  /**
+   * Reactivate a deactivated account — `domain-modeling.md §3.3`'s User lifecycle is
+   * `ACTIVE ⇄ DEACTIVATED`, and the reverse arrow needs a way to be travelled.
+   *
+   * **Only `true` is accepted.** Deactivating goes through `DELETE /users/:id`, which
+   * is where I21 decides hard-delete vs. deactivate and where the account's sessions
+   * are destroyed (`architecture.md §4.2`). A second deactivation path here would
+   * skip both, so it is refused rather than quietly duplicating them.
+   */
+  active?: boolean;
 }
 
 export interface SetCredentialRequest {

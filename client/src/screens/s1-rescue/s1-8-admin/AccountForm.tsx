@@ -48,6 +48,10 @@ export interface AccountFormProps {
   /** Absent when removal is not offered here: S1.8 removes NON-ADMIN accounts
    *  only, and the server refuses an admin removal again with a 403. */
   onRemove?: () => void;
+  /** Reactivate — `domain-modeling.md §3.3`'s User lifecycle is ACTIVE ⇄
+   *  DEACTIVATED, and without this the return arrow has no affordance. Only
+   *  passed for an account that is actually deactivated. */
+  onReactivate?: () => void;
 }
 
 export function AccountForm({
@@ -59,6 +63,7 @@ export function AccountForm({
   onSubmit,
   onCancel,
   onRemove,
+  onReactivate,
 }: AccountFormProps) {
   const [values, setValues] = useState<AccountFormValues>(() =>
     existing === null ? EMPTY_ACCOUNT_FORM : accountFormFrom(existing),
@@ -98,7 +103,18 @@ export function AccountForm({
       {/* I21 — a deactivated account is kept, not destroyed, and its details stay
           editable ("field edits are always allowed"). */}
       {existing !== null && !existing.active ? (
-        <p className="s18-notice">{COPY.accounts.deactivated}</p>
+        <div className="s18-notice s18-notice--strong">
+          <p className="s18-notice__text">{COPY.accounts.deactivated}</p>
+          {/* §3.3's return arrow. A plain secondary button, not a confirm: bringing
+              an account back is the reversible direction — Delete is the one that
+              asks. Reactivating does not touch the credential, so the copy says so
+              rather than leaving an admin wondering what to tell the person. */}
+          {onReactivate !== undefined ? (
+            <Button variant="secondary" onClick={onReactivate} disabled={busy}>
+              {COPY.accounts.reactivate}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       <TextInput

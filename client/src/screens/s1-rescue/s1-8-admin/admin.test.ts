@@ -377,6 +377,17 @@ describe('the edit plan', () => {
     expect(plan.credentialOnly).toBe('4821');
   });
 
+  it('never carries `active`, so an ordinary save cannot reactivate by accident', () => {
+    // §3.3's return arrow is its own deliberate action with its own button. Saving
+    // a field edit on a deactivated account leaves it deactivated — I21 says the
+    // details of a deactivated account stay editable, which is a different thing
+    // from bringing it back.
+    const existing = user({ active: false });
+    const plan = buildUserSave(existing, editForm(existing, { lastName: 'Smyth' }));
+    expect(plan.patch).toEqual({ lastName: 'Smyth' });
+    expect(plan.patch).not.toHaveProperty('active');
+  });
+
   it('treats an absent phone the same as a null one', () => {
     // `pii.ts` deletes the field when the viewer may not see it; an admin always
     // may, so absent here means genuinely unset and clearing it is not a change.

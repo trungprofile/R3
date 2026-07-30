@@ -124,6 +124,24 @@ export function AccountsPanel() {
     }
   };
 
+  /** §3.3's ACTIVE ⇄ DEACTIVATED return arrow. `{ active: true }` is the whole
+   *  patch: the server refuses `false` and points at Delete, so this cannot become
+   *  a second deactivation path that skips I21. */
+  const reactivate = async (user: ShapedUser) => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      await updateAccount(user.id, { active: true });
+      toast.success(COPY.accounts.reactivated);
+      backToList();
+      state.reload();
+    } catch (cause) {
+      setFailure(writeFailureText(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (view.kind !== 'list') {
     const existing = view.kind === 'edit' ? view.user : null;
     return (
@@ -138,6 +156,9 @@ export function AccountsPanel() {
           onCancel={backToList}
           {...(existing !== null && existing.tier !== 'ADMIN'
             ? { onRemove: () => setConfirming(existing) }
+            : {})}
+          {...(existing !== null && !existing.active
+            ? { onReactivate: () => void reactivate(existing) }
             : {})}
         />
         {confirming !== null ? (

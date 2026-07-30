@@ -306,6 +306,8 @@ export interface UpdateUserParams {
   phone?: string | null;
   address?: string | null;
   credential?: string;
+  /** `true` reactivates. `false` is refused — see `updateUser`'s comment. */
+  active?: boolean;
 }
 
 /**
@@ -352,6 +354,21 @@ export async function updateUser(
       patch['last_name'] = validName(params.lastName, 'Last name');
     }
     if (params.tier !== undefined) patch['tier'] = tier;
+    // §3.3's User lifecycle is ACTIVE ⇄ DEACTIVATED, and this is the return arrow:
+    // clearing `deactivated_at` is the whole of reactivation, since every active read
+    // filters on that one bit (I21). The account's old credential still stands, so a
+    // reactivated person signs in with what they had.
+    //
+    // Only this direction lives here. Deactivating is `removeUser`, which is where
+    // I21 chooses hard-delete vs. deactivate for a zero-history account and where
+    // sessions are destroyed (§4.2) — a `false` here would skip both, so it is
+    // refused rather than half-implemented.
+    if (params.active !== undefined) {
+      if (params.active !== true) {
+        throw badRequest('To deactivate an account, use Delete — it decides what is safe.');
+      }
+      patch['deactivated_at'] = null;
+    }
     if (params.phone !== undefined) patch['phone'] = params.phone?.trim() || null;
     if (params.address !== undefined) patch['address'] = params.address?.trim() || null;
     if (credentialHash !== undefined) patch['credential_hash'] = credentialHash;
