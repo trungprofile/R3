@@ -66,9 +66,10 @@ const RESOLVED_FOR_HANDOFF: readonly ShiftstopDisposition[] = [
   'REASSIGNED',
 ];
 
-/** I30: only an unresolved stop may move. In Phase 1 "COLLECTED-but-not-yet-weighed"
- *  is every `COLLECTED` stop, because `weight_entry` is a Phase-2 table (D3) — the
- *  weighed exclusion arrives with the table that could make it true. */
+/** I30: only an unresolved stop may move — by stored disposition. The other half of
+ *  "unresolved", the "not yet weighed" clause, is a separate check in `reassignStop`
+ *  because it is a cross-table read (`weight_entry`) that no disposition can express.
+ *  Phase 1 could not make that check at all; the table it needs arrived with D3. */
 const MOVABLE_DISPOSITIONS: readonly ShiftstopDisposition[] = ['PENDING', 'COLLECTED'];
 
 // ---------------------------------------------------------------------------
@@ -525,24 +526,25 @@ export async function setRunNote(
  *      deliberately does not touch `status`, and the test suite asserts the run is
  *      still `IN_PROGRESS` afterwards. Only the receiver's receive-done closes a
  *      shift (I11), and that ships in Phase 2 (build-plan D1).
- *   3. **Trigger.** Setting it fires the Receiver notification. That notification is
- *      the truck-inbound alert (PRD cap 10: the tap "triggers the truck-inbound
- *      notification"; S1.5: "fires the truck-inbound push (device-scoped, S2.4)"),
- *      and truck-inbound is explicitly the one part of cap 13 held back to Phase 2
- *      (PRD §5: Phase 1 is "caps 1–11, 13 minus truck-inbound"; Phase 2 adds
- *      "truck-inbound notification (reuses the Phase-1 notification mechanism)"). So
- *      the milestone is written here and nothing is enqueued yet — the event is
- *      absent from the taxonomy in `services/notification.ts` for the same reason.
+ *   3. **Trigger.** Setting it fires the Receiver notification — the truck-inbound
+ *      alert (PRD cap 10; S1.5 "fires the truck-inbound push, device-scoped, S2.4").
+ *      Phase 1 wrote the milestone and enqueued nothing, because truck-inbound was
+ *      the one part of cap 13 the PRD held back. Phase 2 connects it, and the wiring
+ *      is deliberately gated on the milestone actually being NEW: see below.
  *
  * Idempotent: a second confirm keeps the first timestamp. The milestone is the moment
- * the driver said they were heading back, and there is only one of those.
+ * the driver said they were heading back, and there is only one of those — which is
+ * also what stops a second tap from banging the dock's tablet a second time, since
+ * `TRUCK_INBOUND` is device-scoped and therefore outside `uq_notif_shift_event`'s
+ * partial index (`recipient_id IS NOT NULL`). The dedupe here is the rowcount, not
+ * the constraint.
  */
 export async function completePickup(
   actor: ExecutionActor,
   shiftId: string,
   input: { note?: string | null } = {},
 ): Promise<RunDetail> {
-  return writeTransaction(async (tx) => {
+  const { detail, alerted } = await writeTransaction(async (tx) => {
     const shift = await loadShiftGuard(tx, shiftId);
     if (shift.ownerId !== actor.id) throw forbidden('That run is not yours.');
     if (shift.status !== 'IN_PROGRESS') throw conflict('That run is not in progress.');
@@ -556,7 +558,7 @@ export async function completePickup(
 
     if (unresolved.length > 0) throw conflict(PICKUP_INCOMPLETE_MESSAGE);
 
-    await tx
+    const milestone = await tx
       .updateTable('shift')
       .set({
         // `status` is deliberately absent: I27 is a milestone within IN_PROGRESS.
@@ -567,7 +569,11 @@ export async function completePickup(
       .where('id', '=', shiftId)
       // Keeps the first confirm's timestamp; a second tap only carries the note.
       .where('pickup_completed_at', 'is', null)
-      .execute();
+      .executeTakeFirst();
+
+    // Rowcount 1 = the milestone is new, so this is the tap that means "heading
+    // back". Rowcount 0 = a repeat confirm, and the dock has already been told.
+    const firstConfirm = Number(milestone.numUpdatedRows) > 0;
 
     // S1.5's review screen carries a last edit of the whole-run note. Separate
     // statement so it applies on a second confirm too, where the milestone write
@@ -580,8 +586,66 @@ export async function completePickup(
         .execute();
     }
 
-    return readRun(tx, shiftId);
+    // Truck inbound → the receiver tablet's DEVICE subscriptions (PRD matrix, S2.4).
+    // Fan-out is over `device_id IS NOT NULL` live rows: the alert has to reach a
+    // dock that may have nobody logged in, so it is addressed to the endpoint rather
+    // than to a person. `recipient_id` stays null, which `ck_notif_recipient` requires
+    // as the other half of the pair.
+    //
+    // Enqueued INSIDE this transaction (§4.4): the outbox row and the milestone commit
+    // together, so a rolled-back milestone cannot leave the dock expecting a truck.
+    let alerted = 0;
+    if (firstConfirm) {
+      const config = await tx
+        .selectFrom('app_config')
+        .select('timezone')
+        .executeTakeFirstOrThrow();
+
+      const run = await tx
+        .selectFrom('shift')
+        .innerJoin('route', 'route.id', 'shift.route_id')
+        .leftJoin('app_user as owner', 'owner.id', 'shift.owner_id')
+        .select([
+          'route.name as routeName',
+          sql<string | null>`concat_ws(' ', owner.first_name, owner.last_name)`.as('ownerName'),
+          'shift.starts_at as startsAt',
+          'shift.ends_at as endsAt',
+        ])
+        .where('shift.id', '=', shiftId)
+        .executeTakeFirstOrThrow();
+
+      const devices = await tx
+        .selectFrom('push_subscription')
+        .select('id')
+        .where('device_id', 'is not', null)
+        .where('revoked_at', 'is', null)
+        .execute();
+
+      const ids = await enqueueNotifications(
+        tx,
+        devices.map((device) => ({
+          event: 'TRUCK_INBOUND' as const,
+          subscriptionId: device.id,
+          shiftId,
+          payload: {
+            route: run.routeName,
+            who: run.ownerName === null || run.ownerName === '' ? undefined : run.ownerName,
+            when: formatRange({ startsAt: run.startsAt, endsAt: run.endsAt }, config.timezone),
+          },
+        })),
+      );
+      alerted = ids.length;
+    }
+
+    return { detail: await readRun(tx, shiftId), alerted };
   });
+
+  // Outside the transaction (§4.1 obligation 3): a SERIALIZABLE retry would re-send.
+  // Dispatch's own sweep is what makes delivery correct; this only makes it prompt,
+  // which for "the truck is pulling in" is most of the value.
+  if (alerted > 0) dispatchNow();
+
+  return detail;
 }
 
 // ---------------------------------------------------------------------------
@@ -634,6 +698,23 @@ export async function reassignStop(
       // I30: only PENDING or unweighed-COLLECTED may move. A resolved stop is not
       // "in" the stop list to move any more.
       throw conflict('That stop is already resolved — there is nothing left to move.');
+    }
+
+    // The "unweighed" half of I30's eligibility, live from Phase 2 onward. A stop
+    // that has already produced a `weight_entry` projects to WEIGHED (I12) and is
+    // therefore resolved, even though its stored disposition still reads COLLECTED —
+    // WEIGHED is never stored, so the disposition check above cannot see it. Moving
+    // such a stop would strand its weights on a run that no longer lists it.
+    const weighed = await tx
+      .selectFrom('weight_entry')
+      .select('id')
+      .where('shift_id', '=', source.shiftId)
+      .where('donor_id', '=', source.donorId)
+      .where('voided', '=', false)
+      .executeTakeFirst();
+
+    if (weighed) {
+      throw conflict('That stop has already been weighed — there is nothing left to move.');
     }
 
     const destination = await tx

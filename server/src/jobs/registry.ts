@@ -11,7 +11,7 @@
 //   | shift reminder, 1 h before start | 1 min | 3 |
 //   | at-risk alert, 1 day before an unclaimed shift | 1 min | 3 |
 //   | expired-session cleanup | daily | 2 (below) |
-//   | purge unconfirmed SUGGESTED donations (I17) | daily | Phase 2 (build-plan D3) |
+//   | purge unconfirmed SUGGESTED donations (I17) | daily | Phase 2 (below) |
 //
 // The receiver edit window is deliberately absent: it only changes what is ALLOWED,
 // so it is derived on read. Jobs you do not have cannot fail (§4.4).
@@ -21,6 +21,7 @@ import { materializationJob } from './materialization.js';
 import { pushDispatchJob } from './push-dispatch.js';
 import { shiftReminderJob } from './reminder.js';
 import { sessionCleanupJob } from './session-cleanup.js';
+import { suggestionSweepJob } from './suggestion-sweep.js';
 import type { Job } from './scheduler.js';
 
 export const JOBS: readonly Job[] = [
@@ -32,4 +33,7 @@ export const JOBS: readonly Job[] = [
   materializationJob,
   shiftReminderJob,
   atRiskJob,
+  // Phase 2 — the half of I17 that receive-done cannot reach: prefills on a run
+  // nobody ever received against.
+  suggestionSweepJob,
 ];

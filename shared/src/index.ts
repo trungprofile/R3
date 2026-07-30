@@ -12,8 +12,9 @@
 // drifting out of sync with the database; the union types derive from those arrays
 // rather than being declared alongside them, so adding a value is one edit.
 //
-// Phase-1 enums only. `donation_status` is Phase 2 (build-plan D3), absent from the
-// migrations, and therefore absent here.
+// Enum values mirror the native Postgres enums of `data-model.md §1`. Phase 2 added
+// `donation_status`; it lives in `donation.ts` with the shapes that use it rather
+// than here, since nothing outside intake refers to it.
 
 // Wave-2 API shapes live in their own files and are re-exported here by the lead.
 // Server lanes import their own file by relative path (A34) — the package entry is
@@ -26,6 +27,10 @@ export * from './availability.js';
 export * from './schedule.js';
 export * from './coverage.js';
 export * from './execution.js';
+
+// Phase 2 — receiving (cap 14) and unplanned intake (cap 12).
+export * from './receive.js';
+export * from './donation.js';
 
 /** `tier` — I1. Hierarchical: VOLUNTEER ⊂ STAFF ⊂ ADMIN. Compare by rank with `>=`,
  *  never by equality. */

@@ -506,7 +506,18 @@ CREATE INDEX ix_notif_pending   ON notification (created_at) WHERE delivered_at 
 --   shift_stop(shift_id), weight_entry(category_id, created_by), unscheduled_donation(shift_id, donor_id, category_id),
 --   recurrence_pattern(route_id, owner_default_id, created_by), user_duty(user_id via PK)
 --   (donor-bearing FKs are covered by the UNIQUE/partial indexes above)
+--
+-- `updated_by` is indexed ALONGSIDE `created_by` on every table whose rows carry both
+-- stamps: shift, weight_entry, unscheduled_donation. I21's `userHasHistory` probes
+-- both — a receiver who only ever VOIDED someone else's weight is `updated_by` on
+-- that row and nothing else — so indexing only the author would leave half the
+-- predicate scanning. Applied in 0007 (shift) and 0011 (intake).
+CREATE INDEX ix_ud_suggested ON unscheduled_donation (shift_id) WHERE status = 'SUGGESTED';
 ```
+
+The last one is the I17 sweep's index: the daily job asks "which `SUGGESTED` rows are
+past their shift's edit window?", which without it is a sequential scan over the whole
+intake table for a query that should touch a handful of rows.
 
 ---
 

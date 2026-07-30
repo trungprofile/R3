@@ -25,6 +25,7 @@ import type { Duty, Tier } from '../src/db/types.js';
 export async function resetDatabase(): Promise<void> {
   await sql`
     TRUNCATE TABLE
+      weight_entry, unscheduled_donation,
       notification, session, push_subscription, availability_block,
       shift_stop, shift, recurrence_pattern, route_stop, route, device,
       truck, category, donor, user_duty, app_user
@@ -176,6 +177,77 @@ export async function makeClaimedShift(opts: MakeShiftOptions = {}) {
   const owner = opts.ownerId ?? (await makeDriver()).id;
   const shift = await makeShift({ ...opts, ownerId: owner, status: 'CLAIMED' });
   return { shift, ownerId: owner };
+}
+
+let categorySeq = 0;
+
+/**
+ * A food category.
+ *
+ * Made per-test rather than relying on migration 0010's launch seed, because
+ * `resetDatabase` truncates `category` along with everything else — a suite wants a
+ * known world, not a usable one (`scripts/dev-seed.ts` makes the opposite trade for
+ * the opposite reason).
+ */
+export async function makeCategory(name?: string) {
+  const n = ++categorySeq;
+  return db
+    .insertInto('category')
+    .values({ name: name ?? `Category ${n}` })
+    .returningAll()
+    .executeTakeFirstOrThrow();
+}
+
+/**
+ * A run the receiver can actually work on: `IN_PROGRESS`, with the route snapshotted
+ * into `shift_stop` rows exactly as `startRun` would leave it (I5).
+ *
+ * The snapshot is written here directly rather than by calling `startRun`, per this
+ * file's own rule: a fixture arranges preconditions and never performs the operation
+ * under test. Receiving tests are about what happens *after* a run has started.
+ */
+export async function makeStartedShift(
+  opts: MakeShiftOptions & { stopCount?: number } = {},
+) {
+  const owner = opts.ownerId ?? (await makeDriver()).id;
+  const truck = opts.truckId ?? (await makeTruck()).id;
+  const built = opts.routeId ? null : await makeRoute(opts.stopCount ?? 2);
+  const routeId = opts.routeId ?? built!.route.id;
+
+  const shift = await makeShift({
+    ...opts,
+    routeId,
+    ownerId: owner,
+    truckId: truck,
+    status: 'IN_PROGRESS',
+  });
+
+  const routeStops = await db
+    .selectFrom('route_stop')
+    .select(['donor_id', 'position'])
+    .where('route_id', '=', routeId)
+    .orderBy('position')
+    .execute();
+
+  const stops = await db
+    .insertInto('shift_stop')
+    .values(
+      routeStops.map((rs) => ({
+        shift_id: shift.id,
+        donor_id: rs.donor_id,
+        position: rs.position,
+        disposition: 'COLLECTED' as const,
+      })),
+    )
+    .returningAll()
+    .execute();
+
+  return { shift, ownerId: owner, stops, donors: built?.donors ?? [] };
+}
+
+/** A receiver — the duty every S2.x route declares (I2, set membership). */
+export async function makeReceiver(opts: Omit<MakeUserOptions, 'duties'> = {}) {
+  return makeUser({ ...opts, duties: ['RECEIVE'] });
 }
 
 /** An availability block for a driver — the other half of the I20 overlap test. */

@@ -23,6 +23,7 @@ Add `docs/features/<name>.md` once a feature accumulates worked examples or edge
 | Feature doc | Load it when you're... |
 | :---- | :---- |
 | [`phase-1-build-plan.md`](docs/features/phase-1-build-plan.md) | building anything in Phase 1 — standing decisions (no `COMPLETED` in Phase 1, deferred `§7` tables), build order, single-owner files, and the rules every agent follows |
+| [`phase-2-build-plan.md`](docs/features/phase-2-build-plan.md) | building anything in Phase 2 — D7 lifts D1 (`COMPLETED` is now reachable, in exactly one place), D8 records a live conflict between `ui-ux-spec.md` and the locked doc, D9/D10 scope the edit window and the walk-in split |
 
 ## Where code goes
 

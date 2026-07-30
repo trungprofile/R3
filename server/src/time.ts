@@ -111,6 +111,21 @@ export function parseTime(value: string, field: string): { hour: number; minute:
   return { hour, minute };
 }
 
+/**
+ * The pantry-local calendar day an instant falls on.
+ *
+ * The inverse of `localToInstant`, and the reason it lives here rather than in the
+ * service that first wanted it: `data-model.md §8` anchors report and metrics day on
+ * a *business day*, never on `created_at`. A walk-in logged at 12:30am is still the
+ * previous pantry day's intake if the pantry's zone says so, and computing that from
+ * the server process's own zone would bucket it a day late whenever the box and the
+ * pantry disagree — a bug that only shows up around midnight and only in the report.
+ */
+export function localCalendarDate(instant: Date, timeZone: string): CalendarDate {
+  const w = zoneParts(instant, timeZone);
+  return { year: w.year, month: w.month, day: w.day };
+}
+
 export function dayNumber(date: CalendarDate): number {
   return Math.floor(Date.UTC(date.year, date.month - 1, date.day) / 86_400_000);
 }

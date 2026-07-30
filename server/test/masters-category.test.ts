@@ -113,18 +113,29 @@ describe('I21 — remove', () => {
     expect(await removeCategory(category.id)).toBe('DELETED');
   });
 
-  it('no table in the Phase-1 schema has a category FK', async () => {
-    // The structural fact the predicate above encodes, asserted against the
+  it('exactly the two §7 intake tables hold a category FK', async () => {
+    // The structural fact `categoryHasHistory` encodes, asserted against the
     // migrated database rather than against a reading of the migrations.
+    //
+    // Through Phase 1 the expected answer here was the EMPTY set, which is what made
+    // the predicate exhaustively false and every category hard-deletable. Phase 2
+    // added `weight_entry` and `unscheduled_donation` (build-plan D3), and this
+    // assertion is what would catch a third referencing table arriving without the
+    // predicate learning about it — the failure D3's one-function-per-entity shape
+    // exists to make loud.
     const referencing = await sql<{ table_name: string }>`
-      SELECT tc.table_name
+      SELECT DISTINCT tc.table_name
       FROM information_schema.table_constraints tc
       JOIN information_schema.constraint_column_usage ccu
         ON ccu.constraint_name   = tc.constraint_name
        AND ccu.constraint_schema = tc.constraint_schema
       WHERE tc.constraint_type = 'FOREIGN KEY'
         AND ccu.table_name = 'category'
+      ORDER BY tc.table_name
     `.execute(db);
-    expect(referencing.rows).toEqual([]);
+    expect(referencing.rows.map((r) => r.table_name)).toEqual([
+      'unscheduled_donation',
+      'weight_entry',
+    ]);
   });
 });

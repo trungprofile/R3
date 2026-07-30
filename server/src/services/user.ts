@@ -424,9 +424,9 @@ export async function setCredential(userId: string, credential: string): Promise
 /**
  * I21's "has referencing history" predicate for User.
  *
- * ONE function per entity, deliberately (`phase-1-build-plan.md D3`): Phase 2 adds
- * `weight_entry` and `unscheduled_donation` (`created_by` / `updated_by`), and
- * extending this must be a one-line change rather than a hunt.
+ * ONE function per entity, deliberately (`phase-1-build-plan.md D3`). Phase 2 added
+ * `weight_entry` and `unscheduled_donation` (`created_by` / `updated_by`), and that
+ * extension was the two probes at the end of this function rather than a hunt.
  *
  * `domain-modeling.md §2.3` scopes "referencing history" for a User to owned
  * shifts, provenance stamps, and intake rows, and sends auth/session mechanics to
@@ -477,7 +477,25 @@ export async function userHasHistory(tx: Tx, userId: string): Promise<boolean> {
     .select('id')
     .where('user_id', '=', userId)
     .executeTakeFirst();
-  return subscription !== undefined;
+  if (subscription) return true;
+
+  // Phase 2 intake (§7). `domain-modeling.md §2.3` names "any intake rows" as
+  // referencing history for a User in as many words, and both stamps count: a
+  // receiver who only ever VOIDED someone else's weight is `updated_by` on that row
+  // and nothing else, and that is still a trace the ledger needs to resolve.
+  const weight = await tx
+    .selectFrom('weight_entry')
+    .select('id')
+    .where((eb) => eb.or([eb('created_by', '=', userId), eb('updated_by', '=', userId)]))
+    .executeTakeFirst();
+  if (weight) return true;
+
+  const donation = await tx
+    .selectFrom('unscheduled_donation')
+    .select('id')
+    .where((eb) => eb.or([eb('created_by', '=', userId), eb('updated_by', '=', userId)]))
+    .executeTakeFirst();
+  return donation !== undefined;
 }
 
 export type RemoveUserOutcome = 'DELETED' | 'DEACTIVATED';

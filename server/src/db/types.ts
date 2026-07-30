@@ -5,6 +5,8 @@
 
 import type { ColumnType } from "kysely";
 
+export type DonationStatus = "CONFIRMED" | "SUGGESTED";
+
 export type Duty = "DRIVE" | "RECEIVE" | "REPORT";
 
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
@@ -22,6 +24,8 @@ export type JsonObject = {
 export type JsonPrimitive = boolean | number | string | null;
 
 export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
+
+export type Numeric = ColumnType<string, number | string, number | string>;
 
 export type ShiftStatus = "CANCELLED" | "CLAIMED" | "COMPLETED" | "IN_PROGRESS" | "OPEN";
 
@@ -194,9 +198,40 @@ export interface Truck {
   truck_name: string;
 }
 
+export interface UnscheduledDonation {
+  category_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: string;
+  donor_id: string | null;
+  donor_label: string | null;
+  id: Generated<string>;
+  note: string | null;
+  received_date: Timestamp;
+  reportable: Generated<boolean>;
+  shift_id: string | null;
+  status: Generated<DonationStatus>;
+  updated_at: Generated<Timestamp>;
+  updated_by: string;
+  weight: Numeric | null;
+}
+
 export interface UserDuty {
   duty: Duty;
   user_id: string;
+}
+
+export interface WeightEntry {
+  category_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: string;
+  donor_id: string;
+  id: Generated<string>;
+  note: string | null;
+  shift_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: string;
+  voided: Generated<boolean>;
+  weight: Numeric;
 }
 
 export interface DB {
@@ -216,5 +251,7 @@ export interface DB {
   shift: Shift;
   shift_stop: ShiftStop;
   truck: Truck;
+  unscheduled_donation: UnscheduledDonation;
   user_duty: UserDuty;
+  weight_entry: WeightEntry;
 }

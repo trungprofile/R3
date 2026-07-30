@@ -46,12 +46,31 @@ describe('schema is the migrated one, not a fixture', () => {
     }
   });
 
-  it('defers §7 intake tables to Phase 2 (build-plan D3)', async () => {
+  it('carries the §7 intake tables, added in Phase 2 (build-plan D3)', async () => {
+    // Through Phase 1 this test asserted the opposite — that these two tables were
+    // ABSENT — because D3 deferred them and a stray reference would have been a
+    // silent scope leak. Phase 2 is what D3 deferred them TO, so the assertion
+    // flips rather than being deleted: the structural fact is still worth pinning,
+    // it just points the other way now.
     const { rows } = await sql<{ table_name: string }>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name IN ('weight_entry', 'unscheduled_donation')
     `.execute(db);
-    expect(rows).toHaveLength(0);
+    expect(rows.map((r) => r.table_name).sort()).toEqual([
+      'unscheduled_donation',
+      'weight_entry',
+    ]);
+  });
+
+  it('has no WEIGHED member on the stop enum — it is derived, never stored (I12)', async () => {
+    const { rows } = await sql<{ label: string }>`
+      SELECT e.enumlabel AS label
+      FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+      WHERE t.typname = 'shiftstop_disposition'
+    `.execute(db);
+    // A stored WEIGHED could pass the completion gate on a weight that was later
+    // voided and never replaced, which is the whole reason I12 makes it a read.
+    expect(rows.map((r) => r.label)).not.toContain('WEIGHED');
   });
 
   it('seeds the app_config singleton', async () => {

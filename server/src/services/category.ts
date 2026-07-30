@@ -116,24 +116,33 @@ export async function updateCategory(
 /**
  * I21 — "has referencing history" for a Category.
  *
- * ONE function, deliberately (build-plan D3), and this is the entity that pays for
- * that decision: `weight_entry.category_id` and `unscheduled_donation.category_id`
- * (`data-model.md §7`) are deferred to Phase 2, so in Phase 1 the set of tables
- * that can reference a category is EMPTY and the predicate is exhaustively false.
- *
- * Phase 2 adds those two probes here — the same two-line shape as
- * `donorHasHistory` — and nothing else in the codebase changes, which is the whole
- * reason the question is asked in exactly one place per entity.
+ * ONE function, deliberately (build-plan D3), and this is the entity that paid for
+ * that decision: through Phase 1 the set of tables referencing a category was EMPTY
+ * and this predicate was exhaustively false. Phase 2 added `weight_entry.category_id`
+ * and `unscheduled_donation.category_id` (`data-model.md §7`), and the change was the
+ * two probes below and nothing else — which is the whole reason the question is asked
+ * in exactly one place per entity.
  *
  * Advisory either way: the blanket `ON DELETE RESTRICT` is the real guard
- * (`data-model.md §0`), so a category that acquires history the moment Phase 2
- * lands is protected by the database whether or not this file was updated.
+ * (`data-model.md §0`), so a category that acquires history is protected by the
+ * database whether or not this file was updated.
  */
-export async function categoryHasHistory(
-  _tx: Tx,
-  _categoryId: string,
-): Promise<boolean> {
-  return false;
+export async function categoryHasHistory(tx: Tx, categoryId: string): Promise<boolean> {
+  // Voided weights count. A voided row still references its category, and hiding
+  // that would offer a hard delete the database would then refuse.
+  const weight = await tx
+    .selectFrom('weight_entry')
+    .select('id')
+    .where('category_id', '=', categoryId)
+    .executeTakeFirst();
+  if (weight) return true;
+
+  const donation = await tx
+    .selectFrom('unscheduled_donation')
+    .select('id')
+    .where('category_id', '=', categoryId)
+    .executeTakeFirst();
+  return donation !== undefined;
 }
 
 /**

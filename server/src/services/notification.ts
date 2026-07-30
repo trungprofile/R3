@@ -24,10 +24,12 @@ import { writeTransaction, type Tx } from '../db/transaction.js';
 // ---------------------------------------------------------------------------
 
 /**
- * The events of `product-requirement.md §4`'s notification matrix, minus
- * truck-inbound, which the PRD phases into Phase 2 ("caps 1–11, 13 minus
- * truck-inbound"). The matrix owns the recipients and the trigger; the identifier
- * strings are this module's.
+ * The events of `product-requirement.md §4`'s notification matrix. The matrix owns
+ * the recipients and the trigger; the identifier strings are this module's.
+ *
+ * Complete as of Phase 2: `TRUCK_INBOUND` was the one row the PRD held back ("caps
+ * 1–11, 13 minus truck-inbound") and Phase 2 adds it. It is also the only
+ * device-scoped event in the matrix — every other row goes to a person.
  */
 export const NOTIFICATION_EVENTS = [
   /** Shift assigned / defaulted to you → the owning driver, event-triggered. */
@@ -40,6 +42,17 @@ export const NOTIFICATION_EVENTS = [
   'SHIFT_OPENED',
   /** Shift still open 1 day before start → Coordinator + eligible drivers, time-triggered. */
   'SHIFT_AT_RISK',
+  /**
+   * Driver tapped "heading back" (I27) → the receiver tablet, event-triggered.
+   *
+   * The only event addressed to a DEVICE rather than a person: it fires regardless of
+   * who, if anyone, is logged in (PRD §2, S2.4), because the point is to reach a dock
+   * that may be empty. That makes it the only event `uq_notif_shift_event` does not
+   * cover — the index is partial on `recipient_id IS NOT NULL` — so its
+   * fire-once-ness comes from the `pickup_completed_at IS NULL` predicate on the
+   * milestone that triggers it, not from the dedupe index.
+   */
+  'TRUCK_INBOUND',
 ] as const;
 
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];

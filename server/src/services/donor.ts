@@ -163,10 +163,11 @@ export async function updateDonor(
 /**
  * I21 — "has referencing history" for a Donor.
  *
- * ONE function, deliberately (build-plan D3): Phase 2 adds `weight_entry.donor_id`
- * and `unscheduled_donation.donor_id` (`data-model.md §7`, deferred), and extending
- * this predicate must be a line added here rather than a hunt through call sites.
- * Nothing else in the codebase may ask this question a second way.
+ * ONE function, deliberately (build-plan D3), and Phase 2 is where that decision paid
+ * off: `weight_entry.donor_id` and `unscheduled_donation.donor_id` (`data-model.md
+ * §7`) arrived, and extending this predicate was the two probes below rather than a
+ * hunt through call sites. Nothing else in the codebase may ask this question a
+ * second way.
  *
  * Advisory only. The real guard is the blanket `ON DELETE RESTRICT` on every FK
  * (`data-model.md §0`): the DELETE below succeeds iff zero rows reference the row.
@@ -185,7 +186,24 @@ export async function donorHasHistory(tx: Tx, donorId: string): Promise<boolean>
     .select('id')
     .where('donor_id', '=', donorId)
     .executeTakeFirst();
-  return shiftStop !== undefined;
+  if (shiftStop) return true;
+
+  // Phase 2 (§7). Voided weights count: a voided row is retained for audit and is
+  // still a reference, so hard-deleting the donor it credits would take the audit
+  // trail with it — which is the one thing voiding exists to keep.
+  const weight = await tx
+    .selectFrom('weight_entry')
+    .select('id')
+    .where('donor_id', '=', donorId)
+    .executeTakeFirst();
+  if (weight) return true;
+
+  const donation = await tx
+    .selectFrom('unscheduled_donation')
+    .select('id')
+    .where('donor_id', '=', donorId)
+    .executeTakeFirst();
+  return donation !== undefined;
 }
 
 /**

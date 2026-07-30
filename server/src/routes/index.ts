@@ -11,11 +11,13 @@ import { availabilityRoutes } from './availability.js';
 import { categoryRoutes } from './categories.js';
 import { coverageRoutes } from './coverage.js';
 import { deviceRoutes } from './devices.js';
+import { donationRoutes } from './donations.js';
 import { donorRoutes } from './donors.js';
 import { executionRoutes } from './execution.js';
 import { notificationRoutes } from './notifications.js';
 import { pickupRouteRoutes } from './pickup-routes.js';
 import { pushRoutes } from './push.js';
+import { receiveRoutes } from './receive.js';
 import { shiftRoutes } from './shifts.js';
 import { truckRoutes } from './trucks.js';
 import { userRoutes } from './users.js';
@@ -45,6 +47,13 @@ export const apiRoutes: RouteDefinition[] = [
   // bar's bell. Mounted under `/notifications`, which no earlier module claims, so
   // there is no method+path pair for Express to shadow (A108).
   ...notificationRoutes,
+  // Phase 2. `receiveRoutes` mounts under `/receive`, which nothing else claims;
+  // `donationRoutes` mounts under `/donations` plus one pair under `/shifts/:id/
+  // donations`. Checked against all 24 existing `/shifts` pairs before wiring —
+  // Express resolves a duplicate method+path to whichever registered first and makes
+  // the second dead code, silently, with nothing in `gate.sh` to catch it (A108).
+  ...receiveRoutes,
+  ...donationRoutes,
 ];
 
 export function createApiRouter(): Router {
