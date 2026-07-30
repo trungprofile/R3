@@ -1,0 +1,93 @@
+/* S2.2b — Receive done.
+ *
+ * Tokens only (`ui-ux-spec.md §2`): no literal hex, and no literal px where a
+ * spacing or size token exists. Sizes are relative units so 200% zoom reflows
+ * rather than breaks (§1.3).
+ *
+ * CANONICAL DEVICE: the shared tablet in LANDSCAPE (1024x768). The responsive
+ * matrix marks this surface `n/a` on a phone, so there is no phone breakpoint
+ * here — only a comfortable max width that a desktop browser also reads well.
+ * The layout is a single centred column because the screen holds one list and
+ * one button; a second column would be furniture.
+ *
+ * Class prefix `s22b-` because this file ships beside the screen rather than in
+ * `components/`, and two screens must never fight over a name.
+ */
+
+.s22b {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+.s22b-head {
+  margin-bottom: var(--space-5);
+}
+
+.s22b-title {
+  font-size: var(--font-h1);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s22b-lede {
+  font-size: var(--font-h3);
+  color: var(--text);
+  margin: 0;
+}
+
+.s22b-subhead {
+  font-size: var(--font-h3);
+  margin: var(--space-4) 0 var(--space-2) 0;
+}
+
+/* The status half of a summary line: "weighed, 2192 lb" / "skipped". Muted is
+ * the §2 rule for a non-critical label, and the store name beside it carries the
+ * emphasis. */
+.s22b-state {
+  font-size: var(--font-body);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.s22b-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: var(--space-4) 0 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  /* Wrap rather than overflow once the numeric step doubles at 200% zoom. */
+  flex-wrap: wrap;
+}
+
+.s22b-total__label {
+  font-size: var(--font-h3);
+  color: var(--text);
+}
+
+.s22b-actions {
+  margin-top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* §1.2: at least an 8px gap between adjacent targets. */
+  gap: var(--space-3);
+}
+
+.s22b-hint {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0;
+}
+
+/* The run is not ready. Warning fill behind dark text (§2) — this is "needs
+ * attention", not a failure, and nothing has gone wrong. */
+.s22b-blocked {
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface-paper);
+  border-left: var(--space-1) solid var(--warning);
+  border-radius: var(--radius-control);
+  padding: var(--space-3) var(--space-4);
+  margin: 0;
+}

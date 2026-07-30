@@ -1,0 +1,416 @@
+/* S2.2 weight entry — the paper sheet.
+ *
+ * Every colour, type step, spacing step, radius and target size is a token
+ * (`tokens/tokens.css`) — no hex and no literal from those scales anywhere in
+ * this file. Hairline borders and one-off ornament sizes are written as literals,
+ * the same way `components.css` writes them; this lane does not own `tokens/`.
+ *
+ * The constraints this screen is styled against are not decoration:
+ *   - CANONICAL DEVICE: shared tablet, LANDSCAPE, 1024x768 (responsive matrix).
+ *     Weight entry is `n/a` on a phone, so there is no phone layout below and no
+ *     attempt at one. It has to work on a desktop, which is the same layout with
+ *     more room.
+ *   - 44px minimum target, 64px keypad keys, 8px minimum gap (§1.2, §3)
+ *   - orange is fill-or-accent and NEVER text (§2)
+ *   - 18px body, relative units, survives 200% zoom (§1.3) — which is why the
+ *     keypad band is sticky rather than pinned to a pixel height: at 200% it
+ *     simply takes more of the screen and the tiles scroll behind it.
+ */
+
+.r3-sheet {
+  /* Full width: the sheet is a wide grid of columns, not a reading column. */
+  padding-bottom: var(--space-6);
+}
+
+.r3-sheet--message {
+  max-width: 34rem;
+  margin: 0 auto;
+}
+
+/* --- Header: which store, and the strip of stops -------------------------- */
+
+.r3-sheet__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.r3-sheet__title h1 {
+  margin: 0;
+}
+
+.r3-sheet__label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+.r3-sheet__hint {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+/* A skipped or moved stop: its numbers still show, nothing new goes on. */
+.r3-sheet__closed {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-paper);
+}
+
+/* "All stops done — Receive done available" (S2.2). Success-coloured because
+   the run is ready to close, not because it is closed — Receive done is still a
+   deliberate action on the next screen (I11). */
+.r3-sheet__banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 2px solid var(--success);
+  border-radius: var(--radius-card);
+  background: var(--surface-paper);
+}
+
+.r3-sheet__banner p {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* --- The stop strip ------------------------------------------------------- */
+
+.r3-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.r3-strip__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.r3-strip__stop {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--font-body);
+  cursor: pointer;
+}
+
+/* The stop being weighed right now: an orange bar, never orange text (§2). */
+.r3-strip__stop--current {
+  border-color: var(--brand-orange);
+  box-shadow: inset var(--space-1) 0 0 0 var(--brand-orange);
+  font-weight: 700;
+}
+
+.r3-strip__stop--weighed .r3-strip__mark {
+  color: var(--success);
+}
+
+.r3-strip__stop--closed {
+  color: var(--text-muted);
+}
+
+.r3-strip__state {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+.r3-strip__progress {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-label);
+  font-weight: 700;
+}
+
+/* --- Notes the receiver reads and never writes ---------------------------- */
+
+.r3-notes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.r3-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-paper);
+}
+
+/* The driver's note about THIS stop is the one the receiver acts on. */
+.r3-note--stop {
+  border-color: var(--brand-orange);
+}
+
+.r3-note__label {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+  font-weight: 700;
+}
+
+.r3-notes__toggle {
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--font-label);
+  cursor: pointer;
+}
+
+.r3-notes__run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* --- The category tiles --------------------------------------------------- */
+
+.r3-tiles {
+  display: grid;
+  /* Six across at 1024px, more on a desktop, and never fewer than three — the
+     11 tiles stay one screen's worth of targets rather than a scroll. */
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--space-2);
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  list-style: none;
+}
+
+.r3-tile {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-paper);
+  overflow: hidden;
+}
+
+/* Selected: the orange bar S2.2 asks for. */
+.r3-tile--selected {
+  border-color: var(--brand-orange);
+  box-shadow: inset 0 var(--space-1) 0 0 var(--brand-orange);
+}
+
+.r3-tile--closed {
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.r3-tile__pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--row-min);
+  padding: var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.r3-tile__name {
+  font-size: var(--font-body);
+  font-weight: 700;
+}
+
+/* The live subtotal — the hand arithmetic this screen exists to kill. */
+.r3-tile__subtotal {
+  font-size: var(--font-h3);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Running entries underneath: gapless, no line numbers (S2.2). */
+.r3-tile__entries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-3);
+  list-style: none;
+}
+
+.r3-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--target-min);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.r3-entry--editing {
+  border-color: var(--brand-orange);
+  box-shadow: inset var(--space-1) 0 0 0 var(--brand-orange);
+  font-weight: 700;
+}
+
+.r3-entry__pencil {
+  color: var(--brand-orange);
+}
+
+/* --- The keypad band ------------------------------------------------------ */
+
+.r3-pad {
+  display: grid;
+  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+  grid-template-areas:
+    'line line'
+    'keys actions';
+  gap: var(--space-3) var(--space-5);
+  /* Stays in view while the tiles scroll behind it: at 768px tall in landscape
+     the sheet is taller than the screen, and the keypad is where the hands are. */
+  position: sticky;
+  bottom: 0;
+  padding: var(--space-3) 0 var(--space-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.r3-pad--closed {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'actions';
+}
+
+.r3-pad__line {
+  grid-area: line;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.r3-pad__keys {
+  grid-area: keys;
+}
+
+.r3-pad__actions {
+  grid-area: actions;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-self: start;
+}
+
+.r3-pad__selected,
+.r3-pad__entry,
+.r3-pad__total {
+  margin: 0;
+}
+
+.r3-pad__label {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+.r3-pad__prior {
+  color: var(--text-muted);
+}
+
+.r3-pad__entry {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 8rem;
+  padding: var(--space-1) var(--space-3);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-paper);
+}
+
+.r3-pad__digits {
+  font-size: var(--font-numeric);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.r3-pad__unit {
+  color: var(--text-muted);
+}
+
+.r3-pad__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The flex gap already spaces these; `.r3-btn + .r3-btn`'s left margin would
+   shift them off it. */
+.r3-pad__row .r3-btn + .r3-btn {
+  margin-left: 0;
+}
+
+.r3-pad__total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.r3-pad__total-value {
+  font-size: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+}
+
+.r3-pad__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+/* Portrait tablet, or a desktop window narrowed past the two-column band: the
+   band stacks instead of squeezing the keypad. Not a phone layout — the matrix
+   marks this screen `n/a` there — just the same layout, one column. */
+@media (max-width: 48rem) {
+  .r3-pad {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'line'
+      'keys'
+      'actions';
+    position: static;
+  }
+}

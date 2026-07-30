@@ -80,15 +80,6 @@ export function onServiceWorkerNavigate(handler: (url: string) => void): () => v
   return () => navigator.serviceWorker.removeEventListener('message', listener);
 }
 
-/** One alert as it reaches an already-open page. Mirrors `sw.ts`'s `PushMessage`. */
-export interface ForegroundAlert {
-  title: string;
-  body: string;
-  url: string;
-  event: string;
-  notificationId: string;
-}
-
 /**
  * An alert arriving while R3 is already open.
  *
@@ -98,23 +89,22 @@ export interface ForegroundAlert {
  * nobody has asked for anything. Only a surface that can interrupt gently should use
  * it — S2.4's dock banner is the one the spec asks for.
  *
+ * The message is handed over **unparsed**, on purpose. Each surface knows the shape
+ * of the alert it cares about and already has to validate it; a second normalising
+ * layer here would be a second place for that shape to be described, free to drift
+ * from the first. This module's job is the channel, not the vocabulary.
+ *
  * Delivered to every open window (`sw.ts` posts to all matched clients), so a handler
  * must be idempotent and must not navigate on its own.
  */
-export function onForegroundAlert(handler: (alert: ForegroundAlert) => void): () => void {
+export function onServiceWorkerAlert(handler: (message: unknown) => void): () => void {
   if (!('serviceWorker' in navigator)) return () => undefined;
 
   const listener = (event: MessageEvent) => {
-    const data = event.data as Partial<ForegroundAlert> & { type?: unknown };
+    const data = event.data as { type?: unknown } | null;
+    // The navigate messages already flowing down this channel are not alerts.
     if (data?.type !== 'alert') return;
-    if (typeof data.event !== 'string' || typeof data.title !== 'string') return;
-    handler({
-      title: data.title,
-      body: typeof data.body === 'string' ? data.body : '',
-      url: typeof data.url === 'string' && data.url.startsWith('/') ? data.url : '/inbox',
-      event: data.event,
-      notificationId: typeof data.notificationId === 'string' ? data.notificationId : '',
-    });
+    handler(event.data);
   };
 
   navigator.serviceWorker.addEventListener('message', listener);

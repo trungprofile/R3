@@ -341,6 +341,22 @@ export interface PushMessage {
   url: string;
   event: string;
   notificationId: string;
+  /**
+   * The raw facts the copy above was rendered from, carried alongside it.
+   *
+   * The OS banner uses `title`/`body` and nothing else. An in-page surface can want
+   * to say the same thing differently — S2.4's dock banner leads with the driver's
+   * name ("Karen's run returning") because that is what a receiver recognises from
+   * the run picker, and it has room for a quieter second line the OS banner does
+   * not. Sending the facts as well as the sentence is what lets it do that without
+   * a second copy of the copy drifting from this one.
+   *
+   * Still pre-formatted where formatting needs the pantry's zone: `when` is words,
+   * not a timestamp, because only the enqueuing service has `app_config.timezone`.
+   */
+  route?: string;
+  who?: string;
+  when?: string;
 }
 
 /**
@@ -402,6 +418,11 @@ export function renderPush(notification: PendingNotification): PushMessage {
     url: deepLinkFor(notification),
     event: notification.event,
     notificationId: notification.id,
+    // Omitted rather than sent as null: this is JSON on a size-limited push channel,
+    // and an absent key and a null one mean the same thing to every reader.
+    ...(route != null && route !== '' ? { route } : {}),
+    ...(who != null && who !== '' ? { who } : {}),
+    ...(when != null && when !== '' ? { when } : {}),
   };
 }
 

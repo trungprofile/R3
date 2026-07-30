@@ -249,6 +249,67 @@
   color: var(--text-muted);
 }
 
+/* --- Flag a stop not on my route (cap 12) --------------------------------- */
+
+/* Below the stop list and below the handoff block: this is the quiet action, and
+   the main flow is working the planned stops. */
+.r3-adhoc {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.r3-adhoc .r3-pickup__hint {
+  margin-bottom: 0;
+}
+
+/* What was flagged this run. Deliberately unlike a stop card — no number, no
+   status, no actions — because a driver-add writes no ShiftStop (I14) and must
+   never read as one. */
+.r3-adhoc__flagged {
+  margin-bottom: var(--space-4);
+}
+
+.r3-adhoc__list {
+  list-style: none;
+  margin: var(--space-2) 0 var(--space-2);
+  padding: 0;
+}
+
+.r3-adhoc__list li {
+  padding: var(--space-2) 0;
+}
+
+.r3-adhoc__list li + li {
+  border-top: 1px solid var(--border);
+}
+
+/* A picker option stacks its name over its hint, so the row stays one target. */
+.r3-adhoc__option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.r3-adhoc__option-hint {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+.r3-adhoc__label-field,
+.r3-adhoc__note {
+  margin-top: var(--space-4);
+}
+
+/* I29's refusal, in place under the picker that caused it. --danger is a fill
+   colour in §2 but passes as text on white at 5.9:1. */
+.r3-adhoc__refusal {
+  margin: var(--space-3) 0 0;
+  color: var(--danger);
+  font-weight: 600;
+}
+
 /* --- The review screen ---------------------------------------------------- */
 
 .r3-review {

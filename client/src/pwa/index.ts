@@ -13,7 +13,7 @@ export type { OnboardingCardProps } from './Onboarding.tsx';
 export {
   linkManifest,
   onServiceWorkerNavigate,
-  onForegroundAlert,
+  onServiceWorkerAlert,
   registerServiceWorker,
   watchForInstallPrompt,
   SERVICE_WORKER_URL,
@@ -22,7 +22,6 @@ export {
 
 export { enableAlerts, readAlertsState, syncRegistration } from './alerts.ts';
 export type { AlertsState, EnableOutcome } from './alerts.ts';
-export type { ForegroundAlert } from './serviceWorker.ts';
 
 export { alertsAreOn, visibleStep, COPY, FORBIDDEN_IN_COPY } from './onboarding.ts';
 export type { AlertsPermission, OnboardingInput, OnboardingStep, Platform } from './onboarding.ts';

@@ -17,7 +17,11 @@
 
 import { api } from '../../../api/index.ts';
 import type {
+  CategorySummary,
+  DonationSummary,
+  DonorSummary,
   DriverResolution,
+  FlagAdHocRequest,
   RunDetail,
   RunStopSummary,
   TruckSummary,
@@ -94,4 +98,46 @@ export function saveRunNote(shiftId: string, note: string | null): Promise<RunDe
  */
 export function confirmHeadingBack(shiftId: string, note: string | null): Promise<RunDetail> {
   return api.post<RunDetail>(`${runPath(shiftId)}/pickup-complete`, { body: { note } });
+}
+
+// ---------------------------------------------------------------------------
+// "Flag a stop not on my route" — the driver's half of cap 12 (Phase 2)
+// ---------------------------------------------------------------------------
+
+/** The master store list for the flag's picker. Active only: the server's default
+ *  is the active set, and a deactivated donor would be refused on submit (I21).
+ *  Donor `address` and `contact` arrive whole — `pii.ts` gates people, not places. */
+export function fetchDonors(signal: AbortSignal): Promise<DonorSummary[]> {
+  return api.get<DonorSummary[]>('/donors', { signal });
+}
+
+/** The category list for the flag's picker. Active only, same reason, and the set
+ *  is live admin data (S1.8) rather than the 11 seeded names hardcoded. */
+export function fetchCategories(signal: AbortSignal): Promise<CategorySummary[]> {
+  return api.get<CategorySummary[]>('/categories', { signal });
+}
+
+/**
+ * Record an ad-hoc pickup mid-run: a `SUGGESTED` UnscheduledDonation that prefills
+ * S2.3 for the receiver (PRD cap 12).
+ *
+ * **No weight.** The driver has no scale; the receiver weighs it later, and I16a
+ * only requires a weight once the row is `CONFIRMED`.
+ *
+ * **A category, though** — `domain-modeling.md §2.3` (locked) makes `Category`
+ * required on `UnscheduledDonation` with no `SUGGESTED` exemption, while
+ * `ui-ux-spec.md:193` calls this control "just a donor picker … and an optional
+ * note". The locked doc wins; build-plan D8 records the conflict and the human
+ * escalation. The receiver may correct the pick at confirm time, which is what
+ * makes it a prefill rather than a commitment.
+ *
+ * This NEVER creates a `ShiftStop` (I14) — there is no stop-shaped field to send —
+ * and the server refuses a donor already on this run (I29) with
+ * `DONATION_ON_ROUTE_MESSAGE`.
+ */
+export function flagAdHocPickup(
+  shiftId: string,
+  request: FlagAdHocRequest,
+): Promise<DonationSummary> {
+  return api.post<DonationSummary>(`${runPath(shiftId)}/donations`, { body: request });
 }

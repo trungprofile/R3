@@ -19,12 +19,18 @@
 import { useState } from 'react';
 import { useSession, useToast } from '../../../app/index.ts';
 import { Button, ConfirmModal, EmptyState } from '../../../components/index.ts';
-import type { DriverResolution, RunDetail, RunStopSummary } from '../../../api/shared.ts';
+import type {
+  DonationSummary,
+  DriverResolution,
+  RunDetail,
+  RunStopSummary,
+} from '../../../api/shared.ts';
 import { resolveStop, saveOrder, saveStopNote } from './api.ts';
 import {
   COPY,
   canMoveDown,
   canMoveUp,
+  flaggedLine,
   headingBackState,
   messageFor,
   moveStop,
@@ -35,6 +41,7 @@ import {
   shouldReloadAfter,
   stopsOnThisRun,
 } from './logic.ts';
+import { AdHocStep } from './AdHocStep.tsx';
 import { ReviewStep } from './ReviewStep.tsx';
 import { StopCard } from './StopCard.tsx';
 
@@ -48,7 +55,16 @@ export interface RunViewProps {
 
 export function RunView({ run, onRun, onReload }: RunViewProps) {
   const toast = useToast();
+  // Read before any early return: a hook after a conditional `return` runs on some
+  // renders and not others, which is the one thing React's rules forbid outright.
+  const { timezone } = useSession();
   const [reviewing, setReviewing] = useState(false);
+  const [flagging, setFlagging] = useState(false);
+  // What the driver flagged on this run, for the acknowledgement list. Held here
+  // rather than fetched: `GET /shifts/:id/donations` is the RECEIVE duty's, so a
+  // driver cannot read back their own flags. Losing the list on reload costs
+  // nothing — the rows are safely on the server, waiting on S2.3.
+  const [flagged, setFlagged] = useState<DonationSummary[]>([]);
   const [skipTarget, setSkipTarget] = useState<RunStopSummary | null>(null);
   const [busyStopId, setBusyStopId] = useState<string | null>(null);
 
@@ -102,10 +118,19 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
     return <ReviewStep run={run} onRun={onRun} onClose={() => setReviewing(false)} />;
   }
 
+  if (flagging) {
+    return (
+      <AdHocStep
+        run={run}
+        onFlagged={(donation) => setFlagged((current) => [...current, donation])}
+        onClose={() => setFlagging(false)}
+      />
+    );
+  }
+
   const stops = orderedStops(run.stops);
   const onRunStops = stopsOnThisRun(run.stops);
   const focusId = nextPendingStop(run.stops)?.id ?? null;
-  const { timezone } = useSession();
   const heading = headingBackState(run, timezone ?? undefined);
 
   return (
@@ -170,6 +195,29 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
           {heading.confirmed ? null : <p className="r3-pickup__hint">{COPY.headingBackHint}</p>}
         </div>
       ) : null}
+
+      {/* Cap 12's driver half. Quiet, below the run's own work and below the one
+          primary action, because the main flow is working the planned stops. What
+          it records is not a stop (I14) and is deliberately not in the list above:
+          it has no position, no disposition, and nothing to check off. */}
+      <section className="r3-adhoc" aria-label={COPY.flagAdHoc}>
+        {flagged.length > 0 ? (
+          <div className="r3-adhoc__flagged">
+            <p className="r3-pickup__label">{COPY.flaggedListLabel}</p>
+            <ul className="r3-adhoc__list">
+              {flagged.map((donation) => (
+                <li key={donation.id}>{flaggedLine(donation)}</li>
+              ))}
+            </ul>
+            <p className="r3-pickup__hint">{COPY.flaggedListHint}</p>
+            <p className="r3-pickup__hint">{COPY.flaggedListNote}</p>
+          </div>
+        ) : null}
+        <Button variant="secondary" block onClick={() => setFlagging(true)}>
+          {COPY.flagAdHoc}
+        </Button>
+        <p className="r3-pickup__hint">{COPY.flagAdHocHint}</p>
+      </section>
 
       {skipTarget ? (
         // Reason-free confirm (S1.5) that still names the consequence (§6): the

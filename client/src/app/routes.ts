@@ -115,15 +115,35 @@ export const ROUTES: readonly RouteDef[] = [
   { id: 'metrics', path: '/metrics', spec: 'S3.2', phase: 3, requires: { tier: 'ADMIN' } },
 ];
 
-/** Where a signed-in user lands. The board is the adoption centerpiece (S1.2)
- *  and the one screen everyone can open.
- *
- *  `ui-ux-spec.md §4` wants a receiver at the shared tablet to land on weight entry
- *  instead ("Login goes straight to weight entry, Phase 2"), and that redirect lands
- *  WITH the S2.x screens rather than ahead of them: the tablet has no nav at all
- *  (`nav.tsx`), so pointing it at a screen the registry does not yet hold would
- *  replace a working board with a placeholder whose only affordance is Logout. */
+/** Where a signed-in user lands by default. The board is the adoption centerpiece
+ *  (S1.2) and the one screen everyone can open. */
 export const HOME_PATH = '/board';
+
+/**
+ * Where THIS user lands after signing in.
+ *
+ * `ui-ux-spec.md §4` is explicit about the tablet: "Login goes straight to weight
+ * entry, Phase 2", and S2.1 says the receiver login "opens to S2.1b (run picker)".
+ * That surface has no navigation at all (`nav.tsx` returns an empty list for it), so
+ * the run picker is not merely a nicer default there — it is the only screen a
+ * receiver could reach.
+ *
+ * Which is also why this arrived one commit after the route table: pointing a
+ * nav-less surface at a screen the registry did not yet hold would have replaced a
+ * working board with a placeholder whose only affordance is Logout.
+ *
+ * Keyed on the duty AND the viewport, never either alone: a receiver who opens R3 on
+ * the shared desktop still has a nav and still wants the board.
+ */
+export function homePathFor(
+  user: { duties: readonly Duty[] },
+  viewport: 'phone' | 'tablet' | 'desktop',
+): string {
+  if (viewport === 'tablet' && user.duties.includes('RECEIVE')) {
+    return routeById('receive-runs').path;
+  }
+  return HOME_PATH;
+}
 
 export type RouteParams = Readonly<Record<string, string>>;
 

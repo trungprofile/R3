@@ -19,18 +19,34 @@
 
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../api/index.ts';
-import { SHIFTSTOP_DISPOSITIONS } from '../../../api/shared.ts';
-import type { RunDetail, RunStopSummary, TruckSummary } from '../../../api/shared.ts';
+import { DONATION_ON_ROUTE_MESSAGE, SHIFTSTOP_DISPOSITIONS } from '../../../api/shared.ts';
+import type {
+  CategorySummary,
+  DonationSummary,
+  DonorSummary,
+  RunDetail,
+  RunStopSummary,
+  TruckSummary,
+} from '../../../api/shared.ts';
 import {
+  AD_HOC_ANON_CHOICE,
+  AD_HOC_LABEL_CHOICE,
   COPY,
+  EMPTY_AD_HOC_DRAFT,
   FORBIDDEN_IN_COPY,
   actionsFor,
+  adHocChoiceOf,
+  adHocReady,
+  adHocRequest,
+  adHocStoreFor,
   canHeadBack,
   canMoveDown,
   canMoveUp,
   canEditNote,
   canResolve,
+  flaggedLine,
   headingBackState,
+  isOnRouteRefusal,
   messageFor,
   moveStop,
   nextPendingStop,
@@ -41,6 +57,8 @@ import {
   reorderPayload,
   reviewLines,
   runIsStillInProgress,
+  selectableCategories,
+  selectableDonors,
   selectableTrucks,
   shouldReloadAfter,
   stopStatusLabel,
@@ -420,6 +438,214 @@ describe('the truck picker', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Flag a stop not on my route (cap 12 — I14, I17, I29, D8)
+// ---------------------------------------------------------------------------
+
+function donor(over: Partial<DonorSummary> = {}): DonorSummary {
+  return {
+    id: 'donor-9',
+    name: 'The bakery on 5th',
+    address: null,
+    contact: null,
+    note: null,
+    active: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...over,
+  };
+}
+
+function category(over: Partial<CategorySummary> = {}): CategorySummary {
+  return {
+    id: 'cat-1',
+    name: 'Bakery',
+    active: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...over,
+  };
+}
+
+function donation(over: Partial<DonationSummary> = {}): DonationSummary {
+  return {
+    id: 'don-1',
+    shiftId: 'shift-1',
+    status: 'SUGGESTED',
+    source: 'MASTER',
+    donorId: 'donor-9',
+    donorLabel: null,
+    donorDisplay: 'The bakery on 5th',
+    categoryId: 'cat-1',
+    categoryName: 'Bakery',
+    weight: null,
+    reportable: true,
+    receivedDate: '2026-07-28',
+    note: null,
+    createdByName: 'Karen',
+    createdAt: '2026-07-28T21:00:00.000Z',
+    editableByReceiver: true,
+    ...over,
+  };
+}
+
+describe('the flag is offered on an in-progress run and nowhere else', () => {
+  it('is available while stops are pending and still available afterwards', () => {
+    // The server's only state test is `status === 'IN_PROGRESS'` — a driver can be
+    // handed something extra at any point of the drive, including on the way home.
+    expect(actionsFor(run({ stops: stops('PENDING') }), OWNER)).toContain('flag-ad-hoc');
+    expect(
+      actionsFor(
+        run({ stops: stops('COLLECTED'), pickupCompletedAt: '2026-07-28T21:32:00.000Z' }),
+        OWNER,
+      ),
+    ).toContain('flag-ad-hoc');
+  });
+
+  it('is not offered before the run starts, or on another driver run', () => {
+    expect(actionsFor(run({ status: 'CLAIMED' }), OWNER)).not.toContain('flag-ad-hoc');
+    expect(actionsFor(run({ ownerId: 'driver-2' }), OWNER)).not.toContain('flag-ad-hoc');
+  });
+});
+
+describe('the store picker (I29, communication only)', () => {
+  it('hides a donor already on this run', () => {
+    // I29: on-route food is another weight_entry on that stop, not an unscheduled
+    // donation. The server refuses it; this only saves the driver the round trip.
+    const list = [donor({ id: 'donor-1' }), donor({ id: 'donor-9' })];
+    expect(selectableDonors(list, stops('PENDING', 'PENDING')).map((d) => d.id)).toEqual([
+      'donor-9',
+    ]);
+  });
+
+  it('still hides a donor whose stop was moved to another driver', () => {
+    // The load-bearing case. The server's guard reads `shift_stop` with NO
+    // disposition filter, so a REASSIGNED stop blocks the flag exactly like a
+    // pending one. Filtering against `stopsOnThisRun` here would offer a store the
+    // server then refuses — a picker that lies.
+    const moved = [stop({ id: 'stop-1', donorId: 'donor-1', disposition: 'REASSIGNED' })];
+    expect(selectableDonors([donor({ id: 'donor-1' })], moved)).toEqual([]);
+  });
+
+  it('hides a deactivated donor (I21) and an archived category (§3.3)', () => {
+    expect(selectableDonors([donor({ active: false })], [])).toEqual([]);
+    expect(selectableCategories([category({ active: false }), category({ id: 'c2' })])).toHaveLength(
+      1,
+    );
+  });
+
+  it('offers every donor on a run with no stops', () => {
+    expect(selectableDonors([donor()], [])).toHaveLength(1);
+  });
+
+  it('maps the three source shapes to and from a radio value', () => {
+    expect(adHocChoiceOf({ kind: 'master', donorId: 'donor-9' })).toBe('donor-9');
+    expect(adHocChoiceOf({ kind: 'label', donorLabel: 'x' })).toBe(AD_HOC_LABEL_CHOICE);
+    expect(adHocChoiceOf({ kind: 'anon' })).toBe(AD_HOC_ANON_CHOICE);
+
+    expect(adHocStoreFor('donor-9', '')).toEqual({ kind: 'master', donorId: 'donor-9' });
+    expect(adHocStoreFor(AD_HOC_ANON_CHOICE, 'typed')).toEqual({ kind: 'anon' });
+    // Switching away and back keeps what was typed.
+    expect(adHocStoreFor(AD_HOC_LABEL_CHOICE, 'typed')).toEqual({
+      kind: 'label',
+      donorLabel: 'typed',
+    });
+  });
+});
+
+describe('what the flag sends (D8, I14)', () => {
+  it('sends a category and never a weight', () => {
+    const request = adHocRequest({
+      store: { kind: 'master', donorId: 'donor-9' },
+      categoryId: 'cat-1',
+      note: '',
+    });
+    expect(request).toEqual({ donorId: 'donor-9', categoryId: 'cat-1' });
+    // D8: `ui-ux-spec.md:193` calls this "just a donor picker … and an optional
+    // note", but the locked doc makes Category required with no SUGGESTED
+    // exemption — and grants one to `weight` in the very next row. So: a category,
+    // and no weight, because the driver has no scale.
+    expect(Object.keys(request!)).not.toContain('weight');
+  });
+
+  it('refuses to build a request without a category', () => {
+    const draft = { store: { kind: 'anon' } as const, categoryId: null, note: '' };
+    expect(adHocRequest(draft)).toBeNull();
+    expect(adHocReady(draft)).toBe(false);
+  });
+
+  it('never sends donorId and donorLabel together', () => {
+    // `ck_ud_source_exclusive` forbids both, and the server refuses the pair with
+    // "Pick a store from the list or type a name, not both." The draft cannot
+    // express the illegal state, which is the point of the union.
+    for (const store of [
+      { kind: 'master', donorId: 'donor-9' } as const,
+      { kind: 'label', donorLabel: 'The bakery on 5th' } as const,
+      { kind: 'anon' } as const,
+    ]) {
+      const request = adHocRequest({ store, categoryId: 'cat-1', note: '' })!;
+      const named = [request.donorId, request.donorLabel].filter((v) => v != null);
+      expect(named.length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('treats "no name for it" as a complete answer and a blank typed name as not', () => {
+    // Anonymous is a legitimate third source (`donor_id` and `donor_label` both
+    // null → ANON). An empty "Somewhere else" box is just an unfinished form.
+    expect(adHocReady({ store: { kind: 'anon' }, categoryId: 'cat-1', note: '' })).toBe(true);
+    expect(
+      adHocReady({ store: { kind: 'label', donorLabel: '   ' }, categoryId: 'cat-1', note: '' }),
+    ).toBe(false);
+  });
+
+  it('trims the typed name and the note, and drops an empty note entirely', () => {
+    expect(
+      adHocRequest({
+        store: { kind: 'label', donorLabel: '  The bakery on 5th ' },
+        categoryId: 'cat-1',
+        note: '  two trays  ',
+      }),
+    ).toEqual({ donorLabel: 'The bakery on 5th', categoryId: 'cat-1', note: 'two trays' });
+
+    expect(
+      Object.keys(adHocRequest({ store: { kind: 'anon' }, categoryId: 'cat-1', note: '   ' })!),
+    ).toEqual(['categoryId']);
+  });
+
+  it('starts empty and unsendable', () => {
+    expect(adHocReady(EMPTY_AD_HOC_DRAFT)).toBe(false);
+  });
+});
+
+describe('what a flagged pickup looks like afterwards', () => {
+  it('reads as a store and a kind of food, never as a stop', () => {
+    // I14: a driver-add writes no ShiftStop. It has no position, no disposition
+    // and nothing to check off, so it must not be rendered as a row of the list.
+    const line = flaggedLine(donation());
+    expect(line).toContain('The bakery on 5th');
+    expect(line).toContain('Bakery');
+    for (const disposition of SHIFTSTOP_DISPOSITIONS) {
+      expect(line).not.toContain(stopStatusLabel(disposition));
+    }
+  });
+
+  it('uses the server "unattributed" display for an anonymous pickup', () => {
+    expect(
+      flaggedLine(
+        donation({ source: 'ANON', donorId: null, donorDisplay: 'Unattributed donation' }),
+      ),
+    ).toContain('Unattributed');
+  });
+
+  it('tells the I29 refusal apart from every other failure', () => {
+    const refused = new ApiError('conflict', { status: 409, detail: DONATION_ON_ROUTE_MESSAGE });
+    expect(isOnRouteRefusal(refused)).toBe(true);
+    expect(messageFor(refused)).toBe(DONATION_ON_ROUTE_MESSAGE);
+    expect(isOnRouteRefusal(new ApiError('conflict', { detail: 'That run is not yours.' }))).toBe(
+      false,
+    );
+    expect(isOnRouteRefusal(new ApiError('offline'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 
@@ -514,6 +740,23 @@ describe('microcopy', () => {
 
   it('says the milestone is optional', () => {
     expect(COPY.headingBackHint.toLowerCase()).toContain('optional');
+  });
+
+  it('never asks the driver for a weight they cannot take', () => {
+    // S1.5: "no weight entry here". The driver has no scale; the receiver weighs
+    // it at S2.3. A prompt for pounds would be asking for a guess.
+    for (const sentence of sentences) {
+      expect(sentence).not.toMatch(/\blbs?\b|\bpounds?\b|\bweigh (it|this) (in|now)\b/i);
+    }
+    // And the copy says whose job it is instead.
+    expect(COPY.flagIntro.toLowerCase()).toContain('pantry');
+    expect(COPY.flagIntro.toLowerCase()).toContain('weigh');
+  });
+
+  it('says the flagged pickup is not a stop', () => {
+    // I14: a driver-add never creates a ShiftStop, so the copy must not let a
+    // driver think the route grew a stop.
+    expect(COPY.flaggedListHint.toLowerCase()).toContain('not stops');
   });
 
   it('tells an empty state what to do next', () => {

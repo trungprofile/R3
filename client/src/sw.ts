@@ -26,6 +26,11 @@ interface PushMessage {
   url: string;
   event: string;
   notificationId: string;
+  /** The raw facts the copy was rendered from. The OS banner below ignores them;
+   *  an in-page surface (S2.4's dock banner) composes its own line from them. */
+  route?: string;
+  who?: string;
+  when?: string;
 }
 
 /**
@@ -54,6 +59,9 @@ function parse(event: PushEvent): PushMessage {
         typeof data.notificationId === 'string'
           ? data.notificationId
           : FALLBACK.notificationId,
+      ...(typeof data.route === 'string' ? { route: data.route } : {}),
+      ...(typeof data.who === 'string' ? { who: data.who } : {}),
+      ...(typeof data.when === 'string' ? { when: data.when } : {}),
     };
   } catch {
     return FALLBACK;

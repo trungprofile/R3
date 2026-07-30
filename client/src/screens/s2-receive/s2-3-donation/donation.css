@@ -1,0 +1,292 @@
+/* S2.3 — Unscheduled donation.
+ *
+ * Tokens only (`ui-ux-spec.md §2`): no literal hex, and no literal px where a
+ * spacing or size token exists. Sizes are relative units so 200% zoom reflows
+ * rather than breaks (§1.3).
+ *
+ * CANONICAL DEVICE: the shared tablet in LANDSCAPE (1024x768). The responsive
+ * matrix marks this surface `n/a` on a phone, so there is no phone breakpoint —
+ * the two-column entry area collapses on a narrow window because a desktop user
+ * can make one, not because a phone is a target.
+ *
+ * Every interactive rule §1 states appears here as a number: 44px minimum target
+ * (--target-min), 8px minimum gap between adjacent targets (--space-2), 18px
+ * body, 64px keypad keys (the keypad's own stylesheet).
+ *
+ * Class prefix `s23-` because this file ships beside the screen rather than in
+ * `components/`, and two screens must never fight over a name.
+ */
+
+.s23 {
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.s23-head {
+  margin-bottom: var(--space-5);
+}
+
+.s23-title {
+  font-size: var(--font-h1);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s23-lede {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0;
+}
+
+.s23-heading {
+  font-size: var(--font-h2);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s23-hint {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.s23-error {
+  font-size: var(--font-body);
+  color: var(--danger);
+  margin: var(--space-2) 0 0 0;
+}
+
+/* --- the driver's prefills ------------------------------------------------ */
+
+.s23-prefills {
+  margin-bottom: var(--space-6);
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+}
+
+/* Row + Discard side by side. The row itself is the target that loads the
+ * prefill into the form (§3: the full row is the target), and Discard sits
+ * outside it so a mis-tap cannot destroy anything. */
+.s23-prefill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.s23-prefill > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.s23-prefill.is-active {
+  outline: var(--focus-width) solid var(--brand-orange);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius-control);
+}
+
+/* --- the form ------------------------------------------------------------- */
+
+.s23-form__head {
+  margin-bottom: var(--space-4);
+}
+
+/* Landscape tablet: the choices on the left, the number and the one action on
+ * the right, so the keypad sits under the receiver's dominant hand and nothing
+ * scrolls between picking a tile and typing a weight. */
+.s23-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  align-items: flex-start;
+}
+
+.s23-column {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.s23-column--entry {
+  flex: 0 1 24rem;
+}
+
+.s23-field {
+  margin-bottom: var(--space-5);
+}
+
+.s23-field__label {
+  font-size: var(--font-h3);
+  color: var(--text);
+  margin: 0 0 var(--space-2) 0;
+}
+
+/* --- category tiles (the S2.2 sheet's grain) ------------------------------ */
+
+.s23-tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.s23-tile {
+  min-height: var(--target-min);
+  min-width: var(--target-min);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.s23-tile.is-selected {
+  /* §2: orange is fill-or-accent and the label on it is --text-on-brand (5.0:1).
+   * Never --text on orange, which fails AA. */
+  background: var(--action-fill);
+  color: var(--text-on-brand);
+  border-color: var(--action-fill);
+  font-weight: 700;
+}
+
+.s23-tile:disabled {
+  background: var(--disabled-fill);
+  color: var(--disabled-text);
+  cursor: default;
+}
+
+/* --- the donor list ------------------------------------------------------- */
+
+.s23-donors {
+  list-style: none;
+  margin: var(--space-3) 0 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* Scrolls in place so a long store list never pushes the keypad off screen.
+   * In rem, so 200% zoom grows the box with the text rather than cropping it. */
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.s23-donor {
+  width: 100%;
+  min-height: var(--row-min);
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.s23-donor.is-selected {
+  background: var(--action-fill);
+  color: var(--text-on-brand);
+  border-color: var(--action-fill);
+  font-weight: 700;
+}
+
+.s23-donor:disabled {
+  background: var(--disabled-fill);
+  color: var(--disabled-text);
+  cursor: default;
+}
+
+.s23-donor__name {
+  display: block;
+}
+
+.s23-donor__note {
+  display: block;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.s23-donor.is-selected .s23-donor__note {
+  color: var(--text-on-brand);
+}
+
+/* --- the report explainer ------------------------------------------------- */
+
+.s23-explainer {
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface-paper);
+  border-radius: var(--radius-control);
+  padding: var(--space-3);
+  margin: var(--space-3) 0 0 0;
+}
+
+/* --- the weight ----------------------------------------------------------- */
+
+.s23-weight {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  min-height: var(--target-min);
+}
+
+.s23-weight__unit {
+  font-size: var(--font-h3);
+  color: var(--text-muted);
+}
+
+/* --- what has been recorded ---------------------------------------------- */
+
+.s23-recorded {
+  margin-top: var(--space-6);
+}
+
+.s23-recorded__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.s23-recorded__row > :first-child {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.s23-chip {
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-label);
+  white-space: nowrap;
+}
+
+/* §2: white text passes on --success. */
+.s23-chip--reported {
+  background: var(--success);
+  color: var(--text-on-fill);
+}
+
+.s23-chip--ours {
+  background: var(--surface-paper);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.s23-closed {
+  flex: 1 1 14rem;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.s23-foot {
+  margin-top: var(--space-6);
+}

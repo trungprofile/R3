@@ -14,6 +14,7 @@ export {
   ROUTES,
   CURRENT_PHASE,
   HOME_PATH,
+  homePathFor,
   matchPath,
   resolvePath,
   routeById,

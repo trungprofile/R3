@@ -148,17 +148,72 @@ describe('heading back (I27)', () => {
   });
 });
 
-describe('D1 — nothing here closes a run', () => {
+describe('flagging a stop not on my route (cap 12)', () => {
+  it('asks for the stores and the kinds of food, active sets only', async () => {
+    await pickupApi.fetchDonors(new AbortController().signal);
+    expect(only().url).toBe('/api/donors');
+
+    calls = [];
+    await pickupApi.fetchCategories(new AbortController().signal);
+    expect(only().url).toBe('/api/categories');
+    // No `includeInactive` on either: I21 keeps a deactivated master resolvable in
+    // history but out of new work, and the server's default is the active set.
+  });
+
+  it('posts the flag under the run, so the row carries the shift (D10)', async () => {
+    await pickupApi.flagAdHocPickup('shift-1', { donorId: 'donor-7', categoryId: 'cat-2' });
+    const call = only();
+    expect(call.method).toBe('POST');
+    // D10: `POST /shifts/:id/donations` always sets `shift_id`; the receiver's
+    // `POST /donations` never does. The path is what makes that structural.
+    expect(call.url).toBe('/api/shifts/shift-1/donations');
+    expect(call.body).toEqual({ donorId: 'donor-7', categoryId: 'cat-2' });
+  });
+
+  it('sends a category every time — D8, even though S1.5 says "just a donor"', async () => {
+    // `domain-modeling.md §2.3` (locked) has no SUGGESTED exemption for Category
+    // and `data-model.md §7.2` stores it NOT NULL, so a row without one cannot be
+    // written at all. The locked doc beats `ui-ux-spec.md:193`.
+    await pickupApi.flagAdHocPickup('shift-1', { categoryId: 'cat-2' });
+    await pickupApi.flagAdHocPickup('shift-1', { donorLabel: 'The bakery on 5th', categoryId: 'c' });
+    for (const call of calls) {
+      expect(Object.keys(call.body ?? {})).toContain('categoryId');
+    }
+  });
+
+  it('never sends a weight — the driver has no scale', async () => {
+    await pickupApi.flagAdHocPickup('shift-1', {
+      donorLabel: 'The bakery on 5th',
+      categoryId: 'cat-2',
+      note: 'two trays',
+    });
+    const keys = Object.keys(only().body ?? {});
+    expect(keys).not.toContain('weight');
+    // Nor a reportable flag: I15 defaults it ON server-side, and the receiver owns
+    // the toggle at S2.3.
+    expect(keys).not.toContain('reportable');
+  });
+
+  it('escapes the shift id rather than pasting it into a path', async () => {
+    await pickupApi.flagAdHocPickup('a/b', { categoryId: 'cat-2' });
+    expect(only().url).toBe('/api/shifts/a%2Fb/donations');
+  });
+});
+
+describe('D1/I14 — nothing here closes a run, and nothing here writes a stop', () => {
   it('exports no call that completes, closes or finishes a shift', async () => {
-    // I11 makes the receiver's receive-done the only completion action and it
-    // ships in Phase 2. A second completion path would have to be removed again.
+    // I11 makes the receiver's receive-done the only completion action, and D7
+    // keeps it to exactly one place — `receiveDone()`, which is not in this folder.
     for (const name of Object.keys(pickupApi)) {
       expect(name).not.toMatch(/complete(?!Pickup)|finish|close|receive/i);
     }
     expect(Object.keys(pickupApi).sort()).toEqual([
       'confirmHeadingBack',
+      'fetchCategories',
+      'fetchDonors',
       'fetchRun',
       'fetchTrucks',
+      'flagAdHocPickup',
       'resolveStop',
       'saveOrder',
       'saveRunNote',
@@ -174,14 +229,19 @@ describe('D1 — nothing here closes a run', () => {
     await pickupApi.saveOrder('shift-1', ['stop-2']);
     await pickupApi.saveRunNote('shift-1', 'x');
     await pickupApi.confirmHeadingBack('shift-1', 'x');
+    await pickupApi.flagAdHocPickup('shift-1', { categoryId: 'cat-2' });
 
-    expect(calls).toHaveLength(6);
+    expect(calls).toHaveLength(7);
     for (const call of calls) {
       const keys = Object.keys(call.body ?? {});
       // `disposition` is a ShiftStop's, not the shift's. Nothing this screen
       // sends can move `Shift.status` or set the milestone by hand.
       expect(keys).not.toContain('status');
       expect(keys).not.toContain('pickupCompletedAt');
+      // I14: a driver-add never creates a ShiftStop. There is no stop-shaped field
+      // to send on the flag, and no endpoint in this folder that would take one.
+      expect(keys).not.toContain('stopId');
+      expect(keys).not.toContain('position');
     }
   });
 });

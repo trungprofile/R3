@@ -27,10 +27,12 @@ import {
   TextInput,
 } from '../../../components/index.ts';
 import {
+  homePathFor,
   HOME_PATH,
   useAsyncData,
   useRouter,
   useSession,
+  useViewport,
   type ScreenProps,
 } from '../../../app/index.ts';
 import { PIN_LENGTH } from '../../../api/shared.ts';
@@ -77,7 +79,8 @@ function PinDots({ length }: { length: number }) {
 }
 
 export function LoginScreen(_props: ScreenProps) {
-  const { status, onSignedIn } = useSession();
+  const { status, user, onSignedIn } = useSession();
+  const viewport = useViewport();
   const { match, navigate } = useRouter();
 
   const roster = useAsyncData(fetchRoster);
@@ -105,9 +108,11 @@ export function LoginScreen(_props: ScreenProps) {
   // so this only fires for the path that is literally the login screen's.
   useEffect(() => {
     if (status === 'signed-in' && match?.route.id === 'login') {
-      navigate(HOME_PATH, { replace: true });
+      // S2.1: the receiver login "opens to S2.1b (run picker)" on the tablet, which
+      // §4 gives no nav — landing them on the board would be a dead end there.
+      navigate(user ? homePathFor(user, viewport) : HOME_PATH, { replace: true });
     }
-  }, [status, match, navigate]);
+  }, [status, user, viewport, match, navigate]);
 
   const entries = roster.data ? orderRoster(roster.data) : [];
   const entry = findEntry(entries, selected);

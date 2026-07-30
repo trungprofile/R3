@@ -12,7 +12,12 @@
 // action here is a courtesy to a driver in a truck, never the rule itself.
 
 import { toApiError } from '../../../api/index.ts';
+import { DONATION_ON_ROUTE_MESSAGE } from '../../../api/shared.ts';
 import type {
+  CategorySummary,
+  DonationSummary,
+  DonorSummary,
+  FlagAdHocRequest,
   RunDetail,
   RunStopSummary,
   ShiftStopDisposition,
@@ -73,14 +78,21 @@ export type PickupAction =
   | 'reorder'
   | 'stop-note'
   | 'run-note'
-  | 'heading-back';
+  | 'heading-back'
+  /** Phase 2, cap 12: record a pickup that was never on the planned route. Writes
+   *  an UnscheduledDonation and never a ShiftStop (I14), so it closes nothing and
+   *  changes no stop's disposition. */
+  | 'flag-ad-hoc';
 
 export function actionsFor(run: RunDetail, viewerId: string): PickupAction[] {
   const phase = phaseFor(run, viewerId);
   if (phase.kind === 'unavailable') return [];
   if (phase.kind === 'start') return ['start'];
 
-  const actions: PickupAction[] = ['stop-note'];
+  // Available for the whole of an in-progress run, before and after the milestone:
+  // the server's only state test is `status === 'IN_PROGRESS'`, and a driver can be
+  // handed something extra at any point of the drive.
+  const actions: PickupAction[] = ['stop-note', 'flag-ad-hoc'];
   if (nextPendingStop(run.stops) !== null) actions.push('collect', 'skip');
   if (stopsOnThisRun(run.stops).length > 1) actions.push('reorder');
   // The whole-run note lives on the review screen, which is reachable only once
@@ -318,6 +330,145 @@ export function truckLabel(truck: TruckSummary): string {
 }
 
 // ---------------------------------------------------------------------------
+// "Flag a stop not on my route" (cap 12, I14 / I17 / I29)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where the food came from, as the three shapes the wire allows.
+ *
+ * `donor_id` and `donor_label` are mutually exclusive (`ck_ud_source_exclusive`) and
+ * both may be null, which is the anonymous case — so the picker is a three-way
+ * choice rather than a text field with a lookup bolted on. `DonationSource` names
+ * the same three, derived server-side from which column is set.
+ */
+export type AdHocStore =
+  | { kind: 'master'; donorId: string }
+  | { kind: 'label'; donorLabel: string }
+  | { kind: 'anon' };
+
+/** What the flag screen holds while the driver fills it in. `weight` is absent and
+ *  has nowhere to go: the driver has no scale, and the receiver weighs it (S1.5). */
+export interface AdHocDraft {
+  store: AdHocStore;
+  /** Required — the locked doc has no `SUGGESTED` exemption for Category (D8). */
+  categoryId: string | null;
+  note: string;
+}
+
+/** Opens on the master list with nothing chosen, which is the common case: most
+ *  ad-hoc pickups are from a store the pantry already knows. */
+export const EMPTY_AD_HOC_DRAFT: AdHocDraft = {
+  store: { kind: 'anon' },
+  categoryId: null,
+  note: '',
+};
+
+/** Radio values for the two options that are not a donor id. Prefixed so they can
+ *  never collide with a uuid. */
+export const AD_HOC_LABEL_CHOICE = '__label__';
+export const AD_HOC_ANON_CHOICE = '__anon__';
+
+export function adHocChoiceOf(store: AdHocStore): string {
+  switch (store.kind) {
+    case 'master':
+      return store.donorId;
+    case 'label':
+      return AD_HOC_LABEL_CHOICE;
+    case 'anon':
+      return AD_HOC_ANON_CHOICE;
+  }
+}
+
+/** The radio's value back into a store. `label` keeps whatever was already typed so
+ *  tapping away and back does not clear the box. */
+export function adHocStoreFor(choice: string, typedLabel: string): AdHocStore {
+  if (choice === AD_HOC_ANON_CHOICE) return { kind: 'anon' };
+  if (choice === AD_HOC_LABEL_CHOICE) return { kind: 'label', donorLabel: typedLabel };
+  return { kind: 'master', donorId: choice };
+}
+
+/**
+ * The stores the picker offers.
+ *
+ * Active only (I21: a deactivated donor is preserved in history but not offered for
+ * new work), and **minus every donor already on this run** — the server refuses
+ * those (I29) and the run's stops are already on screen above.
+ *
+ * Filtered against ALL stops, not just the ones still on this run: the server's
+ * guard reads `shift_stop` with no disposition filter, so a stop staff moved to
+ * another driver still blocks. Hiding a different set than the server refuses is
+ * how a picker starts lying.
+ */
+export function selectableDonors(
+  donors: readonly DonorSummary[],
+  stops: readonly RunStopSummary[],
+): DonorSummary[] {
+  const onRoute = new Set(stops.map((stop) => stop.donorId));
+  return donors.filter((donor) => donor.active && !onRoute.has(donor.id));
+}
+
+/** Active categories only — an archived one is hidden from new entry and kept for
+ *  history (§3.3, S1.8). */
+export function selectableCategories(categories: readonly CategorySummary[]): CategorySummary[] {
+  return categories.filter((category) => category.active);
+}
+
+/**
+ * The request body, or null when the draft is not ready to send.
+ *
+ * Two things make it ready, and neither is a domain rule this screen owns — the
+ * server checks both again:
+ *   - a category (D8: required, and the one field S1.5's prose does not mention)
+ *   - a store, *if* the driver chose to type one. "No name for it" is a complete
+ *     answer; a blank "Somewhere else" box is not.
+ *
+ * `donorId` and `donorLabel` are never both present, which is what
+ * `ck_ud_source_exclusive` requires and what the server's `resolveSource` refuses.
+ */
+export function adHocRequest(draft: AdHocDraft): FlagAdHocRequest | null {
+  if (draft.categoryId === null || draft.categoryId === '') return null;
+
+  const note = draft.note.trim();
+  const tail = {
+    categoryId: draft.categoryId,
+    ...(note === '' ? {} : { note }),
+  };
+
+  switch (draft.store.kind) {
+    case 'master':
+      return { donorId: draft.store.donorId, ...tail };
+    case 'label': {
+      const label = draft.store.donorLabel.trim();
+      return label === '' ? null : { donorLabel: label, ...tail };
+    }
+    case 'anon':
+      return tail;
+  }
+}
+
+export function adHocReady(draft: AdHocDraft): boolean {
+  return adHocRequest(draft) !== null;
+}
+
+/**
+ * One line per pickup the driver flagged on this run.
+ *
+ * Deliberately NOT a stop and never rendered as one: a driver-add writes no
+ * `ShiftStop` (I14), so it has no position, no disposition, and nothing to check
+ * off. `donorDisplay` is the server's — it already collapses the anonymous case
+ * into the "unattributed" bucket the report uses.
+ */
+export function flaggedLine(donation: DonationSummary): string {
+  return `${donation.donorDisplay} · ${donation.categoryName}`;
+}
+
+/** The I29 refusal, told apart from every other failure so it can be shown next to
+ *  the store picker that caused it instead of as a passing toast. */
+export function isOnRouteRefusal(error: unknown): boolean {
+  return toApiError(error).detail === DONATION_ON_ROUTE_MESSAGE;
+}
+
+// ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 
@@ -419,6 +570,35 @@ export const COPY = {
   backToStops: 'Back to my stops',
   confirmedTitle: "You're marked as heading back",
   confirmedHint: 'Nothing else is needed from you. You can still add notes.',
+
+  // --- flag a stop not on my route (cap 12) -------------------------------
+  // Nothing here may promise anyone was told, for the same reason as above: the
+  // flag writes a row the receiver finds on their own screen (S2.3). It sends no
+  // alert of its own, and the truck-inbound one belongs to "Heading back".
+  flagAdHoc: 'Flag a stop not on my route',
+  flagAdHocHint: 'Picked up something that was not on your list? Record it here.',
+  flagTitle: 'A stop not on my route',
+  flagIntro:
+    'Record something extra you picked up. You do not weigh it — the pantry does that when you get back.',
+  flagStoreLabel: 'Which store?',
+  flagStoreHint: 'Stops already on your route are not listed — add their food to the stop itself.',
+  flagOtherStore: 'Somewhere else',
+  flagOtherStoreLabel: 'Store name',
+  flagOtherStoreHint: 'For a store the pantry does not have on file yet.',
+  flagNoStore: 'No name for it',
+  flagCategoryLabel: 'What kind of food?',
+  flagCategoryHint: 'Your best guess is fine. The pantry can change it when they weigh it.',
+  flagNoteLabel: 'Note for the pantry',
+  flagNoteHint: 'Optional. Anything the pantry should know about this pickup.',
+  flagSubmit: 'Flag this pickup',
+  flagSuccess: 'Flagged. The pantry weighs it when you get back.',
+  flagNoDonors: 'No stores to pick from.',
+  flagNoDonorsNext: 'Type the store name instead, or ask an admin to add the store.',
+  flagNoCategories: 'No kinds of food are set up yet.',
+  flagNoCategoriesNext: 'Ask an admin to add one, then come back and flag this pickup.',
+  flaggedListLabel: 'Extra pickups you flagged',
+  flaggedListHint: 'These are not stops on your route. The pantry weighs them.',
+  flaggedListNote: 'This list clears if you reload. The pantry keeps what you flagged.',
 
   // --- nothing to do here -------------------------------------------------
   notClaimed: 'Nobody has claimed this run yet.',

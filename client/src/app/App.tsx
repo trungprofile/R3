@@ -7,25 +7,30 @@
 // top bar on every screen, and the card that fixes it has to be reachable from
 // wherever the user notices the chip.
 
-import { useEffect } from 'react';
+import { useEffect, type ComponentType } from 'react';
 import { AppShell } from './AppShell.tsx';
 import type { ScreenRegistry } from './AppShell.tsx';
 import { IdlePrompt } from './IdlePrompt.tsx';
 import { OfflineBanner } from './OfflineBanner.tsx';
 import { RouterProvider, useRouter } from './router.tsx';
-import { HOME_PATH } from './routes.ts';
+import { homePathFor, HOME_PATH } from './routes.ts';
 import { SessionProvider, useSession } from './SessionProvider.tsx';
 import { ToastProvider } from './ToastProvider.tsx';
+import { useViewport } from './useViewport.ts';
 import { OnboardingCard, onServiceWorkerNavigate, usePwa } from '../pwa/index.ts';
 
-/** `/` is not a screen. A signed-in user lands on the board (S1.2). */
+/** `/` is not a screen. A signed-in user lands on the board (S1.2) — except a
+ *  receiver at the shared tablet, who lands on the run picker, because §4 gives that
+ *  surface no navigation at all (`homePathFor`). */
 function HomeRedirect() {
   const { path, navigate } = useRouter();
-  const { status } = useSession();
+  const { status, user } = useSession();
+  const viewport = useViewport();
 
   useEffect(() => {
-    if (status === 'signed-in' && path === '/') navigate(HOME_PATH, { replace: true });
-  }, [status, path, navigate]);
+    if (status !== 'signed-in' || path !== '/') return;
+    navigate(user ? homePathFor(user, viewport) : HOME_PATH, { replace: true });
+  }, [status, user, viewport, path, navigate]);
 
   return null;
 }
@@ -48,7 +53,15 @@ function AlertNavigation() {
  * opposite sides of the shell: the top bar's chip (§5, "always visible") and the
  * card that re-walks the flow when it is tapped.
  */
-function Shell({ screens, useUnreadCount }: { screens: ScreenRegistry; useUnreadCount: UnreadCountHook }) {
+function Shell({
+  screens,
+  useUnreadCount,
+  DeviceAlerts,
+}: {
+  screens: ScreenRegistry;
+  useUnreadCount: UnreadCountHook;
+  DeviceAlerts: ComponentType;
+}) {
   const { status } = useSession();
   // Nothing about alerts runs before sign-in: registering requires a session, and
   // §5 places onboarding after login.
@@ -69,6 +82,11 @@ function Shell({ screens, useUnreadCount }: { screens: ScreenRegistry; useUnread
         onFixAlerts={pwa.fix}
       />
       <OnboardingCard pwa={pwa} />
+      {/* S2.4. Inside the shell so it can banner ABOVE a screen without stealing
+          the keypad from whoever is mid-weighing, and deliberately NOT gated on
+          `status === 'signed-in'`: the dock alert fires regardless of who, if
+          anyone, is logged in (PRD §2). */}
+      <DeviceAlerts />
     </>
   );
 }
@@ -86,15 +104,24 @@ export type UnreadCountHook = (active: boolean) => { unreadCount: number };
 export function App({
   screens,
   useUnreadCount,
+  DeviceAlerts,
 }: {
   screens: ScreenRegistry;
   useUnreadCount: UnreadCountHook;
+  /** S2.4's dock banner, injected for the same reason as `screens` and
+   *  `useUnreadCount`: it is a screen's export and `app/` must not import from
+   *  `screens/`. It is not a route — nothing navigates to it. */
+  DeviceAlerts: ComponentType;
 }) {
   return (
     <SessionProvider>
       <RouterProvider>
         <ToastProvider>
-          <Shell screens={screens} useUnreadCount={useUnreadCount} />
+          <Shell
+            screens={screens}
+            useUnreadCount={useUnreadCount}
+            DeviceAlerts={DeviceAlerts}
+          />
           {/* Blocking, and above everything — §6 does not want a usable-looking
               app with no network. */}
           <OfflineBanner />
