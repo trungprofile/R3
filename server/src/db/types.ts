@@ -73,6 +73,7 @@ export interface Category {
   deactivated_at: Timestamp | null;
   id: Generated<string>;
   name: string;
+  ntfb_category_id: string | null;
 }
 
 export interface Device {
@@ -103,6 +104,15 @@ export interface Notification {
   recipient_id: string | null;
   shift_id: string | null;
   subscription_id: string | null;
+}
+
+export interface NtfbCategory {
+  code: string | null;
+  created_at: Generated<Timestamp>;
+  deactivated_at: Timestamp | null;
+  id: Generated<string>;
+  name: string;
+  updated_at: Generated<Timestamp>;
 }
 
 export interface Pgmigrations {
@@ -242,6 +252,7 @@ export interface DB {
   device: Device;
   donor: Donor;
   notification: Notification;
+  ntfb_category: NtfbCategory;
   pgmigrations: Pgmigrations;
   push_subscription: PushSubscription;
   recurrence_pattern: RecurrencePattern;

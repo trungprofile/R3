@@ -16,8 +16,10 @@ import { donorRoutes } from './donors.js';
 import { executionRoutes } from './execution.js';
 import { notificationRoutes } from './notifications.js';
 import { pickupRouteRoutes } from './pickup-routes.js';
+import { metricsRoutes } from './metrics.js';
 import { pushRoutes } from './push.js';
 import { receiveRoutes } from './receive.js';
+import { reportRoutes } from './report.js';
 import { shiftRoutes } from './shifts.js';
 import { truckRoutes } from './trucks.js';
 import { userRoutes } from './users.js';
@@ -54,6 +56,12 @@ export const apiRoutes: RouteDefinition[] = [
   // the second dead code, silently, with nothing in `gate.sh` to catch it (A108).
   ...receiveRoutes,
   ...donationRoutes,
+  // Phase 3. `/report` and `/metrics` are both unclaimed prefixes, so there is no
+  // method+path pair for Express to shadow (A108). Their access declarations differ
+  // on purpose: the report is a DUTY (S3.1, "anyone with report duty") and metrics is
+  // a TIER (S3.2, "admin") — set membership versus hierarchy, never interchangeable.
+  ...reportRoutes,
+  ...metricsRoutes,
 ];
 
 export function createApiRouter(): Router {

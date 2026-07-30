@@ -32,6 +32,10 @@ export * from './execution.js';
 export * from './receive.js';
 export * from './donation.js';
 
+// Phase 3 — the NTFB report (cap 15) and admin metrics (cap 16).
+export * from './report.js';
+export * from './metrics.js';
+
 /** `tier` — I1. Hierarchical: VOLUNTEER ⊂ STAFF ⊂ ADMIN. Compare by rank with `>=`,
  *  never by equality. */
 export const TIERS = ['VOLUNTEER', 'STAFF', 'ADMIN'] as const;

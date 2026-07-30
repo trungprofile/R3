@@ -24,6 +24,7 @@ Add `docs/features/<name>.md` once a feature accumulates worked examples or edge
 | :---- | :---- |
 | [`phase-1-build-plan.md`](docs/features/phase-1-build-plan.md) | building anything in Phase 1 — standing decisions (no `COMPLETED` in Phase 1, deferred `§7` tables), build order, single-owner files, and the rules every agent follows |
 | [`phase-2-build-plan.md`](docs/features/phase-2-build-plan.md) | building anything in Phase 2 — D7 lifts D1 (`COMPLETED` is now reachable, in exactly one place), D8 records a live conflict between `ui-ux-spec.md` and the locked doc, D9/D10 scope the edit window and the walk-in split |
+| [`phase-3-build-plan.md`](docs/features/phase-3-build-plan.md) | building anything in Phase 3 — the report/metrics union and the three ways to compute it wrong, D11 (mapping lives on S3.1), D12 (NTFB categories ship empty and unmapped weight blocks export), D13 (the export shape is provisional), D14 (the Reporter's edit deliberately ignores the receiver window) |
 
 ## Where code goes
 

@@ -25,7 +25,7 @@ import type { Duty, Tier } from '../src/db/types.js';
 export async function resetDatabase(): Promise<void> {
   await sql`
     TRUNCATE TABLE
-      weight_entry, unscheduled_donation,
+      weight_entry, unscheduled_donation, ntfb_category,
       notification, session, push_subscription, availability_block,
       shift_stop, shift, recurrence_pattern, route_stop, route, device,
       truck, category, donor, user_duty, app_user
