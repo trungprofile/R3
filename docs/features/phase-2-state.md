@@ -19,15 +19,32 @@ Assumption numbering continues `phase-1-state.md`'s series (which ended at A161)
 | `routes/receive.ts`, `routes/donations.ts`, registry wiring | **done** |
 | `jobs/suggestion-sweep.ts` — I17's other half | **done** |
 | Server tests — 74 new, `gate.sh` green at 603 total | **done** |
-| Client shell — routes, `CURRENT_PHASE = 2`, tablet home path | *lands with the screens — see below* |
-| S2.1b / S2.2 / S2.2b / S2.3 / S2.4 screens, S1.5 flag button | *in progress* |
+| Client shell — routes, `CURRENT_PHASE = 2`, tablet home path | **done** |
+| S2.1b / S2.2 / S2.2b / S2.3 / S2.4 screens, S1.5 flag button | **done** |
+| Client tests — 661 total, production bundle builds | **done** |
 
-**The client shell change is deliberately not in the server commit.** `homePathFor` sends a
-receive-duty user at tablet width to `/receive`, and `nav.tsx` gives that viewport no
-navigation at all — so shipping the redirect before S2.1b exists would replace a working
-board with a placeholder whose only affordance is Logout, and logging back in would return
-to the same placeholder. `doc-qa` caught it as a code-violates-doc finding against
-`ui-ux-spec.md` §4. The router change and the screens it depends on land together.
+**The client shell change landed one commit after the route table, deliberately.**
+`homePathFor` sends a receive-duty user at tablet width to `/receive`, and `nav.tsx` gives
+that viewport no navigation at all — so shipping the redirect before S2.1b existed would
+have replaced a working board with a placeholder whose only affordance is Logout, and
+logging back in would return to the same placeholder. `doc-qa` caught it as a
+code-violates-doc finding against `ui-ux-spec.md` §4; a second pass confirmed it closed.
+
+## Two lanes shipped without a report
+
+`phase-1-build-plan.md` §5.1 makes a lane report mandatory and §5.3 makes "every lane wrote
+a report" a promotion condition. **Two of Phase 2's four screen lanes did not write one** —
+the S2.2 agent and the S1.5/S2.4 agent both died to API connection errors after finishing
+their code but before writing their report. Their work was verified directly (typecheck and
+the full client suite run in their worktrees before merge) and is sound; what was lost was
+the `Assumed:` field, which is the whole point of the contract — a spec gap an agent guessed
+at looks identical to a correct answer everywhere else.
+
+Recorded here rather than quietly absorbed. The gap was closed after the fact by a `doc-qa`
+pass asked to hunt specifically in those two areas; A173–A176 below are its findings, and
+they are assumptions recovered by inspection rather than declared by their author, which is
+a weaker guarantee. The lane reports that *do* exist are `reports/phase2-s2-1b.md` and
+`reports/phase2-s2-2b-s2-3.md`.
 
 ## Open assumptions
 
@@ -116,7 +133,8 @@ someone they are not. No doc states a destination for this event.
 S2.4 wants a full-width in-page banner on the tablet that "banners above without
 stealing the keypad". The OS notification `sw.ts` already showed is the right surface
 for a phone in a pocket and the wrong one for a tablet lying face-up with R3 open, so
-the worker now **also** posts the message to every open window (`onForegroundAlert`).
+the worker now **also** posts the message to every open window — `tellOpenWindows` in
+`sw.ts`, received by `onServiceWorkerAlert` in `pwa/serviceWorker.ts`.
 
 Two consequences worth stating: the page may show a banner for an alert the OS is
 *also* showing, and the message goes to every open window rather than one, so a
@@ -131,6 +149,61 @@ from the pantry's clock); a fourth status dot for `REASSIGNED`, since the spec n
 three and `ReceiveStopState` has five; oldest-occurrence-first list order, so an
 unclosed run from last week does not sink; and a stop re-read on every tap, costing one
 round trip so two receivers do not land on the same store.
+
+### A173 — S2.2b and S2.3's own assumptions
+
+Eleven, in `reports/phase2-s2-2b-s2-3.md`. The ones that change what a person sees:
+`/donations/new` takes no `shiftId`, so S2.3 lists every open prefill pantry-wide rather
+than one run's — `GET /shifts/:id/donations` exists and is unused by that screen; the
+Report toggle is a two-option **Segmented** control rather than a switch, because §3 has
+no switch component and a lane may not add one; "No name" stays offered while reporting
+is ON and is **refused rather than hidden**, with the reason live under the picker; and
+S2.2b's success toast names how many unconfirmed prefills the close discarded, because a
+silently-vanishing prefill reads as data loss to the only person who could still act on
+it.
+
+### A174 — S2.2 has a second correction path the spec does not mention
+
+S2.2's spec names one edit affordance: "tap an existing entry (✎) to overwrite it".
+The screen also offers **Remove** — a void with no replacement, behind its own destructive
+confirm. The server endpoint for it already existed; the doc is silent rather than
+contrary. It matters because a weight logged against the wrong stop has no correct
+replacement value to type, so overwrite alone cannot express the correction.
+
+*Recovered by inspection, not declared — see "Two lanes shipped without a report".*
+
+### A175 — S2.2's tile order is alphabetical and deliberately entry-independent
+
+No doc gives an order. Tiles sort by category name and **never** by activity, so a busy
+category does not jump position under a receiver's finger mid-shift. The consequence
+nobody has agreed to: renaming a category reorders every receiver's sheet.
+
+*Recovered by inspection, not declared.*
+
+### A176 — S2.4 queues up to three trucks; S2.2's unsaved warning covers every exit
+
+S2.4's spec says nothing about two trucks returning at once. The banner keeps a 3-deep
+queue deduped by alert id, shows one at a time with an "N more" line, and drops the
+oldest when full — `completePickup` fans out per device, so simultaneous arrivals are
+ordinary rather than exotic.
+
+Separately, S2.2's spec triggers the unsaved-entry warning on *switching stop*; the screen
+also raises it on "Mark stop weighed" and on the all-done banner link. A typed-but-unadded
+number is lost identically either way.
+
+*Both recovered by inspection, not declared.*
+
+### A177 — the truck alert's copy is written twice, and nothing pins the two together
+
+`renderPush` composes the OS banner's sentence server-side; `truckInboundBody` composes
+the in-page banner's sentence client-side from the same raw facts. They agree today and
+no test asserts that they keep agreeing.
+
+Deliberate, and the two surfaces genuinely differ — the OS banner is one line with no
+room for a second, and the in-page banner leads with the driver's name because that is
+what a receiver recognises from the run picker. But it is duplication, and the honest
+description is that it is two copies of the copy free to drift. The alternative is the
+client rendering the server's `title`/`body` verbatim and losing the second line.
 
 ## Bugs found and fixed during the build
 

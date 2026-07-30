@@ -262,7 +262,28 @@ describe('the chime', () => {
 // ---------------------------------------------------------------------------
 
 describe('microcopy', () => {
-  const sentences = [...Object.values(TRUCK_INBOUND_COPY), queuedLabel(1)!, queuedLabel(2)!];
+  /**
+   * Every sentence this banner can put on screen — not just the fixed ones.
+   *
+   * `truckInboundBody` and `truckInboundDetail` COMPOSE their text from server
+   * facts, so sweeping only `TRUCK_INBOUND_COPY` would leave the banner's most
+   * visible line ("Karen's run returning") outside the §7 check that every sibling
+   * screen applies to its whole copy surface. All three composition branches are
+   * covered: driver known, route only, and the bare fallback.
+   */
+  const composed = [
+    truckInboundBody({ id: 'a', who: 'Karen', route: 'Tuesday North', when: 'Tue 2:00 PM' }),
+    truckInboundBody({ id: 'b', who: null, route: 'Tuesday North', when: null }),
+    truckInboundBody({ id: 'c', who: null, route: null, when: null }),
+    truckInboundDetail({ id: 'd', who: 'Karen', route: 'Tuesday North', when: 'Tue 2:00 PM' }),
+  ].filter((line): line is string => line !== null);
+
+  const sentences = [
+    ...Object.values(TRUCK_INBOUND_COPY),
+    queuedLabel(1)!,
+    queuedLabel(2)!,
+    ...composed,
+  ];
 
   it('says something everywhere', () => {
     for (const sentence of sentences) expect(sentence.length).toBeGreaterThan(0);
