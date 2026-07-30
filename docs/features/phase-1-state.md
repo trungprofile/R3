@@ -29,6 +29,11 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 >
 > If you were invoked to continue Phase 1: it is done, and the remaining items below are **a human's
 > to do**, not a wave's. Read "What Phase 1 shipped without" and take instructions from the human.
+>
+> **Amended 2026-07-30, after the first UI pass** (see "Post-PR" below). The build scope is still
+> closed and the loop is still stopped, but PR #1 now carries fix commits on top of the original 117.
+> **One known defect is open and unfixed on the branch: A160**, the phone topbar overflow — it is a
+> design call waiting on a human, with both candidate fixes measured. Do not pick one silently.
 
 **Wave 4b closed Phase 1's build scope on 2026-07-30.** All nine S1.x screens exist, are registered in
 `main.tsx`'s `SCREENS`, and are reachable through the shell.
@@ -37,7 +42,7 @@ resume — by this session after a compaction, or by a fresh session tomorrow �
 
 | Criterion | Status |
 | :---- | :---- |
-| Caps 1–11, 13 (minus truck-inbound) and 17 built | **yes**, with one edge: accounts/donors/trucks/categories (S1.8), scheduling incl. recurring (S1.6), shared board (S1.2), claim/self-select/assign (S1.2 + S1.6), availability (S1.4), release + bulk release (S1.3/S1.4), reschedule (S1.7), pickup execution with route + truck selection (S1.5), directional notes both ways (S1.3), lifecycle/reminder/at-risk notifications (S1.9 + `jobs/`), install/onboarding (`pwa/`). The edge is **A66**, the `apple-touch-icon` PNG — a binary asset only a human can produce |
+| Caps 1–11, 13 (minus truck-inbound) and 17 built | **yes**, with one edge: accounts/donors/trucks/categories (S1.8), scheduling incl. recurring (S1.6), shared board (S1.2), claim/self-select/assign (S1.2 + S1.6), availability (S1.4), release + bulk release (S1.3/S1.4), reschedule (S1.7), pickup execution with route + truck selection (S1.5), directional notes both ways (S1.3), lifecycle/reminder/at-risk notifications (S1.9 + `jobs/`), install/onboarding (`pwa/`). ~~The edge is **A66**~~ — **A66 closed 2026-07-30** (A158). **This row was wrong about cap 17 when it was written:** the management half was built, but "seeded with the 11 AGFP categories at launch" was not, and no gate could see it (A156). Closed by migration `0010` |
 | S1.1–S1.9 exist and are reachable through the shell | **yes.** S1.5 is reached only through S1.3 (A139), which `doc-qa` confirmed matches `ui-ux-spec.md §4`'s own wording — Pickup is reached "while a route is active", not from the nav |
 | The gate passes on `phase-1` | **yes**, both halves — eight mechanical checks green, `doc-qa` zero findings |
 | No stubbed service, no `TODO` in `server/src/services/` | **yes** — both greps clean |
@@ -1201,24 +1206,65 @@ stores were still loading.
 | :---- | :---- | :---- |
 | **A138** | **The board's day is the PANTRY's, not the device's.** New `client/src/app/pantry-day.ts` (`todayInZone`, `deviceToday`), consumed by S1.2 for its `?from=` fetch bound *and* its day headings. This **fixes a real defect in an already-promoted Wave-4a screen**: A121 had the board on the device date, justified by "the client has no access to `app_config.timezone`" — which stopped being true when A120 put the pantry zone on the session. Found because S1.3's lane computed the pantry day and said so. | **RESOLVED at `fcaa4f0` + `e754532`.** The first commit fixed the fetch bound and left the *headings* still defaulting to the device day; `doc-qa` caught that residue — the lead had asked it to check exactly that, and it was still worth asking |
 
-## What Phase 1 shipped without — all three are a human's to close
+## Post-PR: the first UI pass (2026-07-30, after PR #1 opened)
 
-These do not fail §5.4 and they did not block the PR. They are the honest edges of a green gate, and
-**none can be closed by an agent**: the first needs a browser, the second needs a person's judgement
-about words, the third needs a binary asset.
+Run on the human's instruction after Phase 1's build scope closed. **Not a wave** — no lanes, no
+worktrees, no gate promotion. Two `ui-tester` sessions plus a lead-driven phone pass against
+`npm run dev`, then the fixes below on `phase-1`, updating PR #1 in place. The human ruled on D5 and
+chose to keep the fixes on the PR branch rather than a follow-up branch.
 
-1. **No rendered DOM has ever been confirmed.** The gate proves the code typechecks and its units
-   behave; it cannot prove a screen renders. `ui-tester` had no browser tool available in its session
-   and **said so rather than fabricating a click-through**, so it tested the live HTTP surface and read
-   source. There has been **no visual layout check, no console-on-load, no real keyboard focus test, no
-   200%-zoom pass** on any of the nine screens. The app is runnable (`npm run dev`), so the blocker is
-   gone — this is now just work nobody has done. **Do this first if you do anything.**
+| # | Assumption | Status |
+| :---- | :---- | :---- |
+| **A156** | **Cap 17's seed half was never built, and `phase-1-state.md` said it was.** Both the PRD and `ui-ux-spec.md` (twice) say categories are "seeded with the 11 AGFP categories at launch". Nothing did it: the eleven names existed in exactly one place in the repo — `server/test/masters-category.test.ts`, where the *test creates them itself* and then asserts the table holds eleven. That assertion passes against an empty database, which is why **four green gates never caught it**, and why §5.4 below recorded cap 17 as built. A fresh box came up with an empty Categories tab and would have come up with an empty Phase-2 weight keypad. | **RESOLVED at migration `0010_seed_categories.sql`.** Placement was a genuine choice — no foundation doc says where launch seed data lives. A migration wins because it is the only path that reaches production, a rehearsal *and* dev identically; `scripts/dev-seed.ts` was the alternative and is dev-only *and* truncates the table. Guarded on the table being empty, not per-name: this is a launch seed, not a reconciler |
+| **A157** | **`dev-seed.ts` stops truncating `category` while `test/fixtures.ts` keeps doing so**, and the divergence is deliberate rather than an oversight. Dev wants a usable world across reseeds; a suite wants a known one, and `masters-category.test.ts` asserts *exactly* eleven rows, which is only true from empty. | non-blocking; reasoning recorded in both files |
+| **A158** | **A66 closed with headless Chrome, not a new dependency.** The icon has a `text` element in a system font, so rasterizing it needs a real text shaper — `sips` cannot read SVG and no rasterizer is installed. `scripts/build-icon.sh` inlines the SVG into a wrapper page and screenshots it at 180×180, full-bleed and opaque because iOS applies its own corner mask and would composite transparent corners to black. The script exists so the one binary in the repo is reproducible rather than a blob nobody can diff. | **RESOLVED.** Verified byte-identical on a second run |
+| **A159** | **`ui-tester` cannot reach a phone viewport, and that is why the first pass tested nothing at phone width.** Its agent definition omitted `mcp__claude-in-chrome__resize_window`; its fallback, `window.resizeTo()`, is a no-op on an extension-controlled tab. **Both sessions reported the gap instead of relabelling desktop output as "phone"** — the second refused a second time even after the definition was corrected, because subagent tool sets are fixed at session start. The definition is now fixed for the *next* session, and the lead ran the phone pass directly. **`resize_window` alone is still not enough:** macOS Chrome clamps window width at ~614px, so a true 390px viewport needs a same-origin iframe, which is what actually found A160. | **PARTLY RESOLVED.** Tool added to `.claude/agents/ui-tester.md` and the iframe technique documented there. A fresh session must confirm the tool actually arrives |
+| **A160** | **The phone topbar overflows its viewport, and this is the one KNOWN-UNFIXED defect on the branch.** `.r3-topbar` is a single non-wrapping flex row whose content measures a fixed **417px at every width** — so at 390px "Log out" is clipped 27px off-screen, the user's name collapses to 0px, and the page scrolls horizontally; at 320px and at 200% zoom more of it goes. **Everything below the topbar reflows perfectly** — zero non-topbar overflow on Board, My Shifts and Inbox at 390/320/195px — so this is one contained shell defect, not a layout that fails generally. Trigger is the "Alerts OFF — tap to fix" chip (194px): hide it and `scrollWidth` is exactly 390. That chip shows whenever push is unconfigured or permission is denied, both supported states. `.r3-topbar__action` sets `min-width: var(--target-min)`, so Log out was **already shrunk to its 44px floor** and still did not fit — nothing else in the row can yield. | **OPEN — deliberately not fixed.** Two fixes were measured live and both clear the overflow at 390/320 and are no-ops at desktop: `flex-wrap: wrap` costs 44px of phone vertical space (bar 56→100px) and truncates nothing; making the chip shrink-and-ellipsize keeps the bar at 56px but visually truncates both the chip text and the "Log out" label. Each degrades something a human should weigh for a paper-first reader, so the lead surfaced it rather than picking |
+
+### Decisions the human took
+
+| # | Decision | Effect |
+| :---- | :---- | :---- |
+| **D5** | **A driver's own IN_PROGRESS run opens S1.3 from the board.** `ui-ux-spec.md` contradicted itself: its states list said "In progress — no action for a driver", its "who may open a row" rule said "a driver opens only their own (Mine) rows", and `board.ts` cited the first. The states-list phrase covers Claimed-by-other *and* In progress and was written about **someone else's** run; nobody was contemplating your own. Left as built, a driver who navigated away mid-run found a dead row on the board — the screen they look at first. | `actionFor` now returns `DETAIL` for a driver's own `IN_PROGRESS`; someone else's stays inert. Spec line 162 amended. Two tests, both verified in the browser at desktop width |
+| **D6** | **The fixes land on `phase-1`, updating PR #1 in place**, rather than on a follow-up branch. The human's call; the alternative was to freeze PR #1 as the artifact a reviewer had started reading. **Still not merged by an agent** — §5.4 is unchanged | PR #1 grows by these commits |
+
+### Found while fixing, unrelated to the UI
+
+| # | Assumption | Status |
+| :---- | :---- | :---- |
+| **A161** | **A test in `recurrence-materialization.test.ts` failed for one hour a day and had nothing to do with any change here.** "born OPEN for an instance overlapping a run the owner already holds" built the owned series at 09:00–11:00 and the series under test at 10:00–12:00. Materialization does not mint an occurrence whose window has already begun, so between 09:00 and 10:00 pantry-local the owned series lost today's instance, the second series' today instance overlapped nothing, was correctly born CLAIMED, and the assertion `bornClaimed === 0` failed. **The code was right; the test was wrong.** The gate happened to run at 09:06. | **RESOLVED.** The owned series now starts *later* (10:00–12:00) than the series under test (09:00–11:00), so "the second was minted today" implies "so was the first" at every time of day. Partial overlap is preserved |
+
+## What Phase 1 shipped without — two of three now closed
+
+These do not fail §5.4 and they did not block the PR. They were the honest edges of a green gate.
+**Items 1 and 3 were closed on 2026-07-30** by the first UI pass ever run against a rendered screen;
+item 2 still needs a person's judgement about words.
+
+1. **~~No rendered DOM has ever been confirmed~~ — CLOSED 2026-07-30. All nine screens render.**
+   Two `ui-tester` passes plus a lead-driven phone pass. The first pass found the unseeded category
+   table (A156) and the S1.2 board contradiction (D5); the phone pass found the topbar overflow
+   (A160). Console is clean on load on every screen — no errors, no React warnings. Keyboard focus,
+   destructive-confirm modals, empty states and ~20 spec-quoted strings were verified verbatim.
+   **Both `ui-tester` sessions refused to fabricate a viewport they could not reach**, which is how
+   the phone gap survived to be fixed rather than being papered over — see A159.
 2. **Nine screens of user-visible copy have never been read by a human** (A6/A45/A70/A92/A107/A129,
    A137, A155). S1.6 alone is ~90 sentences. The load-bearing ones are named in the individual ledger
    entries — S1.7's release-no-replacement sentence and its three cannot-be-moved explanations are the
    ones where a wrong word teaches a driver something false about what the system just did.
-3. **A66 — the `apple-touch-icon` PNG.** `client/public/` holds only SVGs, so the installed iOS icon is
-   the browser's screenshot fallback.
+   **Narrowed, not closed:** the *mechanical* half is already enforced — all nine screens plus `pwa/`
+   hold a §7 forbidden-vocabulary test, so no banned word can reach a user. What is left is the part a
+   machine cannot do: whether the unspecified sentences are the right words for a paper-first reader.
+3. **~~A66 — the `apple-touch-icon` PNG~~ — CLOSED 2026-07-30 (A158).** `client/public/` now holds a
+   180×180 PNG, wired in `client/index.html`, regenerable via `scripts/build-icon.sh`.
+
+### Still open after the UI pass — one defect, one decision
+
+- **A160 — the phone topbar overflows and it is NOT fixed.** A design call the lead declined to make
+  alone; both candidate fixes are measured in the entry below. This is the one *known* defect on the
+  branch.
+- The bottom nav is `position: static`, so it scrolls with content rather than staying pinned. No doc
+  requires it to be fixed, so it is an **open question, not a defect** — but on a 15-run week the
+  driver scrolls to the bottom to change screens.
 
 ### The record of what a green 4b did not mean (kept — it was right)
 

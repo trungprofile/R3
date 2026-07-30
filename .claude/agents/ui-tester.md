@@ -1,7 +1,7 @@
 ---
 name: ui-tester
 description: "Test R3 features and flows. Always opens a new browser window, runs tests, then closes it. Reports defects against documented specs, not generic heuristics."
-tools: Read, Grep, Glob, Bash, mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__javascript_tool, mcp__claude-in-chrome__read_console_messages
+tools: Read, Grep, Glob, Bash, mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__javascript_tool, mcp__claude-in-chrome__read_console_messages, mcp__claude-in-chrome__resize_window
 model: sonnet
 ---
 
@@ -49,6 +49,37 @@ Log in as the role the flow actually needs:
 - **Admin** — everything Staff, plus accounts, PII visibility, donor/truck/category master data, metrics
 
 ## Device → surface map (test at the right viewport)
+
+**Use `resize_window` to actually reach these viewports.** `window.resizeTo()` from page
+context is a no-op on an extension-controlled tab, so a pass that relies on it silently
+tests everything at desktop width — which is how the first full render pass came back with
+all five phone-canonical screens untested. Phone ≈ 390×844, tablet landscape ≈ 1024×768,
+desktop ≈ 1440×900. Resize *before* loading the screen: the nav is a bottom bar on a phone
+and a left sidebar on desktop, and a layout that only reflows on resize is itself a defect.
+
+**`resize_window` is not sufficient for phone width on macOS.** Chrome clamps window width
+at ~614px, so asking for 390 gives you 614 and everything looks fine. Verify what you
+actually got — read `window.innerWidth` — and if it is clamped, get a true viewport with a
+same-origin iframe:
+
+```js
+document.body.style.margin = '0';
+document.body.innerHTML =
+  '<iframe id="ph" style="width:390px;height:844px;border:0" src="/board"></iframe>';
+// same origin, so the whole DOM is readable:
+const d = document.getElementById('ph').contentDocument;
+d.documentElement.scrollWidth > d.documentElement.clientWidth  // horizontal scroll?
+```
+
+Media queries inside the iframe respond to the iframe's box, so this is a faithful test of
+responsive layout and overflow. It does not reproduce touch, the visual viewport, or
+browser chrome — say so. For 200% zoom, halve the iframe: the layout viewport of a 390px
+phone at 200% is ~195px. 320px is the WCAG reflow bar and worth checking on its own.
+
+When you find an overflow, name the element rather than the page: walk every node and
+report the ones whose `getBoundingClientRect().right` exceeds the viewport width. "The
+topbar's alerts chip is 194px and cannot shrink" is actionable; "the board scrolls
+sideways" is not.
 
 | Device | Canonical for |
 |---|---|
