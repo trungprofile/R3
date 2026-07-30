@@ -23,18 +23,24 @@ import type { ScreenRegistry } from './app/AppShell.tsx';
 import { linkManifest, watchForInstallPrompt } from './pwa/index.ts';
 import { LoginScreen } from './screens/s1-rescue/s1-1-login/index.ts';
 import { BoardScreen } from './screens/s1-rescue/s1-2-board/index.ts';
+import { ShiftDetailScreen } from './screens/s1-rescue/s1-3-shift-detail/index.ts';
 import { MyShiftsScreen } from './screens/s1-rescue/s1-4-my-shifts/index.ts';
 import { PickupScreen } from './screens/s1-rescue/s1-5-pickup/index.ts';
+import { ScheduleScreen } from './screens/s1-rescue/s1-6-schedule/index.ts';
+import { RescheduleScreen } from './screens/s1-rescue/s1-7-reschedule/index.ts';
+import { AdminScreen } from './screens/s1-rescue/s1-8-admin/index.ts';
 import { InboxScreen, useUnreadCount } from './screens/s1-rescue/s1-9-inbox/index.ts';
 import './tokens/tokens.css';
 
 const SCREENS: ScreenRegistry = {
   login: LoginScreen, // S1.1
   board: BoardScreen, // S1.2
-  // shift: S1.3 — wave 4b
+  shift: ShiftDetailScreen, // S1.3 — the only route into S1.5 (4b, s1-3's Assumed 1)
   'my-shifts': MyShiftsScreen, // S1.4
   pickup: PickupScreen, // S1.5
-  // schedule / reschedule / admin: S1.6–S1.8 — wave 4b
+  schedule: ScheduleScreen, // S1.6
+  reschedule: RescheduleScreen, // S1.7
+  admin: AdminScreen, // S1.8
   inbox: InboxScreen, // S1.9
 };
 
