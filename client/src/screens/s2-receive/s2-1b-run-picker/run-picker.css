@@ -1,0 +1,134 @@
+/* S2.1b — the run picker.
+ *
+ * Tokens only (`ui-ux-spec.md §2`): no literal hex, and no literal px where a
+ * spacing or size token exists. The numbers that do appear are §1's — a 44px
+ * minimum target with an 8px gap between adjacent ones, 18px body, relative units
+ * throughout so 200% zoom reflows instead of clipping.
+ *
+ * Canonical device is the shared tablet in LANDSCAPE (1024×768). The layout is a
+ * single readable column capped in `rem`, so at 200% zoom it becomes a narrow
+ * column on the same tablet rather than a horizontally-scrolling one. Weight entry
+ * is `n/a` on a phone (responsive matrix), so there is no phone breakpoint here;
+ * what a narrow window gets is the same column, stacked.
+ *
+ * Class prefix `s21b-` because this file ships beside the screen rather than in
+ * `components/`, and two screens must never fight over a name. Nothing here
+ * restyles a `r3-` component class: the row is `components/ListRow.tsx` as built.
+ */
+
+.s21b {
+  max-width: 60rem;
+}
+
+.s21b__title {
+  font-size: var(--font-h1);
+  margin: 0 0 var(--space-5) 0;
+}
+
+/* --- The stop strip inside a row ------------------------------------------ */
+
+/* Inline-level by necessity: `ListRow` puts `meta` inside a `<span>`. Wrapping is
+ * what keeps a five-stop run readable at 200% zoom instead of overflowing. */
+.s21b-stops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.s21b-stop {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--font-label);
+}
+
+.s21b-stop__dot {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--radius-pill);
+  /* Aligns the dot with the text baseline beside it rather than the box top. */
+  transform: translateY(0.05rem);
+}
+
+.s21b-stop__name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.s21b-stop__state {
+  color: var(--text-muted);
+}
+
+/* Still to do. Orange is fill-or-accent and never text (§2), so it is the dot and
+ * not the word. */
+.s21b-stop--pending .s21b-stop__dot {
+  background: var(--brand-orange);
+}
+
+.s21b-stop--weighed .s21b-stop__dot {
+  background: var(--success);
+}
+
+.s21b-stop--weighed .s21b-stop__state {
+  color: var(--success);
+}
+
+/* Resolved but with nothing weighed — a hollow dot, so "skipped" and "moved" do not
+ * read as an achievement at a glance. */
+.s21b-stop--skipped .s21b-stop__dot,
+.s21b-stop--moved .s21b-stop__dot {
+  background: transparent;
+  border: 2px solid var(--text-muted);
+}
+
+.s21b-stop--moved .s21b-stop__dot {
+  border-style: dashed;
+}
+
+/* --- The right-hand slot: the count, and what the tap does ---------------- */
+
+.s21b-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  text-align: right;
+}
+
+.s21b-side__count {
+  font-size: var(--font-h3);
+  font-weight: 700;
+  color: var(--text);
+  /* Tabular so "2 of 3" and "10 of 12" line up down the list (§2). */
+  font-variant-numeric: tabular-nums;
+}
+
+.s21b-side__go {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* A run waiting only on its closing tap. `--success` carries the "nothing left to
+ * weigh" meaning; the row is still the target, so this is a label, not a button. */
+.s21b-side__go--done {
+  color: var(--success);
+  font-weight: 700;
+}
+
+/* --- Unscheduled donation ------------------------------------------------- */
+
+.s21b__aside {
+  /* >= the 8px minimum gap between adjacent targets (§1.2), and then some: the
+   * last run row and this button do very different things. */
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.s21b__aside-hint {
+  margin: var(--space-2) 0 0 0;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
