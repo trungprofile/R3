@@ -222,8 +222,58 @@ describe('the AGFP→NTFB mapping', () => {
     expect(report.unmapped).toHaveLength(1);
     expect(report.unmapped[0]!.total).toBe('70.00');
     expect(report.readyToExport).toBe(false);
+    expect(report.lines).toHaveLength(0);
 
     await expect(exportRows(WEEK)).rejects.toThrow(/not matched/i);
+  });
+
+  it('counts unmapped-but-reportable weight as REPORTED, never as UNREPORTED', async () => {
+    // Found by exercising the API rather than by a gate. A scheduled weight is
+    // reportable by construction (I15); having no NTFB category yet is a gap in the
+    // mapping table, not a decision that the food goes unreported. Deriving
+    // `unreportedTotal` from Σ(lines) filed it under "tracked for pantry metrics only,
+    // never reported" — a real category with a real meaning, and not this one.
+    const { shift, stops, actor, produce } = await scene();
+    await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '70' });
+
+    const report = await weeklyReport(WEEK);
+
+    expect(report.intakeTotal).toBe('70.00');
+    expect(report.reportedTotal).toBe('70.00');
+    expect(report.unreportedTotal).toBe('0.00');
+    // And the gap between Σ(lines) and reportedTotal is what the block announces.
+    expect(report.lines).toHaveLength(0);
+    expect(report.readyToExport).toBe(false);
+  });
+
+  it('separates the two reasons a number is missing from the export', async () => {
+    const { shift, stops, actor, produce, bakery } = await scene();
+    const ntfb = await createNtfbCategory({ name: 'Bakery' });
+    await setMapping(bakery.id, ntfb.id);
+
+    // Mapped and reportable → in the lines.
+    await addWeight(actor, shift.id, stops[0]!.id, { categoryId: bakery.id, weight: '10' });
+    // Reportable but unmapped → blocks, and still counts as reported.
+    await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '30' });
+    // Genuinely unreported → never counts as reported, and does not block.
+    const walkIn = await createDonation(actor, {
+      categoryId: bakery.id,
+      weight: '5',
+      reportable: false,
+    });
+    await db
+      .updateTable('unscheduled_donation')
+      .set({ received_date: '2026-08-04' })
+      .where('id', '=', walkIn.id)
+      .execute();
+
+    const report = await weeklyReport(WEEK);
+
+    expect(report.intakeTotal).toBe('45.00');
+    expect(report.reportedTotal).toBe('40.00'); // 10 mapped + 30 unmapped
+    expect(report.unreportedTotal).toBe('5.00'); // only the toggled-off walk-in
+    expect(report.unmapped.map((u) => u.total)).toEqual(['30.00']);
+    expect(report.readyToExport).toBe(false);
   });
 
   it('exports once everything carrying weight is mapped', async () => {

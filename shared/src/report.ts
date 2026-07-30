@@ -114,13 +114,24 @@ export interface WeeklyReport {
   weekStart: string;
   /** `YYYY-MM-DD`, the Sunday. Inclusive — a report is a closed week. */
   weekEnd: string;
+  /** The mapped breakdown. While `unmapped` is non-empty, Σ`lines` is LESS than
+   *  `reportedTotal` — that gap is exactly what `readyToExport: false` announces. */
   lines: ReportLine[];
   unmapped: UnmappedCategory[];
-  /** Σ of `lines` — what the export will say. */
+  /**
+   * Everything reportable this week, mapped or not — **not** Σ`lines`.
+   *
+   * A scheduled weight is reportable by construction (I15). If it has no NTFB category
+   * yet that is a gap in the mapping table, not a decision that the food goes
+   * unreported, and counting it as unreported would file it under "tracked for pantry
+   * metrics only, never reported" — a real category with a real meaning, and not this
+   * one.
+   */
   reportedTotal: string;
-  /** Σ of everything received in the week, reported or not. */
+  /** Σ of everything received in the week, reportable or not. */
   intakeTotal: string;
-  /** `intakeTotal − reportedTotal`, stated rather than left to be worked out. */
+  /** `intakeTotal − reportedTotal` — donations somebody turned the report toggle OFF
+   *  for. Tracked in the pantry's own totals, never sent to NTFB (PRD §3). */
   unreportedTotal: string;
   /** False while any `unmapped` row carries weight — S3.1's "incomplete week". */
   readyToExport: boolean;

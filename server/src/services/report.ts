@@ -229,7 +229,20 @@ export async function weeklyReport(anchor: string): Promise<WeeklyReport> {
     a.ntfbCategoryName.localeCompare(b.ntfbCategoryName),
   );
 
-  const reportedTotal = addAll(lines.map((l) => l.total));
+  // `reportedTotal` is Σ of everything REPORTABLE, mapped or not — deliberately not
+  // Σ of `lines`.
+  //
+  // Those two differ exactly by the unmapped weight, and conflating them mislabels the
+  // number PRD §3 cares most about. A scheduled weight is reportable by construction
+  // (I15); if it has no NTFB category yet that is a gap in the mapping table, not a
+  // decision that the food is unreported. Deriving `unreportedTotal` from Σ(lines)
+  // would file 516 lb of produce under "tracked for pantry metrics only, never
+  // reported" — which is a real category with a real meaning, and not this one.
+  //
+  // So: unreported means somebody turned the toggle off. Unmapped is a separate
+  // problem with its own block (`readyToExport`), and Σ(lines) < reportedTotal is
+  // precisely the state that block exists to announce.
+  const reportedTotal = addAll(reportable.map((r) => r.total));
   const intakeTotal = addAll(rows.map((r) => r.total));
 
   const openRuns = await db
