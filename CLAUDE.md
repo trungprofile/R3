@@ -1,6 +1,10 @@
 # R3
 
-System of record for Amazing Grace Food Pantry's weekly food-rescue cycle (rescue → receive → report), replacing a paper-and-phone process. PERN stack, self-hosted, single Docker box, ~15 pickups/week, under 10 concurrent users. Build order: Phase 1 (rescue loop + scheduling) → Phase 2 (receive) → Phase 3 (report + metrics).
+System of record for Amazing Grace Food Pantry's weekly food-rescue cycle (rescue → receive → report), replacing a paper-and-phone process. PERN stack, self-hosted, single Docker box, ~15 pickups/week, under 10 concurrent users.
+
+**All three phases are built** — Phase 1 (rescue loop + scheduling), Phase 2 (receive), Phase 3 (report + metrics). Every capability in `product-requirement.md §3` has code; every screen in `ui-ux-spec.md §8` has an entry in `client/src/main.tsx`, except `S2.4`, which is a device-level banner the shell mounts rather than a route; and `./scripts/gate.sh` is green. Not yet deployed, and no production data exists.
+
+Two things are **deliberately unbuilt because they are not ours to invent**, and a task that seems to need them should stop rather than guess: NTFB's own category names (the `ntfb_category` table ships empty — `phase-3-build-plan.md` D12) and the real Meal Connect export format (`D13`). Both are the pantry's to supply.
 
 ## Find the rule before writing the code
 
@@ -25,6 +29,8 @@ Add `docs/features/<name>.md` once a feature accumulates worked examples or edge
 | [`phase-1-build-plan.md`](docs/features/phase-1-build-plan.md) | building anything in Phase 1 — standing decisions (no `COMPLETED` in Phase 1, deferred `§7` tables), build order, single-owner files, and the rules every agent follows |
 | [`phase-2-build-plan.md`](docs/features/phase-2-build-plan.md) | building anything in Phase 2 — D7 lifts D1 (`COMPLETED` is now reachable, in exactly one place), D8 records a live conflict between `ui-ux-spec.md` and the locked doc, D9/D10 scope the edit window and the walk-in split |
 | [`phase-3-build-plan.md`](docs/features/phase-3-build-plan.md) | building anything in Phase 3 — the report/metrics union and the three ways to compute it wrong, D11 (mapping lives on S3.1), D12 (NTFB categories ship empty and unmapped weight blocks export), D13 (the export shape is provisional), D14 (the Reporter's edit deliberately ignores the receiver window) |
+
+Each phase also has a **state doc** beside its build plan — `phase-{1,2,3}-state.md`. The build plan holds decisions that are settled; the state doc holds the ledger of what was **assumed** (`A1`–`A187`), what is still open, and which bugs the build found. Read the state doc before changing behaviour in an area: an `A#` entry is a place the docs did not answer and the build picked a reading, so it is the likeliest thing to be wrong. Lane reports in `reports/` carry the same field per screen.
 
 ## Where code goes
 
@@ -73,4 +79,17 @@ Rules that aren't obvious from the path:
 
 ## Commands
 
-Scaffold exists but has no dependencies installed yet — install/dev/test/migrate commands land here once tooling is added. `scripts/test-db.sh` brings up the disposable test database.
+```
+npm install                       # three workspaces: shared, server, client
+./scripts/dev.sh                  # Express + scheduler :3000, Vite :5173
+./scripts/dev.sh --reset --seed   # drop, migrate, seed a usable world, then run
+npm run gate                      # THE gate: migrations, both typechecks, both suites, no stubs
+npm test                          # server suite only (needs a migrated test DB)
+npx vitest run --root client      # client suite (pure logic, no DB, no DOM)
+./scripts/test-db.sh              # disposable test DB, migrated to head; prints its URL
+```
+
+- **`gate.sh` decides pass/fail, not you.** Its exit code is the verdict, and it is the mechanical half of the commit gate — `doc-qa` is the other half and both must pass.
+- **`dev.sh` exports its own `DATABASE_URL`** (`r3_dev`), overriding `.env`. Anything run *outside* it — `dev-seed.ts`, a migration, a `psql` one-liner — uses `.env` instead and will silently hit a different database. Go through the script, or set the URL explicitly.
+- **`db/types.ts` is regenerated, never edited**: `npm run --workspace @r3/server codegen` against a migrated database. The gate fails if it drifts.
+- `rehearse-migration.sh` and `backup.sh` are the ops paths from `architecture.md §5.3`.
