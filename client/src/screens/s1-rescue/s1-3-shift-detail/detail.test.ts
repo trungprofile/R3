@@ -516,12 +516,29 @@ describe('copy', () => {
   });
 
   it('asks S1.3 recurring release question exactly', () => {
-    expect(COPY.releaseScopeQuestion).toBe('Release just this one, or this and future?');
+    expect(COPY.releaseScopeQuestion).toBe('Cancel just this one, or this and future?');
   });
 
   it('names the consequence of a release rather than asking "are you sure"', () => {
-    expect(COPY.releaseQuestion).toBe('Release this run?');
-    expect(COPY.releaseConsequence).toBe('It goes back to the board for others.');
+    expect(COPY.releaseQuestion).toBe('Cancel this run?');
+    expect(COPY.releaseConsequence).toBe('It goes back to the board for others to pick up.');
+  });
+
+  it('gives the confirm a dismiss that is not itself the word "cancel"', () => {
+    // The action is called "Cancel this run", so the calm default cannot also read
+    // "Cancel" — the driver would be choosing between two identical words.
+    expect(COPY.releaseDismiss.toLowerCase()).not.toContain('cancel');
+    expect(COPY.releaseDismiss.length).toBeGreaterThan(0);
+  });
+
+  it('always says where a cancelled run goes, never just that it is cancelled', () => {
+    // The load-bearing half of the driver-facing "cancel" wording (S1.3): the
+    // transition is CLAIMED → OPEN, never `CANCELLED` (I10, staff-only). A sentence
+    // that says "cancel" without saying "back to the board" promises the pickup is
+    // off, which is the opposite of what the button does.
+    for (const consequence of [COPY.releaseConsequence, COPY.releaseFutureConsequence]) {
+      expect(consequence.toLowerCase(), consequence).toContain('back to the board');
+    }
   });
 
   it('never says the run is finished, closed or completed', () => {
@@ -536,11 +553,17 @@ describe('copy', () => {
   });
 
   it('never offers to end a repeating run — that is staff bulk-terminate, not this', () => {
+    // "Cancel" is now the driver's word for handing ONE run (or a range of them)
+    // back, so the guard is no longer the verb — it is the object. Cancelling *the
+    // series* is staff-only and terminal (I23 keeps the pattern generating here).
     for (const sentence of sentences) {
       const lower = sentence.toLowerCase();
       expect(lower, sentence).not.toContain('terminate');
       expect(lower, sentence).not.toContain('delete');
-      expect(lower, sentence).not.toContain('cancel the');
+      expect(lower, sentence).not.toContain('cancel the series');
+      expect(lower, sentence).not.toContain('cancel the repeat');
+      expect(lower, sentence).not.toContain('end the series');
+      expect(lower, sentence).not.toContain('stop the series');
     }
   });
 

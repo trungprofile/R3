@@ -47,6 +47,7 @@ import {
   isCurrentWeek,
   isEmptyWeek,
   isFutureWeek,
+  mealConnectAccountNote,
   messageFor,
   nextWeek,
   openRunLabel,
@@ -274,10 +275,12 @@ export function ReportScreen(_props: ScreenProps) {
                 >
                   {COPY.export}
                 </Button>
-                {/* D13: the column set is our best guess at "Meal Connect
-                    format", which no doc in this repo defines. The copy says so
-                    rather than presenting it as authoritative. */}
+                {/* D13: the file is a worksheet for a form somebody types into,
+                    not something that gets uploaded — so the hint says what to do
+                    with it, and the line under it names the account it belongs in.
+                    That is the one check the worksheet itself cannot make. */}
                 <p className="s31-note">{COPY.exportHint}</p>
+                <p className="s31-note">{mealConnectAccountNote(report.mealConnect)}</p>
               </div>
             ) : null}
           </>

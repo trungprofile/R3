@@ -14,7 +14,7 @@
 import { Card, List, ListItem } from '../../../components/index.ts';
 import type { WeeklyReport } from '../../../api/shared.ts';
 import { DrillIn } from './DrillIn.tsx';
-import { COPY, ntfbLabel, rolledUpNames, weightWithUnit } from './report.ts';
+import { COPY, reportLineTitle, rolledUpNames, weightWithUnit } from './report.ts';
 
 export interface ReportTableProps {
   report: WeeklyReport;
@@ -38,12 +38,17 @@ export function ReportTable({
     <section className="s31-table" aria-label={COPY.tableLabel}>
       <p className="s31-table__hint">{COPY.tableHint}</p>
 
+      {/* Keyed on category AND storage: one food bank category reached under two
+          storage requirements is two lines here, because it is two line items on
+          the receipt (migration 0013). The id alone stopped being unique when
+          storage joined the roll-up. */}
       {report.lines.map((line) => (
-        <Card key={line.ntfbCategoryId} ariaLabel={`${line.ntfbCategoryName} — ${rolledUpNames(line)}`}>
+        <Card
+          key={`${line.ntfbCategoryId}:${line.storage ?? ''}`}
+          ariaLabel={`${reportLineTitle(line)} — ${rolledUpNames(line)}`}
+        >
           <div className="s31-line">
-            <h3 className="s31-line__name">
-              {ntfbLabel({ name: line.ntfbCategoryName, code: line.ntfbCode })}
-            </h3>
+            <h3 className="s31-line__name">{reportLineTitle(line)}</h3>
             <span className="r3-numeric s31-line__total">{weightWithUnit(line.total)}</span>
           </div>
 

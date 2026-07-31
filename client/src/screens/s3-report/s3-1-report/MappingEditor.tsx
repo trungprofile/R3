@@ -48,12 +48,13 @@ import {
   mappingSavedText,
   mappingTargetLabel,
   messageFor,
-  normalizeCode,
+  normalizeOptional,
   ntfbLabel,
   ntfbNameError,
   ntfbRemovalText,
   pickerOptions,
   sortNtfbCategories,
+  storageGapNote,
   weightWithUnit,
   type MappingRow,
 } from './report.ts';
@@ -94,6 +95,9 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
   const [view, setView] = useState<View>({ kind: 'list' });
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  /** The picker's second field. Storage is half of a Meal Connect line item, so it
+   *  is chosen alongside the category rather than on a screen of its own. */
+  const [storage, setStorage] = useState('');
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -130,11 +134,11 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
     setFailure(null);
     try {
       if (view.kind === 'create') {
-        await createNtfbCategory({ name: name.trim(), code: normalizeCode(code) });
+        await createNtfbCategory({ name: name.trim(), code: normalizeOptional(code) });
       } else if (view.kind === 'edit') {
         await updateNtfbCategory(view.category.id, {
           name: name.trim(),
-          code: normalizeCode(code),
+          code: normalizeOptional(code),
         });
       }
       toast.success(COPY.ntfbSaved);
@@ -188,7 +192,10 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
     setBusy(true);
     setFailure(null);
     try {
-      await setMapping(row.categoryId, { ntfbCategoryId });
+      // Sent on the same request as the category: they are one line item, and
+      // saving them separately would leave a window where the mapping says
+      // "Produce, frozen" because the old storage outlived the old category.
+      await setMapping(row.categoryId, { ntfbCategoryId, storage: normalizeOptional(storage) });
       toast.success(mappingSavedText(row.categoryName, ntfbCategoryId === null ? null : label));
       openList();
       remote.reload();
@@ -234,6 +241,21 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
       <div className="s31-mapping">
         <h2 className="s31-subheading">{`${COPY.pickerLabel}: ${view.row.categoryName}`}</h2>
         <p className="s31-note">{COPY.pickerHint}</p>
+
+        {/* Storage sits ABOVE the category list because choosing a category is what
+            submits: the Reporter fills this in, then taps where it reports, and both
+            halves of the line item go in one request. Free text, not a fixed list —
+            the three values we have seen came off one receipt, and the pantry's own
+            form is the authority on the rest (migration 0013). */}
+        <TextInput
+          label={COPY.storageField}
+          hint={COPY.storageHint}
+          value={storage}
+          onChange={setStorage}
+          disabled={busy}
+          autoComplete="off"
+        />
+
         {errorNote}
         {/* §1.5 rules out a dropdown where a visible column of big targets fits,
             and the food bank's list is short by construction. */}
@@ -361,7 +383,11 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
                       {mappingTargetLabel(row)}
                     </span>
                   }
-                  onClick={() => setView({ kind: 'picker', row })}
+                  onClick={() => {
+                    setStorage(row.storage ?? '');
+                    setFailure(null);
+                    setView({ kind: 'picker', row });
+                  }}
                   ariaLabel={`${row.categoryName} — ${mappingTargetLabel(row)}`}
                 />
               </ListItem>
@@ -419,10 +445,12 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
 }
 
 /** What sits under one of our categories in the matching list: the weight it is
- *  holding the export up with, or the fact that it is archived, or nothing. */
+ *  holding the export up with, or the fact that it is archived, or the storage it
+ *  is still missing, or nothing. Ordered by how much it costs to ignore. */
 function rowSubtitle(row: MappingRow): string | null {
   if (row.blockingWeight !== null) {
     return `${weightWithUnit(row.blockingWeight)} ${COPY.blockingTail}`;
   }
-  return row.archived ? COPY.archivedCategory : null;
+  if (row.archived) return COPY.archivedCategory;
+  return storageGapNote(row);
 }

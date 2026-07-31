@@ -1,17 +1,19 @@
-// Release — the owner's one action here (PRD cap 8, S1.3).
+// Release — the owner's one action here (PRD cap 8, S1.3). Called "cancel" in
+// every sentence the driver reads; `release` stays the name in code and on the
+// wire, where it names the actual edge.
 //
 // Two shapes, because S1.3 gives two:
 //
-//   a one-off run   — a destructive confirm naming the consequence, which is §3's
-//                     own worked example: "Release this run? It goes back to the
-//                     board for others."
-//   a repeating run — "Release just this one, or this and future?", with a
+//   a one-off run   — a destructive confirm naming the consequence: "Cancel this
+//                     run? It goes back to the board for others to pick up."
+//   a repeating run — "Cancel just this one, or this and future?", with a
 //                     date-range option for the bulk case.
 //
 // What this is NOT, and the distinction S1.3 draws itself: staff's bulk-terminate.
 // That ends part of a series permanently (`CANCELLED`, terminal) and is not a
 // driver capability. Everything here returns runs to the board as Open, and the
-// series keeps generating past whatever was released (I23).
+// series keeps generating past whatever was handed back (I23). The shared verb is
+// exactly why each sentence states where the run goes.
 //
 // The range is chosen from the days that actually exist rather than typed into a
 // date field: §1.5 rules out fragile pickers and §1.4 asks for recognition. If that
@@ -74,6 +76,7 @@ export function ReleaseDialog({ shift, busy, onCancel, onConfirm }: ReleaseDialo
         question={COPY.releaseQuestion}
         consequence={COPY.releaseConsequence}
         confirmLabel={COPY.releaseConfirmOne}
+        cancelLabel={COPY.releaseDismiss}
         busy={busy}
         onCancel={onCancel}
         onConfirm={() => onConfirm({ scope: 'ONE' })}
@@ -97,6 +100,7 @@ export function ReleaseDialog({ shift, busy, onCancel, onConfirm }: ReleaseDialo
     <Modal
       question={COPY.releaseScopeQuestion}
       onCancel={onCancel}
+      cancelLabel={COPY.releaseDismiss}
       actions={
         <Button variant="danger" loading={busy} onClick={() => onConfirm(request)}>
           {releaseConfirmLabel(choice)}

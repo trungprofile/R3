@@ -4,7 +4,9 @@ System of record for Amazing Grace Food Pantry's weekly food-rescue cycle (rescu
 
 **All three phases are built** — Phase 1 (rescue loop + scheduling), Phase 2 (receive), Phase 3 (report + metrics). Every capability in `product-requirement.md §3` has code; every screen in `ui-ux-spec.md §8` has an entry in `client/src/main.tsx`, except `S2.4`, which is a device-level banner the shell mounts rather than a route; and `./scripts/gate.sh` is green. Not yet deployed, and no production data exists.
 
-Two things are **deliberately unbuilt because they are not ours to invent**, and a task that seems to need them should stop rather than guess: NTFB's own category names (the `ntfb_category` table ships empty — `phase-3-build-plan.md` D12) and the real Meal Connect export format (`D13`). Both are the pantry's to supply.
+One thing is **deliberately unbuilt because it is not ours to invent**, and a task that seems to need it should stop rather than guess: NTFB's own category names, and which of ours reports under each (the `ntfb_category` table ships empty — `phase-3-build-plan.md` D12). A real receipt named ten of them and `phase-3-state.md` records the list, but it is one receipt's worth, our `Frz Non Meat` matches none of it, and seeding ten of eleven is the same failure one row smaller. The pantry enters them on S3.1.
+
+The Meal Connect format itself is **no longer a guess**: a submitted receipt and its three entry screens settled it (`D13`, `D15`, migration 0013). The far end is a web form with no import, so the export is a hand-entry worksheet ordered by receipt, and a line item is `(category, storage)` rather than a category alone.
 
 ## Find the rule before writing the code
 

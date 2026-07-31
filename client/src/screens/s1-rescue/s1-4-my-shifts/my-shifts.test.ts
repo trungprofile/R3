@@ -396,7 +396,7 @@ describe('microcopy (§7)', () => {
 
   it("keeps S1.4's explanation verbatim", () => {
     expect(COPY.explain).toBe(
-      "Telling us you're away helps the coordinator fill runs. It won't release runs you already own — you'll need to release those yourself first.",
+      "Telling us you're away helps the coordinator fill runs. It won't cancel runs you already own — you'll need to cancel those yourself first.",
     );
   });
 });

@@ -146,8 +146,9 @@ export const reportRoutes = [
    * file that looks complete is worse than no file, because the shortfall is invisible
    * at the far end (`services/report.ts`).
    *
-   * CSV, and the column set is provisional: "Meal Connect format" is named by PRD cap
-   * 15 and Success Metric 3 and defined by neither (phase-3-build-plan.md D13).
+   * CSV, and now shaped by a real Meal Connect submission rather than by a guess: the
+   * far end has no import, so this is the worksheet a Reporter reads while typing
+   * receipts into a web form (D13, `ExportRow`).
    */
   defineRoute({
     method: 'get',
@@ -160,11 +161,14 @@ export const reportRoutes = [
         ...rows.map((row) =>
           [
             row.day,
-            row.ntfbCategory,
-            row.ntfbCode,
-            row.agfpCategory,
             row.donor,
+            row.donorCode,
+            row.ntfbCategory,
+            row.storage,
+            row.agfpCategory,
             row.weightLb,
+            row.receiptItems,
+            row.receiptTotal,
           ]
             .map(csvCell)
             .join(','),
@@ -250,7 +254,13 @@ export const reportRoutes = [
     },
   }),
 
-  /** Point one AGFP category at an NTFB one, or clear it with an explicit null. */
+  /**
+   * Point one AGFP category at an NTFB one, or clear it with an explicit null.
+   *
+   * `storage` rides along because it is the other half of a Meal Connect line item and
+   * is chosen in the same breath on S3.1. Omitting it leaves the stored value alone;
+   * clearing the target clears it regardless (`services/report.ts`).
+   */
   defineRoute({
     method: 'put',
     path: '/report/mappings/:categoryId',
@@ -264,6 +274,7 @@ export const reportRoutes = [
       const payload: CategoryMapping[] = await setMapping(
         String(req.params['categoryId']),
         target,
+        optionalString(input, 'storage'),
       );
       res.json(payload);
     },

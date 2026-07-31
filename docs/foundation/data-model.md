@@ -44,6 +44,14 @@ CREATE TABLE app_config (
   timezone      text    NOT NULL DEFAULT 'America/Chicago',            -- IANA zone, DST-aware. NEVER a fixed offset.
   horizon_days  integer NOT NULL DEFAULT 365 CHECK (horizon_days > 0), -- recurrence materialization horizon (ops knob)
   receiver_edit_window_days integer NOT NULL DEFAULT 7 CHECK (receiver_edit_window_days > 0), -- Domain Modeling §3.1 "N days"
+
+  -- The pantry's identity at North Texas Food Bank, off its own Meal Connect receipts
+  -- (migration 0013). Defaulted for the same reason `timezone` is: this repo is one
+  -- self-hosted pantry's system of record, and its own identifiers are configuration.
+  ntfb_agency_code    text NOT NULL DEFAULT '026357P',
+  ntfb_food_bank      text NOT NULL DEFAULT 'North Texas Food Bank',
+  ntfb_food_bank_code text NOT NULL DEFAULT '24',
+
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
 ```
@@ -90,6 +98,7 @@ CREATE TABLE donor (
   address        text,
   contact        text,                                -- free-text: phone/email/contact person, no fixed shape
   note           text,                                -- Donor.note: permanent per-store note (PRD cap 11, admin-authored)
+  ntfb_donor_code text,                              -- NTFB's own number for this store, as Meal Connect's picker shows it: `H-E-B Food Stores (810)`. Nullable — it is theirs to issue (migration 0013)
   deactivated_at timestamptz,                        -- ACTIVE ⇄ DEACTIVATED (Domain Modeling §3.3)
   created_at     timestamptz NOT NULL DEFAULT now()
 );
@@ -114,22 +123,40 @@ Hard-delete is attempted as a real `DELETE`; FK-RESTRICT from all children (incl
 
 ### 4.1 `ntfb_category` + the AGFP→NTFB mapping (co-owned with the reporting doc)
 
-Added in Phase 3 (migration 0012) for PRD cap 15's "in-app AGFP→NTFB mapping". Stated
-here the way §11 states the notification tables: the *reporting* doc owns what these
-mean, this doc owns their shape, and that doc is still deferred.
+Added in Phase 3 (migration 0012) for PRD cap 15's "in-app AGFP→NTFB mapping", and
+widened by 0013 once a real Meal Connect receipt showed what a line item actually is.
+Stated here the way §11 states the notification tables: the *reporting* doc owns what
+these mean, this doc owns their shape, and that doc is still deferred.
 
 ```sql
 CREATE TABLE ntfb_category (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name           text NOT NULL,
-  code           text,                                -- Meal Connect may key on a code; null until known
+  code           text,                                -- Meal Connect's entry form keys on the NAME; kept, nullable, and no longer exported (0013)
   deactivated_at timestamptz,                        -- ACTIVE ⇄ ARCHIVED, same shape as the §4 masters
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now()
 );
 
 ALTER TABLE category ADD COLUMN ntfb_category_id uuid REFERENCES ntfb_category(id) ON DELETE RESTRICT;
+ALTER TABLE category ADD COLUMN ntfb_storage     text;   -- the Storage half of a Meal Connect line item (0013)
 ```
+
+**A line item is `(category, storage)`, and `storage` lives on the AGFP side.** Meal
+Connect's entry form asks for `Category · Storage · Description · Pounds` per line, and
+its receipts print `Storage Requirement` as its own column. `ntfb_storage` sits on
+`category`, beside `ntfb_category_id`, because storage varies *within* one NTFB bucket:
+two AGFP categories may report under the same NTFB category frozen and dry
+respectively, and the sample receipt confirms Meal Connect allows exactly that by
+carrying two separate `Prepared Meals` lines. On `ntfb_category` it would force one
+answer per bucket and file frozen food as dry. The report and the export therefore roll
+up on the pair, not on the category alone.
+
+**Text, not an enum**, by the same argument that keeps `ntfb_category` empty: `Frozen`,
+`Dry` and `Refrigeration` are the values on *one* receipt, not a vocabulary anyone here
+has been given, and §1's case for native enums assumes the value set is known. A null
+storage does **not** block the export the way an unmapped category does — the weight
+still reaches the right category, and only one of the form's four fields is blank.
 
 **Ships empty.** The 11 AGFP category names are the pantry's and are seeded at launch
 (migration 0010); NTFB's are the food bank's and appear in no doc here, so the table is
@@ -519,6 +546,10 @@ CREATE INDEX ix_category_active ON category (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_ntfb_active     ON ntfb_category (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_category_ntfb   ON category (ntfb_category_id);
 CREATE UNIQUE INDEX uq_ntfb_name ON ntfb_category (lower(name)) WHERE deactivated_at IS NULL;
+-- §4, 0013: two live stores sharing one NTFB donor number is a data-entry mistake.
+-- Partial on both predicates — NULL is the ordinary unknown and repeats freely, and a
+-- deactivated store must not hold its code against a replacement row.
+CREATE UNIQUE INDEX uq_donor_ntfb_code ON donor (ntfb_donor_code) WHERE ntfb_donor_code IS NOT NULL AND deactivated_at IS NULL;
 CREATE INDEX ix_truck_active    ON truck    (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_route_active    ON route    (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_user_active     ON app_user (id) WHERE deactivated_at IS NULL;

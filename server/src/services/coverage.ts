@@ -444,7 +444,7 @@ export async function releaseShift(
       // An unowned run is a double-tap, not a permission problem: saying "not yours"
       // to someone who released it a second ago would be both harsh and untrue.
       if (shift.ownerId === null) throw releaseRefusal(shift);
-      throw forbidden("That run isn't yours to release.");
+      throw forbidden("That run isn't yours to cancel.");
     }
 
     const timezone = await readTimezone(tx);
@@ -510,12 +510,12 @@ async function releaseRow(tx: Tx, shiftId: string, driverId: string): Promise<bo
 
 function releaseRefusal(shift: ShiftRow): Error {
   if (shift.status === 'IN_PROGRESS') {
-    return conflict("That run has already started — it can't be released.");
+    return conflict("That run has already started — it can't be cancelled.");
   }
   if (shift.status !== 'CLAIMED') {
     return conflict('That run is already back on the board.');
   }
-  return conflict("That run's start time has passed — it can't be released.");
+  return conflict("That run's start time has passed — it can't be cancelled.");
 }
 
 /**
@@ -533,7 +533,7 @@ async function releaseRangeTargets(
   input: ReleaseInput,
 ): Promise<ShiftRow[]> {
   if (shift.patternId === null) {
-    throw badRequest('That run does not repeat, so there is no range to release.');
+    throw badRequest('That run does not repeat, so there is no range to cancel.');
   }
 
   const from = input.fromDate ?? toDateString(shift.occurrenceDate);

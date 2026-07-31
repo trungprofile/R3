@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { atLeastTier, canSee, hasAnyDuty, hasDuty, tierRank } from './access.ts';
 import { idleTimerDelay } from './IdlePrompt.tsx';
 import { navItemsFor } from './nav.tsx';
-import { buildPath, matchPath, resolvePath, ROUTES } from './routes.ts';
+import { buildPath, HOME_PATH, homePathFor, matchPath, resolvePath, ROUTES } from './routes.ts';
 import type { CurrentUser } from '../api/session.ts';
 import type { Duty, Tier } from '../api/shared.ts';
 
@@ -144,6 +144,32 @@ describe('navigation derived from tier and duty (UI §4)', () => {
       expect(ids(person, 'phone')).toContain('inbox');
       expect(ids(person, 'desktop')).toContain('inbox');
     }
+  });
+});
+
+describe('the way out of a dead end (§3)', () => {
+  // The shell's no-access state sends people to `homePathFor`. That escape hatch is
+  // worthless if it points at another page they cannot see — they would land on the
+  // same message again, and on the tablet, which has no nav at all, that is the end
+  // of the road. Nothing renders here, so this covers the destination rather than
+  // the button.
+  const viewports = ['phone', 'tablet', 'desktop'] as const;
+
+  it('always lands somewhere the viewer is allowed to be', () => {
+    for (const person of [driver, receiver, coordinator, admin]) {
+      for (const viewport of viewports) {
+        const match = resolvePath(homePathFor(person, viewport));
+        expect(match, `${person.tier}/${person.duties} on ${viewport}`).not.toBeNull();
+        expect(canSee(person, match!.route.requires)).toBe(true);
+      }
+    }
+  });
+
+  it('sends a nav-less receiver to the one screen they can work', () => {
+    // The tablet has no nav (§4), so the board would strand them.
+    expect(homePathFor(receiver, 'tablet')).toBe('/receive');
+    // ...but the same person at the shared desktop has a nav and wants the board.
+    expect(homePathFor(receiver, 'desktop')).toBe(HOME_PATH);
   });
 });
 

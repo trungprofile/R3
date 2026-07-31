@@ -231,10 +231,12 @@ export function claimSummary(result: Omit<ClaimResult, 'summary'>): string {
   return `Claimed ${claimed} of ${total} ${runs} — ${skipped} skipped (conflicts with your schedule).`;
 }
 
-/** The release toast. S1.3 fixes the flow and the consequence, not the wording. */
+/** The release toast, in the driver's verb. S1.3 fixes the flow and the
+ *  consequence, not the wording — and the consequence is the half that matters
+ *  here, since "cancelled" alone would read as the run being off entirely. */
 export function releaseSummary(released: readonly CoveredShift[]): string {
-  if (released.length === 1) return "Run released — it's back on the board.";
-  return `Released ${released.length} runs — they're back on the board.`;
+  if (released.length === 1) return "Run cancelled — it's back on the board.";
+  return `Cancelled ${released.length} runs — they're back on the board.`;
 }
 
 /**
@@ -246,7 +248,7 @@ export function releaseSummary(released: readonly CoveredShift[]): string {
  */
 export function claimRefusedMessage(reasons: readonly EligibilityReason[]): string {
   if (reasons.includes('OWNED_SHIFT_OVERLAP')) {
-    return 'You already have a run at that time — release it first.';
+    return 'You already have a run at that time — cancel it first.';
   }
   if (reasons.includes('AVAILABILITY_BLOCK')) {
     return "You marked yourself away then — clear that first if you can make it.";

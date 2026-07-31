@@ -180,7 +180,7 @@ describe('POST /availability', () => {
     const res = await call('POST', '/api/availability', { as: driver.id, body: DAY });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('AVAILABILITY_CONFLICT');
-    expect(res.body.message).toMatch(/release it first/);
+    expect(res.body.message).toMatch(/cancel it first/);
     expect(res.body.conflicts).toMatchObject([{ shiftId: shift.id, releasable: true }]);
   });
 

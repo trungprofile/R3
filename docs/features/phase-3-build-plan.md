@@ -60,7 +60,77 @@ Dropping it would understate the report by exactly the amount nobody noticed —
 
 **Needs the human:** the NTFB category list, and which AGFP category maps to each.
 
-### D13 — the export is CSV, and its columns are provisional
+*Update 2026-07-30.* A real receipt names ten of them — Meat, Bread, Produce, Prepared
+Meals, Dairy, Assorted Dry Food, Non-Food, Pet Food, Health & Beauty, Trash — and the
+alignment with our eleven is close enough that AGFP's list was plainly derived from
+NTFB's. **The table still ships empty and the mapping is still unentered**, for two
+reasons that are the original argument, not a hedge: those ten are the categories used
+on *one* receipt, not the dropdown's vocabulary, and `Frz Non Meat` matches none of
+them. Seeding ten and leaving the eleventh to be guessed at is the fabricated-value
+failure this decision exists to prevent, one row smaller. The pantry enters them on
+S3.1 from their own form; `phase-3-state.md` carries the observed list so nobody has to
+re-derive it from a PDF.
+
+### D13 — the export is a worksheet for a web form, not a file anyone uploads
+
+*Superseded 2026-07-30 by a real submitted receipt (NTFB agency 026357P, pickup
+2026-03-20) and the three Meal Connect data-entry screens. The original decision — CSV
+at the report's grain, columns provisional — is kept below for the reasoning it records
+about not inventing a format.*
+
+**What Meal Connect turned out to be.** Three web screens a person types into. A receipt
+is `(Pickup Date, Donor)`, where Donor comes from NTFB's own picker and reads
+`H-E-B Food Stores (810)`. Under it are N line items of `Category · Storage ·
+Description · Pounds`. A review list then shows each pending receipt with
+`Number of Items`, `Total Pounds` and status `New`, and a separate **Submit Receipts**
+step files them; the submitted receipt comes back as `Tentatively Successful` under a
+12-digit number, headed with the agency and food bank codes.
+
+**There is no import.** So "Meal Connect format" is not a file format at all, and the
+export's job is to be the sheet a Reporter reads *while typing*. That fixes the shape:
+
+- One row per **line item**, at grain `day × donor × ntfb_category × storage`.
+- Sorted **`day → donor → category`** — receipt order. The original sorted category
+  before donor, which scatters one receipt's lines down the file.
+- `Receipt Items` and `Receipt Total (lb)` repeated on every row of a receipt, because
+  those are the two numbers the review screen shows back before Submit. Repeated rather
+  than emitted as subtotal rows, which would make the file non-rectangular.
+- Columns: `Pickup Date, Donor, Donor Code, Category, Storage, AGFP Category, Pounds,
+  Receipt Items, Receipt Total (lb)`. Named as Meal Connect's own screens name them.
+
+**`NTFB Code` is gone from the file.** The entry form picks a category by name from a
+dropdown; the `MEAT48675888`-style ids on the receipt are Meal Connect's own per-line
+identifiers, issued on submission and not something anyone types. `ntfb_category.code`
+stays as a nullable column and a field on S3.1 — harmless, and still the right place if
+a form somewhere does ask for one — but it is no longer exported.
+
+**What is still not settled** (`phase-3-state.md`): whether the form accepts a decimal
+in Pounds (the export does not round — A189), and whether the two checkboxes
+`Scheduled Pickup Not Attempted` and `No Pounds` mean R3 owes NTFB a receipt for a stop
+that produced nothing (A191). The second is a change to the locked doc's union, not a
+change to this file.
+
+### D15 — a Meal Connect line item is `(category, storage)`, and storage is part of the mapping
+
+The form asks for Storage beside Category on every line, so the mapping as D12 built it
+could not fill it in. `category.ntfb_storage` (migration 0013) is the missing half.
+
+It sits on the **AGFP** side rather than on `ntfb_category` because storage varies
+within one NTFB bucket — `Frz Non Meat` and `Dry` may both report as one NTFB category
+while being frozen and dry — and the sample receipt proves Meal Connect accepts that,
+carrying two separate `Prepared Meals` lines (239 lb and 73 lb). On `ntfb_category` it
+would force one answer per bucket and file frozen food as dry.
+
+Consequences, both of which are the point: the report rolls up on the pair, so one NTFB
+category under two storage values is two lines on screen and two line items on the
+receipt; and `storage` is **free text**, by D12's argument unchanged — `Frozen`, `Dry`
+and `Refrigeration` are what one receipt showed, not a vocabulary anyone here has been
+given. A missing storage is surfaced on the mapping row but does **not** block the
+export: the weight still reaches the right category, and only one of four fields is
+blank. That is a weaker failure than an unmapped category and gets a weaker response.
+
+<details>
+<summary>D13 as originally decided (superseded)</summary>
 
 PRD cap 15 and Success Metric 3 both say "Meal Connect format". Neither says what that
 is; it is NTFB's file format and it is not in this repo.
@@ -72,6 +142,8 @@ Weight (lb)`. Every value is traceable and nothing is invented beyond the header
 **Needs the human:** a real Meal Connect submission or its spec. Until then the file is
 correct data in a guessed shape. `ntfb_category.code` exists and is nullable for the
 same reason — Meal Connect may key on a code, and a guessed code is worse than a null.
+
+</details>
 
 ### D14 — the Reporter's edit is deliberately NOT window-gated
 

@@ -279,7 +279,7 @@ describe('partial success (S1.2, PRD cap 6)', () => {
 
   it('says why each run was skipped, in the server own words where it has them', () => {
     expect(skippedLines([skipped(['OWNED_SHIFT_OVERLAP'])])[0]?.reason).toBe(
-      'You already have a run at that time — release it first.',
+      'You already have a run at that time — cancel it first.',
     );
     expect(skippedLines([skipped(['AVAILABILITY_BLOCK'])])[0]?.reason).toBe(
       "You marked yourself away then — clear that first if you can make it.",

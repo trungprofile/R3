@@ -98,7 +98,7 @@ describe('release-one (§5.3, cap 8)', () => {
     expect(row.owner_id).toBeNull();
     expect(row.updated_by).toBe(driver.id);
     expect(result.released).toHaveLength(1);
-    expect(result.summary).toBe("Run released — it's back on the board.");
+    expect(result.summary).toBe("Run cancelled — it's back on the board.");
   });
 
   // The one migration 0008 warns about: the flag cannot outlive the owner it warns.
@@ -311,7 +311,7 @@ describe('release-range (§5.3, S1.3 "this and future")', () => {
     expect(result.released.map((r) => r.shiftId).sort()).toEqual(
       [first.id, second.id].sort(),
     );
-    expect(result.summary).toBe("Released 2 runs — they're back on the board.");
+    expect(result.summary).toBe("Cancelled 2 runs — they're back on the board.");
     expect((await readShift(beyond.id)).status).toBe('CLAIMED');
     expect((await readShift(first.id)).status).toBe('OPEN');
     expect((await readShift(second.id)).owner_id).toBeNull();

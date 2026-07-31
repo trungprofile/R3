@@ -89,12 +89,14 @@ export interface AvailabilityConflictResponse {
   conflicts: AvailabilityConflict[];
 }
 
-/** S1.4's two inline errors, verbatim. Rendered by the client; sent by the server
- *  as `message` so a non-browser caller gets the same sentence. */
+/** S1.4's two inline errors. Rendered by the client; sent by the server as
+ *  `message` so a non-browser caller gets the same sentence. Driver-facing, so
+ *  they say "cancel" rather than the domain's "release" — the run still goes back
+ *  to the board, which is what the S1.3 confirm spells out. */
 export const AVAILABILITY_CONFLICT_RELEASABLE =
-  "You own a run in this window — release it first";
+  'You own a run in this window — cancel it first';
 export const AVAILABILITY_CONFLICT_IN_PROGRESS =
-  "This run is in progress and can't be released — try again once it's done";
+  "This run is in progress and can't be cancelled — try again once it's done";
 
 // ---------------------------------------------------------------------------
 // Eligibility (`domain-modeling.md §5.2`)

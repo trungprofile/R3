@@ -458,11 +458,14 @@ export const COPY = {
   routeStopsEmpty: 'No stores on this route yet.',
   routeAddEmpty: 'Every store is already on this route.',
   routeGoneStore: 'This store was removed — swap it out.',
-  moveUp: 'Move up',
-  moveDown: 'Move down',
   dragHint:
-    'Drag a store to reorder it, or use Move up and Move down.',
-  removeStop: 'Take off the route',
+    'Drag a store to reorder it, or focus its handle and press the up and down arrow keys.',
+  /** The handle is the whole reorder control now, so it carries the instructions
+   *  a screen-reader user would otherwise have got from two named buttons. */
+  reorderHandle: (name: string, position: number, total: number) =>
+    `Reorder ${name}, ${position} of ${total}. Press the up and down arrow keys to move it.`,
+  removeStop: 'Remove',
+  removeStopFor: (name: string) => `Remove ${name} from the route`,
   routeArchived: 'Archived',
   routeShowArchived: 'Show archived routes',
   routeHideArchived: 'Hide archived routes',
@@ -777,9 +780,9 @@ export function routeFormOf(route: RouteDetail): RouteForm {
 /**
  * Move one store one place up (-1) or down (+1).
  *
- * The keyboard- and touch-operable half of the reorder. An out-of-range move
- * returns the list unchanged rather than wrapping, so holding Move up at the top
- * does nothing rather than sending the first store to the end.
+ * The keyboard half of the reorder — arrow keys on the drag handle. An
+ * out-of-range move returns the list unchanged rather than wrapping, so holding
+ * ArrowUp at the top does nothing rather than sending the first store to the end.
  */
 export function moveStop(stops: readonly StopDraft[], index: number, delta: -1 | 1): StopDraft[] {
   const target = index + delta;

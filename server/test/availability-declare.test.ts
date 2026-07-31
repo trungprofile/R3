@@ -238,7 +238,7 @@ describe('declaring unavailability', () => {
       toDate: '2026-08-04',
     });
 
-    await expect(attempt).rejects.toThrow(/release it first/);
+    await expect(attempt).rejects.toThrow(/cancel it first/);
     const error = await refusal(attempt);
     expect(error.status).toBe(409);
     expect(error.details?.['error']).toBe('AVAILABILITY_CONFLICT');
@@ -273,7 +273,7 @@ describe('declaring unavailability', () => {
       }),
     );
 
-    expect(error.message).toMatch(/in progress and can't be released/);
+    expect(error.message).toMatch(/in progress and can't be cancelled/);
     expect(error.details?.['conflicts']).toMatchObject([
       { status: 'IN_PROGRESS', releasable: false },
     ]);

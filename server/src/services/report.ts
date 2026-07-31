@@ -34,6 +34,7 @@ import { sql } from 'kysely';
 import {
   EXPORT_BLOCKED_MESSAGE,
   type CategoryMapping,
+  type ExportRow,
   type NtfbCategory,
   type ReportEntry,
   type ReportLine,
@@ -51,6 +52,15 @@ import type { Reader } from './eligibility.js';
 export interface ReportActor {
   id: string;
 }
+
+/**
+ * Composite-key separator for the in-memory groupings below.
+ *
+ * A character no donor name, category name or storage label can contain, so
+ * `"Kroger" + "Elm St"` and `"Kroger Elm" + "St"` cannot collide into one bucket the
+ * way any printable delimiter eventually does.
+ */
+const SEP = '\u0000';
 
 /** Exact addition over `numeric(8,2)`: scale to integer cents, never float `+`. */
 export function addAll(values: string[]): string {
@@ -103,6 +113,9 @@ interface IntakeRow {
   ntfbCategoryId: string | null;
   ntfbCategoryName: string | null;
   ntfbCode: string | null;
+  /** The mapping's storage half (migration 0013). Carried from here to the report line
+   *  and the export because it is half of what Meal Connect calls a line item. */
+  storage: string | null;
   total: string;
   reportable: boolean;
 }
@@ -127,6 +140,7 @@ async function intakeByCategory(
     ntfb_category_id: string | null;
     ntfb_category_name: string | null;
     ntfb_code: string | null;
+    storage: string | null;
     total: string;
     reportable: boolean;
   }>`
@@ -157,12 +171,13 @@ async function intakeByCategory(
            c.ntfb_category_id  AS ntfb_category_id,
            n.name              AS ntfb_category_name,
            n.code              AS ntfb_code,
+           c.ntfb_storage      AS storage,
            sum(i.weight)::text AS total,
            i.reportable        AS reportable
     FROM intake i
     JOIN category c ON c.id = i.category_id
     LEFT JOIN ntfb_category n ON n.id = c.ntfb_category_id
-    GROUP BY c.id, c.name, c.ntfb_category_id, n.name, n.code, i.reportable
+    GROUP BY c.id, c.name, c.ntfb_category_id, n.name, n.code, c.ntfb_storage, i.reportable
     ORDER BY c.name
   `.execute(reader);
 
@@ -172,6 +187,7 @@ async function intakeByCategory(
     ntfbCategoryId: r.ntfb_category_id,
     ntfbCategoryName: r.ntfb_category_name,
     ntfbCode: r.ntfb_code,
+    storage: r.storage,
     total: r.total,
     reportable: r.reportable,
   }));
@@ -206,16 +222,23 @@ export async function weeklyReport(anchor: string): Promise<WeeklyReport> {
       continue;
     }
 
-    let line = byNtfb.get(row.ntfbCategoryId);
+    // Keyed on category AND storage, because that pair is what Meal Connect calls a
+    // line item (migration 0013). Two AGFP categories reporting to one NTFB bucket
+    // under different storage are two lines here and two lines on the receipt — which
+    // is what NTFB's own receipts do, carrying two `Prepared Meals` rows. Keying on
+    // the category alone would merge frozen weight into a dry line.
+    const key = [row.ntfbCategoryId, row.storage ?? ''].join(SEP);
+    let line = byNtfb.get(key);
     if (!line) {
       line = {
         ntfbCategoryId: row.ntfbCategoryId,
         ntfbCategoryName: row.ntfbCategoryName,
         ntfbCode: row.ntfbCode,
+        storage: row.storage,
         agfpCategories: [],
         total: '0.00',
       };
-      byNtfb.set(row.ntfbCategoryId, line);
+      byNtfb.set(key, line);
     }
     line.agfpCategories.push({
       categoryId: row.categoryId,
@@ -225,8 +248,10 @@ export async function weeklyReport(anchor: string): Promise<WeeklyReport> {
     line.total = addAll([line.total, row.total]);
   }
 
-  const lines = [...byNtfb.values()].sort((a, b) =>
-    a.ntfbCategoryName.localeCompare(b.ntfbCategoryName),
+  const lines = [...byNtfb.values()].sort(
+    (a, b) =>
+      a.ntfbCategoryName.localeCompare(b.ntfbCategoryName) ||
+      (a.storage ?? '').localeCompare(b.storage ?? ''),
   );
 
   // `reportedTotal` is Σ of everything REPORTABLE, mapped or not — deliberately not
@@ -259,6 +284,13 @@ export async function weeklyReport(anchor: string): Promise<WeeklyReport> {
     .orderBy('shift.occurrence_date')
     .execute();
 
+  // The pantry's identity at the far end — printed above the export so a Reporter can
+  // confirm the account before typing (migration 0013).
+  const config = await db
+    .selectFrom('app_config')
+    .select(['ntfb_agency_code', 'ntfb_food_bank', 'ntfb_food_bank_code'])
+    .executeTakeFirstOrThrow();
+
   return {
     weekStart,
     weekEnd,
@@ -272,6 +304,11 @@ export async function weeklyReport(anchor: string): Promise<WeeklyReport> {
     // whether the week is really over.
     readyToExport: unmapped.length === 0,
     openRuns,
+    mealConnect: {
+      agencyCode: config.ntfb_agency_code,
+      foodBank: config.ntfb_food_bank,
+      foodBankCode: config.ntfb_food_bank_code,
+    },
   };
 }
 
@@ -297,6 +334,7 @@ export async function reportEntries(
     kind: 'WEIGHT' | 'DONATION';
     day: string;
     donor_name: string;
+    donor_code: string | null;
     category_id: string;
     category_name: string;
     weight: string;
@@ -310,6 +348,7 @@ export async function reportEntries(
            'WEIGHT'                                        AS kind,
            to_char(s.occurrence_date, 'YYYY-MM-DD')        AS day,
            d.name                                          AS donor_name,
+           d.ntfb_donor_code                               AS donor_code,
            we.category_id,
            c.name                                          AS category_name,
            we.weight::text                                 AS weight,
@@ -338,6 +377,9 @@ export async function reportEntries(
            -- The three source cases collapse here exactly as §8 says they do in the
            -- report: master donor, free-text label, or one "Unattributed" bucket.
            coalesce(d.name, ud.donor_label, 'Unattributed') AS donor_name,
+           -- NULL for a free-text label by construction: there is no donor row, so
+           -- there is no store for Meal Connect to attribute the food to.
+           d.ntfb_donor_code                               AS donor_code,
            ud.category_id,
            c.name                                          AS category_name,
            ud.weight::text                                 AS weight,
@@ -367,6 +409,7 @@ export async function reportEntries(
     kind: r.kind,
     day: r.day,
     donorName: r.donor_name,
+    donorCode: r.donor_code,
     categoryId: r.category_id,
     categoryName: r.category_name,
     weight: r.weight,
@@ -572,6 +615,7 @@ export async function listMappings(): Promise<CategoryMapping[]> {
       'category.deactivated_at as categoryDeactivated',
       'category.ntfb_category_id as ntfbCategoryId',
       'ntfb_category.name as ntfbCategoryName',
+      'category.ntfb_storage as storage',
     ])
     .orderBy('category.name')
     .execute();
@@ -582,6 +626,7 @@ export async function listMappings(): Promise<CategoryMapping[]> {
     categoryActive: r.categoryDeactivated === null,
     ntfbCategoryId: r.ntfbCategoryId,
     ntfbCategoryName: r.ntfbCategoryName,
+    storage: r.storage,
   }));
 }
 
@@ -597,6 +642,7 @@ export async function listMappings(): Promise<CategoryMapping[]> {
 export async function setMapping(
   categoryId: string,
   ntfbCategoryId: string | null,
+  storage?: string | null,
 ): Promise<CategoryMapping[]> {
   await writeTransaction(async (tx) => {
     const category = await tx
@@ -616,9 +662,19 @@ export async function setMapping(
       if (!target) throw badRequest('Pick a category that is still in use.');
     }
 
+    // Clearing the target clears the storage with it: storage is the second half of a
+    // Meal Connect line item, and a line item with no category is not one. Leaving a
+    // stale `Frozen` behind would silently reattach it to whatever the category is
+    // pointed at next.
+    const nextStorage =
+      ntfbCategoryId === null ? null : storage === undefined ? undefined : storage?.trim() || null;
+
     await tx
       .updateTable('category')
-      .set({ ntfb_category_id: ntfbCategoryId })
+      .set({
+        ntfb_category_id: ntfbCategoryId,
+        ...(nextStorage !== undefined ? { ntfb_storage: nextStorage } : {}),
+      })
       .where('id', '=', categoryId)
       .execute();
   });
@@ -631,69 +687,110 @@ export async function setMapping(
 // ---------------------------------------------------------------------------
 
 /**
- * The export rows for a week, at the report's own grain.
+ * The week as a Meal Connect worksheet.
  *
  * Refuses while any category carrying weight is unmapped — a short file that looks
  * complete is worse than no file, because the shortfall is invisible at the far end.
+ *
+ * The shape is driven by what Meal Connect actually turned out to be (`ExportRow`,
+ * D13): a web form a person types receipts into, one receipt per `(pickup date,
+ * donor)`, each holding line items of `Category · Storage · Pounds`. So the grain is
+ * `day × donor × ntfb_category × storage`, and the ORDER is receipt order — day, then
+ * store, then category. Sorting by category before donor, as this did while the format
+ * was a guess, scatters one receipt's lines down the length of the file.
  */
 export async function exportRows(anchor: string): Promise<{
   weekStart: string;
   weekEnd: string;
-  rows: {
-    day: string;
-    ntfbCategory: string;
-    ntfbCode: string;
-    agfpCategory: string;
-    donor: string;
-    weightLb: string;
-  }[];
+  rows: ExportRow[];
 }> {
   const report = await weeklyReport(anchor);
   if (!report.readyToExport) throw conflict(EXPORT_BLOCKED_MESSAGE);
 
   const entries = await reportEntries(anchor);
   const mappings = await listMappings();
-  const ntfb = await listNtfbCategories();
   const byCategory = new Map(mappings.map((m) => [m.categoryId, m]));
-  const byNtfbId = new Map(ntfb.map((n) => [n.id, n]));
 
-  // Grouped to the report's grain (§8: report_day × category × donor-or-label) rather
-  // than emitted one row per entry: the food bank wants the day's total from a store,
-  // not each time someone tapped Add.
-  const grouped = new Map<string, { day: string; categoryId: string; donor: string; weights: string[] }>();
+  interface Bucket {
+    day: string;
+    donor: string;
+    donorCode: string;
+    ntfbCategory: string;
+    storage: string;
+    agfpCategories: Set<string>;
+    weights: string[];
+  }
+
+  // Still grouped rather than one row per entry (A180 — the food bank wants the day's
+  // total from a store, not each time someone tapped Add), but now grouped to the LINE
+  // ITEM: storage joins the key, because one NTFB bucket reached under two storage
+  // requirements is two lines on the receipt.
+  const grouped = new Map<string, Bucket>();
 
   for (const entry of entries) {
     if (!entry.reportable) continue; // report ≠ metrics (§6)
-    const key = `${entry.day} ${entry.categoryId} ${entry.donorName}`;
+    const mapping = byCategory.get(entry.categoryId);
+    const ntfbCategory = mapping?.ntfbCategoryName ?? '';
+    const storage = mapping?.storage ?? '';
+    const key = [entry.day, entry.donorName, ntfbCategory, storage].join(SEP);
+
     const bucket = grouped.get(key) ?? {
       day: entry.day,
-      categoryId: entry.categoryId,
       donor: entry.donorName,
+      donorCode: entry.donorCode ?? '',
+      ntfbCategory,
+      storage,
+      agfpCategories: new Set<string>(),
       weights: [],
     };
+    // Several AGFP categories can collapse into one line item; all of them are named,
+    // because this column is how a Reporter traces the line back to the pantry's own
+    // sheets (Success Metric 4).
+    bucket.agfpCategories.add(entry.categoryName);
     bucket.weights.push(entry.weight);
     grouped.set(key, bucket);
   }
 
-  const rows = [...grouped.values()]
-    .map((bucket) => {
-      const mapping = byCategory.get(bucket.categoryId);
-      const target = mapping?.ntfbCategoryId ? byNtfbId.get(mapping.ntfbCategoryId) : undefined;
-      return {
-        day: bucket.day,
-        ntfbCategory: target?.name ?? '',
-        ntfbCode: target?.code ?? '',
-        agfpCategory: mapping?.categoryName ?? '',
-        donor: bucket.donor,
-        weightLb: addAll(bucket.weights),
-      };
-    })
-    .sort(
-      (a, b) =>
-        a.day.localeCompare(b.day) ||
-        a.ntfbCategory.localeCompare(b.ntfbCategory) ||
-        a.donor.localeCompare(b.donor),
-    );
+  const lines = [...grouped.values()].sort(
+    (a, b) =>
+      a.day.localeCompare(b.day) ||
+      a.donor.localeCompare(b.donor) ||
+      a.ntfbCategory.localeCompare(b.ntfbCategory) ||
+      a.storage.localeCompare(b.storage),
+  );
+
+  // A receipt is `(pickup date, donor)` — Meal Connect's own unit, and what its review
+  // screen counts and totals back before Submit. Computed once per receipt and
+  // repeated on each of its rows, so the file stays rectangular: subtotal rows would
+  // break every spreadsheet that opens it, and this file exists to be read by a person
+  // typing into a form.
+  const receipts = new Map<string, { items: number; total: string }>();
+  for (const line of lines) {
+    const key = [line.day, line.donor].join(SEP);
+    const receipt = receipts.get(key) ?? { items: 0, total: '0.00' };
+    receipt.items += 1;
+    receipt.total = addAll([receipt.total, addAll(line.weights)]);
+    receipts.set(key, receipt);
+  }
+
+  const rows = lines.map((line) => {
+    const receipt = receipts.get([line.day, line.donor].join(SEP))!;
+    return {
+      day: line.day,
+      donor: line.donor,
+      donorCode: line.donorCode,
+      ntfbCategory: line.ntfbCategory,
+      storage: line.storage,
+      agfpCategory: [...line.agfpCategories].sort((a, b) => a.localeCompare(b)).join(', '),
+      // NOT rounded to whole pounds: the sample receipt's integers were integer
+      // inputs, and nothing observed says the form refuses a decimal. Rounding each
+      // row would also put Σ rows a few pounds away from the week's own total
+      // (phase-3-state.md A189).
+      weightLb: addAll(line.weights),
+      receiptItems: String(receipt.items),
+      receiptTotal: receipt.total,
+    };
+  });
 
   return { weekStart: report.weekStart, weekEnd: report.weekEnd, rows };
 }

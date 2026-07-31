@@ -15,6 +15,7 @@
 
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
+import { EXPORT_COLUMNS } from '../../shared/src/report.js';
 import { db, pool } from '../src/db/index.js';
 import {
   createNtfbCategory,
@@ -279,7 +280,7 @@ describe('the AGFP→NTFB mapping', () => {
   it('exports once everything carrying weight is mapped', async () => {
     const { shift, stops, actor, produce } = await scene();
     const ntfb = await createNtfbCategory({ name: 'Produce', code: 'PRO' });
-    await setMapping(produce.id, ntfb.id);
+    await setMapping(produce.id, ntfb.id, 'Refrigeration');
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '70' });
 
     const { rows } = await exportRows(WEEK);
@@ -287,10 +288,136 @@ describe('the AGFP→NTFB mapping', () => {
     expect(rows[0]).toMatchObject({
       day: '2026-08-04',
       ntfbCategory: 'Produce',
-      ntfbCode: 'PRO',
+      storage: 'Refrigeration',
       agfpCategory: 'Produce',
       weightLb: '70.00',
+      // One line item on one receipt — what Meal Connect's review screen shows back.
+      receiptItems: '1',
+      receiptTotal: '70.00',
     });
+
+    // The header and the rows are written in two different files, so a column added
+    // to one and not the other shifts every value right of it — silently, into a
+    // spreadsheet nobody re-reads.
+    expect(Object.keys(rows[0]!)).toHaveLength(EXPORT_COLUMNS.length);
+  });
+
+  it('splits one NTFB category into two lines when the storage differs', async () => {
+    // The receipt this was built from carries two `Prepared Meals` lines, so Meal
+    // Connect treats (category, storage) as the line item and not the category
+    // alone. Rolling these into one line would file frozen food as dry.
+    const { shift, stops, actor, produce, bakery } = await scene();
+    const assorted = await createNtfbCategory({ name: 'Assorted Dry Food' });
+    await setMapping(produce.id, assorted.id, 'Frozen');
+    await setMapping(bakery.id, assorted.id, 'Dry');
+
+    await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '10' });
+    await addWeight(actor, shift.id, stops[0]!.id, { categoryId: bakery.id, weight: '5' });
+
+    const report = await weeklyReport(WEEK);
+    expect(report.lines).toHaveLength(2);
+    expect(report.lines.map((line) => [line.storage, line.total])).toEqual([
+      ['Dry', '5.00'],
+      ['Frozen', '10.00'],
+    ]);
+
+    // And two line items on one receipt, whose total is still the pair's sum.
+    const { rows } = await exportRows(WEEK);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.storage)).toEqual(['Dry', 'Frozen']);
+    expect(rows.every((row) => row.receiptItems === '2')).toBe(true);
+    expect(rows.every((row) => row.receiptTotal === '15.00')).toBe(true);
+  });
+
+  it('orders the worksheet by receipt, and totals each one', async () => {
+    // Receipt order is day → store → category, because that is the order a Reporter
+    // types them in. Ordering by category first scatters one receipt's lines down
+    // the file, which is what this did while the format was a guess.
+    const started = await makeStartedShift({ stopCount: 2 });
+    const user = await makeReceiver();
+    const actor = { id: user.id };
+    const produce = await makeCategory('Produce');
+    const bakery = await makeCategory('Bakery');
+
+    const fresh = await createNtfbCategory({ name: 'Produce' });
+    const bread = await createNtfbCategory({ name: 'Bread' });
+    await setMapping(produce.id, fresh.id, 'Refrigeration');
+    await setMapping(bakery.id, bread.id, 'Dry');
+
+    // Two stores, each with both categories, entered in an order that is neither.
+    await addWeight(actor, started.shift.id, started.stops[1]!.id, {
+      categoryId: bakery.id,
+      weight: '4',
+    });
+    await addWeight(actor, started.shift.id, started.stops[0]!.id, {
+      categoryId: produce.id,
+      weight: '10',
+    });
+    await addWeight(actor, started.shift.id, started.stops[1]!.id, {
+      categoryId: produce.id,
+      weight: '20',
+    });
+    await addWeight(actor, started.shift.id, started.stops[0]!.id, {
+      categoryId: bakery.id,
+      weight: '3',
+    });
+
+    const { rows } = await exportRows(WEEK);
+    const donorNames = started.donors.map((d) => d.name).sort();
+
+    // Grouped: all of the first store's lines, then all of the second's.
+    expect(rows.map((row) => row.donor)).toEqual([
+      donorNames[0],
+      donorNames[0],
+      donorNames[1],
+      donorNames[1],
+    ]);
+    // Within a receipt, by category.
+    expect(rows.map((row) => row.ntfbCategory)).toEqual([
+      'Bread',
+      'Produce',
+      'Bread',
+      'Produce',
+    ]);
+    // Each receipt's own total, repeated on each of its rows — never the week's.
+    expect(rows.map((row) => row.receiptTotal)).toEqual([
+      ...Array(2).fill(rows[0]!.receiptTotal),
+      ...Array(2).fill(rows[2]!.receiptTotal),
+    ]);
+    expect(new Set(rows.map((row) => row.receiptTotal))).toEqual(new Set(['13.00', '24.00']));
+  });
+
+  it('carries the food bank’s own donor number into the worksheet', async () => {
+    // Meal Connect's donor picker reads `H-E-B Food Stores (810)`, so the code is
+    // what makes a row unambiguous at the far end.
+    const { shift, stops, actor, produce, donors } = await scene();
+    const ntfb = await createNtfbCategory({ name: 'Produce' });
+    await setMapping(produce.id, ntfb.id, 'Refrigeration');
+    await db
+      .updateTable('donor')
+      .set({ ntfb_donor_code: '810' })
+      .where('id', '=', donors[0]!.id)
+      .execute();
+    await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '9' });
+
+    const { rows } = await exportRows(WEEK);
+    expect(rows[0]!.donorCode).toBe('810');
+  });
+
+  it('clears the storage when the category it belonged to is cleared', async () => {
+    // Storage is the other half of a line item. Leaving `Frozen` behind would
+    // silently reattach it to whatever this category is pointed at next.
+    const { produce } = await scene();
+    const ntfb = await createNtfbCategory({ name: 'Produce' });
+    await setMapping(produce.id, ntfb.id, 'Refrigeration');
+    expect((await listMappings()).find((m) => m.categoryId === produce.id)!.storage).toBe(
+      'Refrigeration',
+    );
+
+    await setMapping(produce.id, null);
+    const cleared = (await listMappings()).find((m) => m.categoryId === produce.id)!;
+    expect(cleared.ntfbCategoryId).toBeNull();
+    expect(cleared.storage).toBeNull();
   });
 
   it('does not block on a category that is mapped to nothing but carries no weight', async () => {

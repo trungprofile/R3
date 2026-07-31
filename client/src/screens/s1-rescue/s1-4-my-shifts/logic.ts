@@ -387,9 +387,9 @@ export function isDayInRange(form: AwayForm, iso: string): boolean {
 }
 
 export const COPY = {
-  /** `ui-ux-spec.md S1.4`, verbatim. */
+  /** `ui-ux-spec.md S1.4`, in the driver's verb (S1.3's cancel-this-run). */
   explain:
-    "Telling us you're away helps the coordinator fill runs. It won't release runs you already own — you'll need to release those yourself first.",
+    "Telling us you're away helps the coordinator fill runs. It won't cancel runs you already own — you'll need to cancel those yourself first.",
   noDays: "Pick the days you'll be away.",
   noTimes: 'Pick a start time and an end time.',
   endBeforeStart: 'The end time has to be later in the day than the start time.',

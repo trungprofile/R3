@@ -20,7 +20,7 @@ import { displayName } from '../api/session.ts';
 import { canSee } from './access.ts';
 import { navItemsFor } from './nav.tsx';
 import { useRouter } from './router.tsx';
-import { HOME_PATH, routeById } from './routes.ts';
+import { HOME_PATH, homePathFor, routeById } from './routes.ts';
 import type { ScreenId } from './routes.ts';
 import { useSession } from './SessionProvider.tsx';
 import { useViewport } from './useViewport.ts';
@@ -124,7 +124,26 @@ export function AppShell({ screens, unreadCount, alertsEnabled, onFixAlerts }: A
   } else if (!canSee(user, match.route.requires)) {
     // Communication only: this page is hidden because the server would refuse it
     // anyway (`architecture.md §4.5`). The refusal there is the rule.
-    content = <EmptyState title="You don't have access to this page." />;
+    //
+    // The way out is not decoration. §3 obliges an empty state to say what to do
+    // next, and this one has to carry the affordance itself: the tablet has NO nav
+    // (`nav.tsx` returns [] for it), so without this button a receiver who lands
+    // here — by a stale URL after a re-login, most likely — has nothing left but
+    // the browser's address bar. `homePathFor` rather than the board, for the same
+    // reason it exists: that is the one screen a nav-less receiver can use.
+    const home = homePathFor(user, viewport);
+    content = (
+      <EmptyState
+        title="You don't have access to this page."
+        action={
+          <button type="button" className="r3-linkish" onClick={() => navigate(home)}>
+            {home === HOME_PATH ? 'Go to the board' : 'Go to receiving'}
+          </button>
+        }
+      >
+        Ask a coordinator if you need it.
+      </EmptyState>
+    );
   } else {
     const Screen = screens[match.route.id];
     content = Screen ? <Screen params={match.params} /> : <Placeholder />;

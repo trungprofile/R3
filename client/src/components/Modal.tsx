@@ -1,8 +1,8 @@
 // Modal and destructive confirm — `ui-ux-spec.md §3` and `§6`.
 //
 // Centered, ONE question, TWO buttons. A destructive confirm names the
-// consequence ("Release this run? It goes back to the board for others.") rather
-// than asking "Are you sure?", which tells nobody anything.
+// consequence ("Cancel this run? It goes back to the board for others to pick
+// up.") rather than asking "Are you sure?", which tells nobody anything.
 //
 // §6: "Cancel is the calm default; the destructive button is red." So Cancel
 // takes focus on open, Escape cancels, and a click on the scrim cancels. The
@@ -22,6 +22,11 @@ export interface ModalProps {
   actions: ReactNode;
   /** Element to focus on open. Defaults to Cancel. */
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /** Word on the calm default. Overridable only because a confirm whose action is
+   *  itself called "Cancel" (S1.3's cancel-this-run) would otherwise show two
+   *  buttons reading "Cancel". §6's rule is about which button is calm and which
+   *  is red, not about the word — so the role stays, the label moves. */
+  cancelLabel?: string;
   /** Drop the Cancel button for a dialog with nothing to cancel — the "Still
    *  here?" prompt (§5), where staying signed in IS the calm default. `onCancel`
    *  still runs on Escape and on a click outside. */
@@ -35,6 +40,7 @@ export function Modal({
   actions,
   initialFocusRef,
   showCancel = true,
+  cancelLabel = 'Cancel',
 }: ModalProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -79,7 +85,7 @@ export function Modal({
               className="r3-btn r3-btn--secondary"
               onClick={onCancel}
             >
-              Cancel
+              {cancelLabel}
             </button>
           ) : null}
           {actions}
@@ -97,6 +103,8 @@ export interface ConfirmModalProps {
   confirmLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
+  /** See `ModalProps.cancelLabel`. */
+  cancelLabel?: string;
   /** Red confirm button. Leave false for a confirm that destroys nothing. */
   destructive?: boolean;
   busy?: boolean;
@@ -110,11 +118,13 @@ export function ConfirmModal({
   onCancel,
   destructive = true,
   busy = false,
+  cancelLabel,
 }: ConfirmModalProps) {
   return (
     <Modal
       question={question}
       onCancel={onCancel}
+      {...(cancelLabel === undefined ? {} : { cancelLabel })}
       actions={
         <Button variant={destructive ? 'danger' : 'primary'} onClick={onConfirm} loading={busy}>
           {confirmLabel}

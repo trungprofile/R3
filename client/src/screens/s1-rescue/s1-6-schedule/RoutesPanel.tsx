@@ -7,11 +7,12 @@
 //     (build-plan §3/D5) and nothing here is a hand-rolled pointer drag — §1.5's
 //     "no fragile controls" rules that out, and it is what got drag rejected for
 //     S1.5 (A117).
-//   * Move up / Move down buttons on every row, which is not a fallback but the
-//     required equivalent: HTML5 drag events do not fire on touch AT ALL, and the
-//     responsive matrix marks Scheduling "usable" on a tablet; a keyboard user has
-//     no drag gesture either, and §1's accessibility floor does not lift because
-//     the canonical device has a mouse.
+//   * Arrow keys on the handle, which is not a fallback but the required
+//     equivalent: a keyboard user has no drag gesture, and §1's accessibility floor
+//     does not lift because the canonical device has a mouse. The handle is a real
+//     button so it is reachable by Tab; it used to be a decorative glyph beside a
+//     pair of Move up / Move down buttons, and those were dropped because the row
+//     read as three commands where drag already covers the common case.
 //
 // Both go through the same pure functions (`moveStopTo`, `moveStop`), so the two
 // cannot drift into disagreeing about what an order is. A `stops` save REPLACES the
@@ -385,9 +386,9 @@ function RouteBuilder({
  *
  * The row is the drag source and the drop target, with a large handle as the visual
  * affordance: making only the handle draggable means a mouse user who grabs the row
- * itself gets nothing, which is worse than a forgiving target. The handle is
- * `aria-hidden` because it announces nothing a screen-reader user can act on — the
- * two buttons are what they use, and they are the same operation.
+ * itself gets nothing, which is worse than a forgiving target. The handle is also
+ * the keyboard reorder control — a focusable button whose label states its position
+ * and the keys that move it, since it is now the only way there without a mouse.
  */
 function StopRow({
   stop,
@@ -426,9 +427,24 @@ function StopRow({
         onDrop();
       }}
     >
-      <span className="s16-stop__handle" aria-hidden="true">
-        ⠿
-      </span>
+      <button
+        type="button"
+        className="s16-stop__handle"
+        // The row is the drag source, but a browser will not start its drag from a
+        // mousedown on a form control — so the handle, of all things, would be the
+        // one spot where dragging did nothing. Marking it draggable too makes it a
+        // source in its own right; `dragstart` bubbles to the row either way.
+        draggable
+        aria-label={COPY.reorderHandle(stop.donorName, index + 1, total)}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+          // Otherwise the page scrolls under the store that just moved.
+          event.preventDefault();
+          onMove(event.key === 'ArrowUp' ? -1 : 1);
+        }}
+      >
+        <span aria-hidden="true">⠿</span>
+      </button>
       <span className="s16-stop__position" aria-hidden="true">
         {index + 1}
       </span>
@@ -444,28 +460,10 @@ function StopRow({
         ) : null}
       </span>
       <span className="s16-stop__actions">
-        {index > 0 ? (
-          <Button
-            variant="secondary"
-            onClick={() => onMove(-1)}
-            aria-label={`${COPY.moveUp}: ${stop.donorName}`}
-          >
-            {COPY.moveUp}
-          </Button>
-        ) : null}
-        {index < total - 1 ? (
-          <Button
-            variant="secondary"
-            onClick={() => onMove(1)}
-            aria-label={`${COPY.moveDown}: ${stop.donorName}`}
-          >
-            {COPY.moveDown}
-          </Button>
-        ) : null}
         <Button
           variant="secondary"
           onClick={onRemove}
-          aria-label={`${COPY.removeStop}: ${stop.donorName}`}
+          aria-label={COPY.removeStopFor(stop.donorName)}
         >
           {COPY.removeStop}
         </Button>

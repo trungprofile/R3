@@ -96,25 +96,34 @@ export const COPY = {
   openRun: 'Open my run',
 
   // --- release (PRD cap 8) ------------------------------------------------
-  release: 'Release run',
-  /** §3's own example of a destructive confirm, verbatim. */
-  releaseQuestion: 'Release this run?',
-  releaseConsequence: 'It goes back to the board for others.',
-  /** S1.3, verbatim, for a run that repeats. */
-  releaseScopeQuestion: 'Release just this one, or this and future?',
-  releaseScopeLabel: 'How much to release',
+  //
+  // Driver-facing wording is "cancel", not the domain's "release": drivers asked
+  // for the plainer verb. The transition underneath is still CLAIMED → OPEN and
+  // never `CANCELLED` (I10, staff-only), so every sentence here has to carry the
+  // consequence — "it goes back to the board" — or the word would promise the run
+  // is off, which is the opposite of what happens.
+  release: 'Cancel this run',
+  /** §3's destructive-confirm pattern: name the consequence, never "Are you sure?". */
+  releaseQuestion: 'Cancel this run?',
+  releaseConsequence: 'It goes back to the board for others to pick up.',
+  /** S1.3's "just this one, or this and future?", in the driver's verb. */
+  releaseScopeQuestion: 'Cancel just this one, or this and future?',
+  releaseScopeLabel: 'How much to cancel',
   releaseScopeOne: 'Just this one',
   releaseScopeFuture: 'This and future',
   releaseRangeLabel: 'How far ahead',
   releaseRangeAll: 'Every future run',
   releaseRangeThrough: (day: string) => `Through ${day}`,
-  /** The series keeps generating past whatever is released (I23) — the driver is
-   *  handing runs back, not ending the repeat. Staff's bulk-terminate is a
-   *  separate, staff-only action and is deliberately not on this screen. */
+  /** The series keeps generating past whatever is handed back (I23) — the driver is
+   *  giving runs up, not ending the repeat. Staff's bulk-terminate is a separate,
+   *  staff-only action and is deliberately not on this screen. */
   releaseFutureConsequence:
-    'Each one you release goes back to the board for others. Your weekly run keeps coming after that.',
-  releaseConfirmOne: 'Release run',
-  releaseConfirmMany: 'Release these runs',
+    'Each one goes back to the board for others to pick up. Your weekly run keeps coming after that.',
+  releaseConfirmOne: 'Cancel this run',
+  releaseConfirmMany: 'Cancel these runs',
+  /** The calm default (§6) needs its own word here: a confirm whose two buttons
+   *  both said "Cancel" would be unreadable. */
+  releaseDismiss: 'Keep it',
 
   // --- reassign a stop (PRD cap 10 / I30, staff only) --------------------
   reassign: 'Reassign',

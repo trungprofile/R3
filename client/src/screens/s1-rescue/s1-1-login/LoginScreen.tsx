@@ -57,6 +57,27 @@ import {
 } from './remembered.ts';
 import './login.css';
 
+/** The pantry's own wordmark, on the one screen that belongs to the pantry rather
+ *  than to a duty. It sits here and not in the top bar: §3 pins that bar to the
+ *  AGFP heart on `--structural-dark`, and this mark is dark text on transparent —
+ *  legible on `--surface`, invisible there.
+ *
+ *  Alt text is the pantry's name because the mark *is* that name set in type; a
+ *  screen reader reading "logo" would drop the only word it carries. Width and
+ *  height are on the element so the name list below does not jump when the image
+ *  arrives on a slow phone. */
+function Wordmark() {
+  return (
+    <img
+      className="r3-login__wordmark"
+      src="/agfp-logo.png"
+      width={300}
+      height={83}
+      alt="Amazing Grace Food Pantry"
+    />
+  );
+}
+
 /** The PIN as it is typed: filled marks, never the digits. Big enough to see from
  *  arm's length, and `aria-hidden` because the count beside it is what a screen
  *  reader should say — "•••" is not speech. */
@@ -154,6 +175,7 @@ export function LoginScreen(_props: ScreenProps) {
   if (!entry) {
     return (
       <div className="r3-login">
+        <Wordmark />
         <h1 className="r3-login__title">{COPY.chooseTitle}</h1>
         <p className="r3-login__hint">{COPY.chooseHint}</p>
         {roster.showLoading ? <SkeletonRows rows={5} label={COPY.loading} /> : null}
@@ -190,6 +212,7 @@ export function LoginScreen(_props: ScreenProps) {
         void submit(entry);
       }}
     >
+      <Wordmark />
       <h1 className="r3-login__title">{rosterName(entry)}</h1>
 
       {usesPin ? (

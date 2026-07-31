@@ -368,14 +368,22 @@
   box-shadow: inset 0 3px 0 0 var(--brand-orange);
 }
 
-/* The drag affordance §S1.6 asks for: large, and decorative only — the Move
- * up/Move down buttons beside it are what a keyboard or touch user operates, and
- * they do the same thing. */
+/* The drag affordance §S1.6 asks for: large, and operable — it is also the
+ * keyboard reorder control (arrow keys), so it is a real button at the §1
+ * target-size floor, not a glyph. */
 .s16-stop__handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  padding: 0;
+  border: 0;
+  background: none;
   font-size: var(--font-h2);
   line-height: 1;
   color: var(--text-muted);
-  padding: 0 var(--space-1);
+  cursor: grab;
 }
 
 .s16-stop__position {

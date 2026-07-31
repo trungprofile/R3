@@ -35,6 +35,7 @@ import type {
   NtfbCategory,
   RemovalOutcome,
   ReportEntry,
+  ReportLine,
   UnmappedCategory,
   WeeklyReport,
 } from '../../../api/shared.ts';
@@ -435,6 +436,12 @@ export function missingItems(report: WeeklyReport): string[] {
   return items;
 }
 
+/** "Enter these under agency 026357P — North Texas Food Bank (24)." Composed from
+ *  data, so the §7 copy sweep covers it. */
+export function mealConnectAccountNote(account: WeeklyReport['mealConnect']): string {
+  return `${COPY.exportAccount} ${account.agencyCode} — ${account.foodBank} (${account.foodBankCode}).`;
+}
+
 /** Fallback name for the downloaded file, used only when the server sent no
  *  `content-disposition` to read one from. */
 export function exportFilename(weekStart: string, weekEnd: string): string {
@@ -558,6 +565,11 @@ export interface MappingRow {
   /** The NTFB category it reports under, or null while unmatched. */
   ntfbCategoryId: string | null;
   ntfbCategoryName: string | null;
+  /** The Storage value that goes beside the category on a Meal Connect line item
+   *  — `Frozen`, `Dry`, `Refrigeration` on the receipt we have. Null is a gap
+   *  worth naming but not a blocker: the weight still lands in the right
+   *  category, and only one of the form's four fields is left blank. */
+  storage: string | null;
   /** The AGFP category itself is archived (§3.3). Still shown: archived
    *  categories keep resolving in history and reports. */
   archived: boolean;
@@ -585,6 +597,7 @@ export function mappingRows(
     categoryName: mapping.categoryName,
     ntfbCategoryId: mapping.ntfbCategoryId,
     ntfbCategoryName: mapping.ntfbCategoryName,
+    storage: mapping.storage,
     archived: !mapping.categoryActive,
     blockingWeight: blocking.get(mapping.categoryId) ?? null,
   }));
@@ -602,9 +615,25 @@ export function mappingRows(
   });
 }
 
-/** What a matching row says on its right-hand side. */
+/**
+ * What a matching row says on its right-hand side.
+ *
+ * Category and storage together, because together they are one Meal Connect line
+ * item — "Produce · Refrigeration" is what the Reporter will actually type, and
+ * showing only half of it hides half the mapping.
+ */
 export function mappingTargetLabel(row: MappingRow): string {
-  return row.ntfbCategoryName ?? COPY.notMatched;
+  if (row.ntfbCategoryName === null) return COPY.notMatched;
+  if (row.storage === null || row.storage === '') return row.ntfbCategoryName;
+  return `${row.ntfbCategoryName} · ${row.storage}`;
+}
+
+/** Named on the row rather than left to be discovered at the far end: a mapped
+ *  category with no storage still exports, but leaves the Reporter guessing at
+ *  one of the four fields the form asks for. */
+export function storageGapNote(row: MappingRow): string | null {
+  if (row.ntfbCategoryId === null) return null;
+  return row.storage === null || row.storage === '' ? COPY.storageMissing : null;
 }
 
 /** The picker's options: the food bank categories still in use, by name, plus the
@@ -625,6 +654,22 @@ export function pickerOptions(
  *  Null stays absent rather than printing "null" or a guessed code (D13). */
 export function ntfbLabel(category: Pick<NtfbCategory, 'name' | 'code'>): string {
   return category.code === null || category.code === '' ? category.name : `${category.name} (${category.code})`;
+}
+
+/**
+ * "Produce (14) · Refrigeration" — one report line named the way its Meal Connect
+ * line item will be.
+ *
+ * Storage belongs in the title rather than beside it because the pair IS the line
+ * item: the same food bank category under two storage requirements is two rows
+ * here and two rows on the receipt, and a title that omitted storage would show
+ * the Reporter two cards with identical headings.
+ */
+export function reportLineTitle(
+  line: Pick<ReportLine, 'ntfbCategoryName' | 'ntfbCode' | 'storage'>,
+): string {
+  const base = ntfbLabel({ name: line.ntfbCategoryName, code: line.ntfbCode });
+  return line.storage === null || line.storage === '' ? base : `${base} · ${line.storage}`;
 }
 
 /** How many AGFP categories report under one food bank category — the I21
@@ -651,9 +696,10 @@ export function ntfbNameError(raw: string, attempted: boolean): string | null {
   return raw.trim() === '' ? COPY.ntfbNameRequired : null;
 }
 
-/** An empty code is *absent*, not `""` — `ntfb_category.code` is nullable exactly
- *  so an unknown code stays unknown (D13). */
-export function normalizeCode(raw: string): string | null {
+/** An empty optional field is *absent*, not `""` — `ntfb_category.code` and
+ *  `category.ntfb_storage` are both nullable exactly so an unknown stays unknown
+ *  rather than becoming an empty string that reads as an answer (D13). */
+export function normalizeOptional(raw: string): string | null {
   const trimmed = raw.trim();
   return trimmed === '' ? null : trimmed;
 }
@@ -818,9 +864,18 @@ export const COPY = {
 
   // --- the one primary action ----------------------------------------------
   export: 'Export for Meal Connect',
+  /** Meal Connect has no file upload — the Reporter types receipts into it by
+   *  hand — so this sentence says what the file is FOR rather than implying it
+   *  gets sent anywhere (D13). One row per line item, in the order the receipts
+   *  are entered. */
   exportHint:
-    'Downloads a spreadsheet file you can open or send on. The columns are our best guess at what North Texas Food Bank wants — check them against a real submission before you rely on them.',
+    'Downloads a spreadsheet laid out the way Meal Connect asks for it: one row per line item, grouped by pickup date and store. Work down it as you enter each receipt, and check the last two columns against the totals Meal Connect shows you before you submit.',
   exportDone: 'Report downloaded.',
+  /** Prefix for the account line above Export. The one thing a worksheet cannot
+   *  check for the Reporter is whether they are signed in to the right Meal
+   *  Connect account, so the codes off the pantry's own receipts are printed
+   *  where they will look before they start typing. */
+  exportAccount: 'Enter these under agency',
   exportedTitle: 'Downloaded',
   exportedNote:
     'You downloaded this week’s file. Exporting again is fine — it is rebuilt from what is in R3 right now.',
@@ -828,7 +883,7 @@ export const COPY = {
   // --- the matching editor -------------------------------------------------
   mappingHeading: 'Which food bank category does each of ours report under?',
   mappingIntro:
-    'Our categories are on the left. Point each one at the North Texas Food Bank category it belongs to. Two of ours can share one of theirs.',
+    'Our categories are on the left. Point each one at the North Texas Food Bank category it belongs to, and say which storage it goes under. Two of ours can share one of theirs — under different storage if that is what they are.',
   mappingLabel: 'Our categories',
   mappingEmptyTitle: 'No categories of our own yet.',
   mappingEmptyBody: 'An admin adds ours under Admin → Categories. Nothing can be reported until they do.',
@@ -840,6 +895,14 @@ export const COPY = {
   pickerHint: 'Pick one, or leave it unmatched.',
   leaveUnmatched: 'Leave it unmatched',
   back: 'Back',
+  /** Storage is the other half of a Meal Connect line item, so it is chosen in the
+   *  same breath as the category rather than on a screen of its own. Free text and
+   *  three examples, not a fixed list: those three are what one receipt showed, and
+   *  the pantry's form is the authority on the rest (migration 0013). */
+  storageField: 'Storage (optional)',
+  storageHint:
+    'The Storage the food bank’s form asks for beside the category — usually Frozen, Dry or Refrigeration. Copy their wording.',
+  storageMissing: 'No storage set',
   /** A181, said out loud where the remapping happens. Every week is computed on
    *  read, so a mapping changed today changes what an already-exported week
    *  *would* say if exported again. That is correct — a mapping states what a

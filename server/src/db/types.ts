@@ -38,6 +38,9 @@ export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 export interface AppConfig {
   horizon_days: Generated<number>;
   id: Generated<boolean>;
+  ntfb_agency_code: Generated<string>;
+  ntfb_food_bank: Generated<string>;
+  ntfb_food_bank_code: Generated<string>;
   receiver_edit_window_days: Generated<number>;
   session_absolute_shared_hours: Generated<number>;
   session_idle_personal_staff_days: Generated<number>;
@@ -74,6 +77,7 @@ export interface Category {
   id: Generated<string>;
   name: string;
   ntfb_category_id: string | null;
+  ntfb_storage: string | null;
 }
 
 export interface Device {
@@ -90,6 +94,7 @@ export interface Donor {
   id: Generated<string>;
   name: string;
   note: string | null;
+  ntfb_donor_code: string | null;
 }
 
 export interface Notification {

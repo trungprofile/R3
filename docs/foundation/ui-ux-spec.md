@@ -78,10 +78,10 @@ Each lists states: default / hover / active / disabled / loading where relevant.
 - **Mine** is an *ownership overlay*, not a status — it renders in success color and replaces the Claimed chip when the viewer is the owner. Every other status keeps its own chip regardless of who owns the shift.  
 - **Top bar** — `--structural-dark`, AGFP heart logo left, current user + logout right, notification bell with unread count, push-state chip.  
 - **Bottom nav (phone)** — ≤4 items, icon + label always (no icon-only). 56px tall.  
-- **Modal / confirm** — centered, one question, two buttons. Destructive confirm names the consequence ("Release this run? It goes back to the board for others.").  
+- **Modal / confirm** — centered, one question, two buttons. Destructive confirm names the consequence ("Cancel this run? It goes back to the board for others to pick up."). The calm default reads "Cancel" unless the destructive action is itself a cancel, in which case it takes a distinct word ("Keep it") — two buttons reading "Cancel" is not a choice.  
 - **Toast** — bottom, 4s, success/error. Never the only signal for a critical action.  
 - **Inbox row** — read/unread dot, event text, time, tap to act.  
-- **Empty / loading / error blocks** — every list defines all three. Empty states say what to do next, not just "nothing here".
+- **Empty / loading / error blocks** — every list defines all three. Empty states say what to do next, not just "nothing here". A **dead-end** state — no access, not found, nothing to act on — must also carry the way out as a control, not only as advice: the tablet has no nav (§4), so a state that merely describes the problem strands whoever reaches it with only the browser's address bar.
 
 ---
 
@@ -149,7 +149,8 @@ Caps 1–11, 13 (minus truck-inbound). Canonical devices: phone (driver) + deskt
 ### S1.1 Login
 
 - User/device: all / shared + phone.  
-- Layout: name list → PIN keypad or password. Per §5.  
+- Layout: the AGFP wordmark, then name list → PIN keypad or password. Per §5.  
+- The wordmark is the pantry's own logo file, and this is the only screen carrying it: it is dark type on transparent, so it reads on `--surface` and would disappear on the `--structural-dark` top bar, which keeps the heart (§3). Signed-out is also the one moment the app belongs to the pantry rather than to a duty. Alt text is "Amazing Grace Food Pantry" — the mark *is* that name set in type, so "logo" would drop the only word it carries.  
 - Primary action: Enter.  
 - Edge: wrong PIN shows an inline count ("3 tries left"). At zero the account soft-locks for ~15 minutes and the message says so exactly — "Too many tries. Try again in 15 minutes." The lock always self-clears; copy must never imply a volunteer needs staff to unlock them, because nobody can (Architecture §4.2). Repeated attempts during the lock do not extend it.
 
@@ -170,17 +171,18 @@ Caps 1–11, 13 (minus truck-inbound). Canonical devices: phone (driver) + deskt
 - User/device: owner (phone), staff (desktop).  
 - Layout: route stops in order, truck, time, any coordinator→driver note (`Shift.staff_note`, PRD cap 11) — staff can add/edit it here (desktop view); driver sees it read-only. One primary action by context.  
 - Conflict flag: if staff assigned this shift over a declared-availability or overlapping-shift conflict (PRD cap 6), the owner sees a persistent banner: "This run conflicts with your declared availability — contact staff if that's a problem." Informational only; does not block pickup execution.  
-- Primary action: owner sees **Release run** (red). Before-start only; in-progress/past hide it.  
-- Release flow: confirm naming consequence → returns to board as Open → notifies coordinator + eligible drivers (PRD cap 8). Recurring: "Release just this one, or this and future?" with a date-range option for bulk. Either way the affected instance(s) go back to Open for someone else to claim — the series itself is untouched and keeps generating beyond the range. (This is distinct from staff's separate, staff-only bulk-terminate for permanently ending part of a series — not available to drivers.)  
+- Primary action: owner sees **Cancel this run** (red). Before-start only; in-progress/past hide it.  
+- **Driver-facing verb.** Drivers read "cancel", never the domain's "release" — the plainer word is what they reach for. The transition is still `CLAIMED → OPEN` (§3.1) and never `CANCELLED`, which stays staff-only and terminal (I10), so *every* driver-facing sentence must also state where the run goes ("it goes back to the board"). The word alone would promise the pickup is off, which is the opposite of what happens. Code, routes and payloads keep `release`, which names the actual edge; only copy changes.  
+- Cancel flow: confirm naming consequence → returns to board as Open → notifies coordinator + eligible drivers (PRD cap 8). Recurring: "Cancel just this one, or this and future?" with a date-range option for bulk. Either way the affected instance(s) go back to Open for someone else to claim — the series itself is untouched and keeps generating beyond the range. (This is distinct from staff's separate, staff-only bulk-terminate for permanently ending part of a series — not available to drivers.)  
 - **Reassign stop (staff-only, PRD cap 10):** on an `IN_PROGRESS` shift's stop list (staff/desktop view only), each unresolved stop (PENDING or COLLECTED-not-yet-weighed) shows a **Reassign** action. Picking it opens a driver picker (any driver with an open or in-progress shift today); confirming marks that stop `REASSIGNED` on this shift (excluded from this shift's completion gate, shown struck-through here) and adds it as a new pending stop at the end of the destination driver's active shift. Already-weighed stops have no Reassign action — there's nothing left to move.
 
 ### S1.4 My shifts + availability
 
 - User/device: driver (phone).  
 - Layout: two tabs, "My runs" (list) and "When I'm away".  
-- Availability entry: pick a date range OR a time window within dates. Applies whole-person — it blocks that time across every route, not a specific one — and only to runs you do not own. If the range overlaps a run you own, Save is blocked with an inline error: "You own a run in this window — release it first" (or, if that run is already in progress, "This run is in progress and can't be released — try again once it's done"). Saving notifies coordinator only.  
+- Availability entry: pick a date range OR a time window within dates. Applies whole-person — it blocks that time across every route, not a specific one — and only to runs you do not own. If the range overlaps a run you own, Save is blocked with an inline error: "You own a run in this window — cancel it first" (or, if that run is already in progress, "This run is in progress and can't be cancelled — try again once it's done"). Saving notifies coordinator only.  
 - Primary action: Save availability.  
-- Copy: explain plainly "Telling us you're away helps the coordinator fill runs. It won't release runs you already own — you'll need to release those yourself first."
+- Copy: explain plainly "Telling us you're away helps the coordinator fill runs. It won't cancel runs you already own — you'll need to cancel those yourself first."
 
 ### S1.5 Driver pickup execution
 
@@ -198,6 +200,7 @@ Caps 1–11, 13 (minus truck-inbound). Canonical devices: phone (driver) + deskt
 - User/device: staff (desktop).  
 - Publish shift: date/time, route. No truck field here — truck is picked by the driver at start (S1.5), not set by staff at publish. Recurring builder: pick a weekly pattern with plain language ("Every Tuesday, starting Aug 4, no end" or an end date). **The "starting" date is displayed, not entered** — it is the first occurrence the pattern will actually mint, computed from today and the chosen weekday, and the control is read-only. A pattern has no stored start date: `domain-modeling.md §5.3` (locked) names `endDate` as the only stop condition and runs the loop over `[now, horizon]`, and `data-model.md §5.2` has no `start_date` column. A series therefore begins when it is created, and the sentence tells the user which date that works out to rather than asking them to choose one. Shifts exist with no driver (PRD cap 4).  
 - Route builder: a route is an ordered list of stores. **Drag-and-drop ordering** with large handles; add store from the donor list. Editing a single recurring instance must not break the pattern (PRD cap 4) — surface this as "Edit just this date" vs "Edit the weekly pattern".  
+- **Reordering is drag or arrow keys, and there is no touch path.** The handle is a focusable button that reorders on ArrowUp / ArrowDown, so a keyboard user is covered; HTML5 drag events do not fire on touch at all, so a touch-only tablet cannot reorder a route. This is a ruling, not an oversight — three commands per row read as verbose beside a handle that already covers the common case, so the per-row Move up / Move down buttons were removed (`phase-1-state.md` A151, superseded). Everything else on this screen still works on a tablet; **reordering specifically is desktop-or-keyboard only**, which is the caveat behind this screen's "usable" mark in the responsive matrix.  
 - Assign/default: staff may set an owner as fallback (PRD cap 6). Same owner field as self-select. If the chosen driver conflicts with their declared availability or another owned shift, staff sees an inline warning and must confirm ("Karen marked herself away then — assign anyway?") before it goes through; the assignment is not blocked. The resulting shift shows a conflict flag to the driver (their board/shift-detail view), prompting them to contact staff.  
 - Primary action: Publish / Save.
 
@@ -351,7 +354,9 @@ Caps 15–16. Canonical device: shared desktop. Pure aggregation over Phase 1+2 
 - Layout: pick a week. Show AGFP categories with auto-summed weights, mapped to NTFB categories via an **in-app AGFP→NTFB mapping** (editable mapping table maintained here or in Admin). Every line is **inspectable down to store-category-day** (Success Metric 4: 100% traceable) — click a number to expand the underlying entries with the store, day, and receiver.  
 - Only donations flagged for reporting flow in (the toggle). The screen states the two numbers separately where relevant.  
 - **Reporter edit (PRD cap 15):** in the drill-in, each entry has an edit affordance (✎, same overwrite-look/void-insert-underneath pattern as S2.2). The reportable toggle is a plain switch, not a void-insert — flipping it overwrites in place (PRD cap 15). Before the receiver's edit window closes, this mirrors what the receiver could already do at the tablet; after it closes, this is the *only* remaining way to correct that entry — the tablet no longer allows it. No separate approval step; the Reporter's edit is itself the correction.  
+- **The mapping row is a pair (`phase-3-build-plan.md` D15).** A Meal Connect line item is `Category · Storage · Description · Pounds`, so each of our categories is matched to an NTFB category *and* the Storage it reports under (`Frozen`, `Dry`, `Refrigeration` on the receipt we have — free text, typed as their form words it). Storage is chosen in the same step as the category and shown with it on the row. A missing storage is named on the row but does **not** block the export; an unmapped category still does. One NTFB category under two storage values renders as two lines, because it is two line items on the receipt.  
 - Primary action: **Export** (Meal Connect format). Secondary: drill-in.  
+- **What Export produces (`D13`):** Meal Connect has no file import — a Reporter types receipts into it — so the file is a worksheet for that, one row per line item, ordered `pickup date → store → category`, carrying each receipt's item count and total so they can be checked against Meal Connect's own review screen before Submit. The agency and food bank codes are printed beside the button: it is the one thing the worksheet cannot check for them.  
 - States: incomplete week (show what is missing), ready, exported.  
 - Edge: an edited weight upstream (from either the receiver in-window or the Reporter here) reflects live; no version history shown beyond the underlying void trail (PRD out-of-scope as a UI feature).
 
@@ -375,12 +380,14 @@ Caps 15–16. Canonical device: shared desktop. Pure aggregation over Phase 1+2 
 | My shifts / availability | canonical | usable | usable |
 | Weight entry | n/a | **canonical** | usable |
 | Unscheduled donation | n/a | canonical | usable |
-| Scheduling / reschedule | cramped | usable | **canonical** |
+| Scheduling / reschedule | cramped | usable¹ | **canonical** |
 | Admin (accounts/donors/trucks) | n/a | usable | **canonical** |
 | Report + metrics | n/a | usable | **canonical** |
 | Inbox + push state | canonical | canonical | canonical |
 
 "Degraded" = works but not optimized; "n/a" = not a target for that device.
+
+¹ With one hole: **route-stop reordering has no touch path** (S1.6 — drag does not fire on touch, and the arrow-key equivalent needs a keyboard). Everything else on the scheduling screens is usable on a tablet. Recorded rather than fixed, per the A151 ruling.
 
 ---
 

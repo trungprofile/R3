@@ -10,11 +10,12 @@ Assumption numbering continues the series (Phase 2 ended at A177).
 | Step | State |
 | :---- | :---- |
 | Migration 0012 — `ntfb_category`, the mapping column, indexes | **done** |
+| Migration 0013 — `category.ntfb_storage`, `donor.ntfb_donor_code`, the agency codes | **done** |
 | `shared/src/report.ts`, `shared/src/metrics.ts` | **done** |
 | `services/report.ts` — cap 15 (union, drill-in, mapping, Reporter edit, export) | **done** |
 | `services/metrics.ts` — cap 16 (per-store intake, coverage failures) | **done** |
 | `routes/report.ts`, `routes/metrics.ts`, registry wiring | **done** |
-| Server tests — 35 new, `gate.sh` green | **done** |
+| Server tests — 35 new, then 4 more for the worksheet, `gate.sh` green | **done** |
 | S3.1 report screen (60 tests), S3.2 metrics screen (56 tests) | **done** |
 | `CURRENT_PHASE = 3`, both screens registered, `api.put` | **done** |
 
@@ -29,28 +30,52 @@ entry in `main.tsx`, and `AppShell`'s Placeholder is unreachable through the nav
 
 ## Waiting on the human
 
-Two facts live outside this repo and cannot be inferred from it. **Everything else in
-Phase 3 is built and tested;** these two are data, not code.
+**Item 2 below was answered on 2026-07-30** by a submitted Meal Connect receipt (agency
+026357P, pickup 2026-03-20) plus screenshots of the three entry screens. The export was
+reshaped around it (D13, D15, migration 0013). Item 1 is narrower than it was but is
+still open, and still data rather than code.
 
-### 1. The NTFB category list, and the mapping
+### 1. The NTFB category list, the mapping, and the storage per row
 
-`ntfb_category` ships empty (D12). A Reporter adds NTFB's categories on S3.1 and points
-each of the 11 AGFP categories at one. Until then the report shows every category as
-unmapped and refuses to export — deliberately, because a short file that looks complete
-is worse than no file.
+`ntfb_category` ships empty (D12) and `category.ntfb_storage` ships null (D15). A
+Reporter adds NTFB's categories on S3.1, points each of the 11 AGFP categories at one,
+and types the Storage that goes beside it. Until the first half is done the report shows
+every category as unmapped and refuses to export; the second half does not block, and is
+named on the mapping row instead.
 
-Needed: NTFB's own category names (and codes, if Meal Connect keys on codes rather than
-names), plus which AGFP category reports under each. Two AGFP categories may share one
-NTFB bucket; the schema allows that and the report rolls them up.
+**What the receipt showed**, recorded here so nobody re-derives it from a PDF — but
+*not* seeded, see D12:
 
-### 2. The Meal Connect export format
+| NTFB category (observed) | Storage on that line |
+| :---- | :---- |
+| Meat | Frozen |
+| Bread | Dry |
+| Produce | Refrigeration |
+| Prepared Meals | Frozen |
+| Dairy | Refrigeration |
+| Assorted Dry Food | Dry |
+| Non-Food | Dry |
+| Pet Food | Dry |
+| Health & Beauty | Dry |
+| Trash | Dry |
 
-Emitted today: CSV, columns `Date, NTFB Category, NTFB Code, AGFP Category, Donor,
-Weight (lb)`, one row per `day × category × donor`. That is the report's own grain
-written flat — correct data in a guessed shape (D13).
+Ten names off one receipt, not the dropdown's vocabulary. Our eleven line up closely
+enough that AGFP's list was clearly derived from NTFB's — but `Frz Non Meat` matches
+none of the ten, and that one gap is the whole reason the table is still the pantry's to
+fill. Storage is per *mapping row*, not per NTFB category (D15), so two of ours sharing
+one bucket under different storage is representable and comes out as two line items.
 
-Needed: a real Meal Connect submission, or NTFB's spec for it. Changing the shape is a
-change to one function and its test.
+Still needed: the full category dropdown, where `Frz Non Meat` reports, the storage
+wording their form uses, and the NTFB donor codes for the stores on our routes
+(`donor.ntfb_donor_code`, nullable, blank in the worksheet until entered).
+
+### 2. ~~The Meal Connect export format~~ — answered
+
+The far end is a **web form with no import**: a receipt per `(pickup date, donor)`, line
+items of `Category · Storage · Description · Pounds`, a review list showing
+`Number of Items` / `Total Pounds`, then Submit. So the export is a worksheet for
+hand-entry, and is now shaped and ordered to be read while typing (D13). Two smaller
+questions it raised are open as A189 and A191 below.
 
 ## Bugs found and fixed during the build
 
@@ -91,6 +116,62 @@ single 100 lb row, because `data-model.md §8` states the report's grain as `rep
 category × donor-or-label`. The drill-in still resolves that row to both entries with
 their receivers (Success Metric 4), so nothing is lost — but the file the food bank sees
 is a day's total per store per category, not a keystroke log.
+
+*Still true after D13, and now corroborated:* Meal Connect's own line items are totals
+per category on a receipt, not per weighing. The grain gained `storage` (D15); it did
+not gain rows.
+
+### A188 — the worksheet repeats each receipt's totals on every row
+
+`Receipt Items` and `Receipt Total (lb)` are the two figures Meal Connect's review screen
+shows back before Submit, so they belong in the file. They are repeated on each row of a
+receipt rather than written as subtotal rows, which keeps the file rectangular — a CSV
+with interleaved subtotals opens badly in every spreadsheet, and this file exists to be
+read by a person mid-task.
+
+The alternative worth knowing about: one row per receipt with the line items nested, or
+two files. Both are harder to read side-by-side with a form than a flat sheet is.
+
+### A189 — pounds are not rounded to whole numbers
+
+Every `Pounds` value on the sample receipt is an integer, but so was every value typed
+into it, so the receipt is no evidence the form refuses a decimal. The worksheet emits
+`numeric(8,2)` unchanged.
+
+If Meal Connect does reject decimals, rounding is **not** a one-line change: rounding
+each row makes Σ rows disagree with the receipt total and with the week's own figure by
+a pound or two, and the Reporter is then holding two numbers that do not match while
+Meal Connect shows a third. Whoever confirms this should decide where the remainder goes
+before it is implemented.
+
+### A190 — an AGFP category with no storage still exports
+
+`category.ntfb_storage` is nullable and a null does not block the export, unlike an
+unmapped category (D12). The reasoning is that the two failures are different sizes: an
+unmapped category means weight goes **unreported**, while a missing storage means one of
+four fields on a line the Reporter is typing anyway is blank, and they can see the food
+in front of them. It is named on the mapping row so it is not a silent gap.
+
+Read the other way — that a receipt cannot be submitted without Storage, so a blank one
+blocks just as surely — this should block too. Nobody here has tried to submit one.
+
+### A191 — R3 exports nothing for a stop that produced no food
+
+Meal Connect's entry form carries two checkboxes R3 has no equivalent output for:
+**`Scheduled Pickup Not Attempted`** and **`No Pounds`**. Between them they say a
+scheduled pickup happened, or didn't, and yielded nothing — which suggests NTFB expects
+a receipt for it rather than silence.
+
+R3 already knows both states: `shiftstop_disposition` has `SKIPPED`, and a `COLLECTED`
+stop can carry no weight entries. The export emits neither, because the report is
+`weight_entry ∪ unscheduled_donation` and a stop with no weight is in neither half.
+
+**Deliberately not built.** Emitting these would widen `domain-modeling.md §6`'s union,
+and that doc is **locked** — this is a doc change first and a code change second, and it
+turns on a fact nobody here has: whether NTFB wants those receipts from us at all, or
+whether the checkboxes exist for food banks whose own drivers do the pickups. Until that
+is answered, a skipped stop is visible in S3.2's coverage metrics and absent from the
+report, which is what the locked definition says.
 
 ### A181 — remapping a category re-reports history
 
