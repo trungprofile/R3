@@ -23,6 +23,7 @@
 // stops when it starts, which is why this screen can be edited freely mid-week.
 
 import { useCallback, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   Button,
   Card,
@@ -82,11 +83,11 @@ export function RoutesPanel() {
         ) : null}
       </div>
 
-      {form !== null ? (
-        // Keyed by which route is open: the builder holds the drag state and the
-        // inline problem message locally, and neither belongs to the next route.
+      {/* A NEW route has no row to open inside, so it builds at the top — the one
+          case where the editor is not attached to a list item. */}
+      {form !== null && form.routeId === null ? (
         <RouteBuilder
-          key={form.routeId ?? 'new'}
+          key="new"
           form={form}
           onChange={setForm}
           onSaved={() => {
@@ -95,14 +96,14 @@ export function RoutesPanel() {
           }}
           onClose={() => setForm(null)}
         />
-      ) : (
+      ) : form === null ? (
         <Button
           variant="secondary"
           onClick={() => setShowArchived((current) => !current)}
         >
           {showArchived ? COPY.routeHideArchived : COPY.routeShowArchived}
         </Button>
-      )}
+      ) : null}
 
       <RouteList
         routes={routes.data ?? []}
@@ -112,6 +113,25 @@ export function RoutesPanel() {
         selectedId={form?.routeId ?? null}
         onOpen={(route) => setForm(routeFormOf(route))}
         onRestored={routes.reload}
+        // Drawn inside the open route's own list item. Keyed by which route it is:
+        // the builder holds the drag state and the inline problem message locally,
+        // and neither belongs to the next route.
+        renderBuilder={(route) =>
+          form === null || form.routeId !== route.id ? null : (
+            <div className="s16-list-editor">
+              <RouteBuilder
+                key={route.id}
+                form={form}
+                onChange={setForm}
+                onSaved={() => {
+                  routes.reload();
+                  setForm(null);
+                }}
+                onClose={() => setForm(null)}
+              />
+            </div>
+          )
+        }
       />
     </div>
   );
@@ -129,6 +149,7 @@ function RouteList({
   selectedId,
   onOpen,
   onRestored,
+  renderBuilder,
 }: {
   routes: readonly RouteDetail[];
   showLoading: boolean;
@@ -137,6 +158,8 @@ function RouteList({
   selectedId: string | null;
   onOpen: (route: RouteDetail) => void;
   onRestored: () => void;
+  /** Drawn inside the open route's own list item, under its row. */
+  renderBuilder: (route: RouteDetail) => ReactNode;
 }) {
   const toast = useToast();
 
@@ -174,7 +197,7 @@ function RouteList({
                 meta={route.stops.map((stop) => stop.donorName).join(' → ')}
                 onClick={() => onOpen(route)}
                 ariaLabel={
-                  route.id === selectedId ? `${route.name} — open above` : route.name
+                  route.id === selectedId ? `${route.name}, open for editing` : route.name
                 }
               />
             ) : (
@@ -189,6 +212,7 @@ function RouteList({
                 }
               />
             )}
+            {route.id === selectedId ? renderBuilder(route) : null}
           </ListItem>
         ))}
     </List>
@@ -287,8 +311,29 @@ function RouteBuilder({
         }}
       />
 
+      {/* D19. A DEFAULT for `shift.staff_note`, not a fifth note channel — PRD cap 11
+          and the locked `domain-modeling.md §2.2` name exactly four and say none
+          share storage. The publish form copies this into the run's own note at
+          create; `services/recurrence.ts` does the same when it mints a repeating
+          instance. Editing it here never reaches a run already published. */}
+      <TextInput
+        label={COPY.routeDefaultNote}
+        value={form.defaultStaffNote}
+        multiline
+        onChange={(defaultStaffNote) => {
+          setProblem(null);
+          onChange({ ...form, defaultStaffNote });
+        }}
+      />
+      {/* Kept under D21: when the default applies, and that it does not reach runs
+          already on the board, are neither of them visible from the box. */}
+      <p className="s16-hint">{COPY.routeDefaultNoteHint}</p>
+
+      {/* The "drag it, or arrow-key the handle" line under this heading is gone
+          (D21): it restated what the handle already is. The handle's own aria label
+          still says it, because the arrow keys are the only reorder a keyboard user
+          has and nothing on screen shows them. */}
       <h4 className="s16-label">{COPY.routeStops}</h4>
-      <p className="s16-hint">{COPY.dragHint}</p>
 
       {form.stops.length === 0 ? (
         <p className="s16-hint">{COPY.routeStopsEmpty}</p>

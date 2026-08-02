@@ -258,13 +258,22 @@ export function monthOf(iso: string, fallback: { year: number; month: number }) 
 // Wall clock
 // ---------------------------------------------------------------------------
 
-/** Half-hour steps, 5:00am to 10:00pm — the hours a food-rescue run falls in.
- *  A visible grid of big buttons, not a dropdown or a multi-step picker (§1.5).
- *  Same grid S1.4 offers for availability, so the two screens agree on what a
- *  pickup hour is. */
+/**
+ * Quarter-hour steps, 5:00am to 10:00pm — the hours a food-rescue run falls in.
+ *
+ * Half-hourly until QA asked for the quarters a real store window lands on (a
+ * 9:45 close is not a 9:30 close). The finer grid is what retired `TimeChoice`:
+ * 69 always-visible buttons per field is not a control, so both fields now use
+ * `components/TimeField.tsx`, which shows one value and opens the list on demand.
+ * Still no dropdown widget and no native time input — §1.5 rules those out and
+ * that has not changed.
+ *
+ * S1.4's availability grid stays half-hourly and is deliberately not shared: a
+ * whole-person away window is a coarser thing than a pickup window.
+ */
 export function timeOptions(): string[] {
   const options: string[] = [];
-  for (let minutes = 5 * 60; minutes <= 22 * 60; minutes += 30) {
+  for (let minutes = 5 * 60; minutes <= 22 * 60; minutes += 15) {
     options.push(
       `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`,
     );
@@ -335,9 +344,13 @@ export const COPY = {
   title: 'Schedule',
 
   tabRuns: 'Runs',
-  tabRepeating: 'Repeating runs',
-  tabRoutes: 'Routes',
-  tabsLabel: 'Runs, repeating runs and routes',
+  tabRepeating: 'Recurring runs',
+  /** "Route templates", not "Routes". `domain-modeling.md §1` already calls a Route
+   *  a reusable TEMPLATE, and "Routes" sitting beside "Runs" was being read as the
+   *  same kind of thing — one tab of scheduled work and one tab of the shapes that
+   *  work is cut from. Sentence case, like every other label here. */
+  tabRoutes: 'Route templates',
+  tabsLabel: 'Runs, recurring runs and route templates',
 
   // --- Publish one run (S1.6: "Publish shift: date/time, route") -----------
   publishHeading: 'Publish a run',
@@ -347,12 +360,12 @@ export const COPY = {
   publishEnd: 'Ends',
   publishNote: 'Note for the driver (optional)',
   publish: 'Publish',
-  published: 'Run published — it’s on the board.',
+  published: 'Run published. It’s on the board.',
   /** No truck field, and no driver field, stated where staff would look for them.
    *  The driver picks the truck at start (I8) and a run exists with no driver at
-   *  all (PRD cap 4). */
+   *  all (PRD cap 4). Neither fact is visible from the form, so D21 keeps it. */
   publishHint:
-    'The driver picks the truck when they start. A run can go up with no driver — anyone can claim it from the board.',
+    'The driver picks the truck when they start. A run can go up with no driver, and anyone can claim it from the board.',
 
   noRoute: 'Pick a route.',
   noDate: 'Pick a day.',
@@ -361,7 +374,7 @@ export const COPY = {
   noWeekday: 'Pick at least one day of the week.',
 
   // --- Repeating runs (S1.6's recurring builder) ---------------------------
-  repeatHeading: 'Add a repeating run',
+  repeatHeading: 'Add a recurring run',
   repeatEditHeading: 'Edit the weekly pattern',
   repeatWeekdays: 'Which days?',
   repeatEnds: 'When does it stop?',
@@ -370,12 +383,12 @@ export const COPY = {
   /** COMPUTED AND READ-ONLY. A repeating run has no stored start date: it begins
    *  when it is created, and this sentence tells staff which date that works out
    *  to (`domain-modeling.md §5.3`, `ui-ux-spec.md S1.6`). */
-  startingLabel: 'This repeating run will make',
-  repeatSave: 'Save the repeating run',
+  startingLabel: 'This recurring run will make',
+  repeatSave: 'Save the recurring run',
   repeatCreated: (count: number) =>
-    count === 1 ? 'Saved — 1 run added to the board.' : `Saved — ${count} runs added to the board.`,
+    count === 1 ? 'Saved. 1 run added to the board.' : `Saved. ${count} runs added to the board.`,
   repeatUpdated: 'Saved.',
-  repeatEmpty: 'No repeating runs yet.',
+  repeatEmpty: 'No recurring runs yet.',
   repeatEmptyBody: 'Add one above and it fills the board out as far as runs are built.',
   /** The pattern edit's three outcomes, which the server reports separately
    *  because they are three different facts about already-published runs. */
@@ -383,27 +396,36 @@ export const COPY = {
     count === 1 ? '1 open run moved to the new time.' : `${count} open runs moved to the new time.`,
   repeatOwned: (count: number) =>
     count === 1
-      ? '1 run already has a driver and was left where it is — move it yourself if it needs to change.'
-      : `${count} runs already have drivers and were left where they are — move them yourself if they need to change.`,
+      ? '1 run already has a driver and was left where it is. Move it yourself if it needs to change.'
+      : `${count} runs already have drivers and were left where they are. Move them yourself if they need to change.`,
   repeatOffPattern: (count: number) =>
     count === 1
       ? '1 run is no longer on this pattern and stays on the board. Cancel it below if it should not happen.'
       : `${count} runs are no longer on this pattern and stay on the board. Cancel them below if they should not happen.`,
   repeatCancel: 'Stop using this',
-  editThisDate: 'Edit just this date',
-  editThePattern: 'Edit the weekly pattern',
+  /** The scope control's legend, inside the editor. It used to be a modal asked
+   *  BEFORE anything opened, which made staff answer a question about a run they
+   *  could not yet see; the choice now sits in the editor with the run in front of
+   *  them, defaulted to `scopeThisRun`. */
   editScopeQuestion: 'Edit just this date, or the weekly pattern?',
   editScopeConsequence:
-    'Editing just this date leaves the rest of the repeating run alone. Editing the pattern changes every open run still to come.',
+    'Editing just this date leaves the rest of the recurring run alone. Editing the pattern changes every open run still to come.',
+  /** The two scopes. `scopeThisRun` is the default because it is the reversible
+   *  one: it touches a single row, and I23 keeps it off the pattern entirely. */
+  scopeThisRun: 'This run',
+  scopePattern: (weekday: string) => `Every ${weekday}`,
+  /** Where the pattern-level edit actually happens (I24) — the Recurring runs tab,
+   *  which edits the stored rule rather than this occurrence of it. */
+  editThePattern: 'Edit the weekly pattern',
 
   // --- Bulk terminate ------------------------------------------------------
   terminate: 'Cancel a stretch of dates',
   terminateHeading: 'Cancel a stretch of dates',
   terminateHint:
-    'Pick the first and last day to cancel. Runs in between are cancelled for good — this is not the same as putting them back on the board.',
+    'Pick the first and last day to cancel. Runs in between are cancelled for good, which is not the same as putting them back on the board.',
   terminateConfirm: 'Cancel these runs?',
   terminateConsequence:
-    'They cannot be brought back, and no one can claim them. The repeating run keeps making runs after the last day you picked unless you also give it an end date.',
+    'They cannot be brought back, and no one can claim them. The recurring run keeps making runs after the last day you picked unless you also give it an end date.',
   terminateGo: 'Cancel them',
   terminated: (count: number) =>
     count === 1 ? '1 run cancelled.' : `${count} runs cancelled.`,
@@ -412,14 +434,20 @@ export const COPY = {
   // --- Runs list -----------------------------------------------------------
   runsHeading: 'Runs coming up',
   runsEmpty: 'No runs scheduled yet.',
-  runsEmptyBody: 'Publish one above, or add a repeating run.',
+  runsEmptyBody: 'Publish one above, or add a recurring run.',
   repeatsTag: 'repeats weekly',
   conflictTag: 'assigned over a conflict',
   unowned: 'No driver yet',
   runNote: 'Note for the driver',
   saveNote: 'Save',
   noteSaved: 'Saved.',
-  moveDateTime: 'Move the date or time',
+  /** The run row's own action: it opens the editor in place, in the row staff is
+   *  looking at, rather than sending them to another screen. */
+  moveDateTime: 'Edit',
+  /** …and the one thing the inline editor cannot do. `PATCH /shifts/:id` carries no
+   *  date or time (cap 9 owes staff the owner's conflicts first), so a real move is
+   *  still S1.7 and this is the way there. */
+  moveRun: 'Move to another day or time',
   cancelRun: 'Cancel this run',
   cancelRunQuestion: 'Cancel this run?',
   cancelRunConsequence:
@@ -431,7 +459,7 @@ export const COPY = {
   // --- Assign (PRD cap 6's fallback, I20's staff exemption) ----------------
   assign: 'Set a driver',
   assignHeading: 'Who is driving?',
-  assignHint: 'A run does not need a driver — leave it open and anyone can claim it.',
+  assignHint: 'A run does not need a driver. Leave it open and anyone can claim it.',
   assignAnyway: 'Assign anyway',
   assigned: (name: string) => `${name} is on this run.`,
   clearDriver: 'Take the driver off',
@@ -444,24 +472,36 @@ export const COPY = {
   checkingDriver: 'Checking…',
 
   // --- Route builder (S1.6: "an ordered list of stores") -------------------
-  routesHeading: 'Routes',
+  routesHeading: 'Route templates',
   routeNew: 'New route',
   routeName: 'Route name',
-  routeStops: 'Stores, in the order the driver drives them',
+  /** D19. A DEFAULT for `shift.staff_note`, not a fifth note channel: PRD cap 11 and
+   *  the locked `domain-modeling.md §2.2` enumerate four channels and say none share
+   *  storage, so a fifth would contradict a locked doc. This lands in channel 2
+   *  (coordinator→driver) when a run is created and stops mattering afterwards, the
+   *  same way `recurrence_pattern.owner_default_id` defaults an owner. */
+  routeDefaultNote: 'Default note for the driver (optional)',
+  routeDefaultNoteHint:
+    'New runs on this route start with this note, and you can change it before publishing. Runs already on the board keep the note they have.',
+  /** "Suggested", because it is: the driver may reorder their own stops mid-run
+   *  (S1.5), and I6 snapshots the order at start, so this list is what a run begins
+   *  with rather than what it has to end with. */
+  routeStops: 'Suggested order for the driver',
   routeAdd: 'Add a store',
   routeSave: 'Save the route',
   routeSaved: 'Route saved.',
   routeEmpty: 'No routes yet.',
-  routeEmptyBody: 'Build one from your stores — a run needs a route before you can publish it.',
+  routeEmptyBody: 'Build one from your stores. A run needs a route before you can publish it.',
   routeNoStops: 'Add at least one store.',
   routeNoName: 'Give the route a name.',
   routeStopsEmpty: 'No stores on this route yet.',
   routeAddEmpty: 'Every store is already on this route.',
-  routeGoneStore: 'This store was removed — swap it out.',
-  dragHint:
-    'Drag a store to reorder it, or focus its handle and press the up and down arrow keys.',
-  /** The handle is the whole reorder control now, so it carries the instructions
-   *  a screen-reader user would otherwise have got from two named buttons. */
+  routeGoneStore: 'This store was removed. Swap it out.',
+  /** The visible "drag it, or arrow-key the handle" line is gone (D21): it named
+   *  the two gestures the handle already advertises by being a draggable button.
+   *  The aria text below stays and is NOT the same thing — the arrow keys are the
+   *  only reorder a keyboard or screen-reader user has (`StopRow` still handles
+   *  ArrowUp/ArrowDown), and nothing on screen says so. */
   reorderHandle: (name: string, position: number, total: number) =>
     `Reorder ${name}, ${position} of ${total}. Press the up and down arrow keys to move it.`,
   removeStop: 'Remove',
@@ -477,14 +517,14 @@ export const COPY = {
     'If any run has ever used it, it is archived instead and kept for the records.',
   routeRemoveGo: 'Delete it',
   routeDeleted: 'Route deleted.',
-  routeArchivedToast: 'Route archived — past runs still show it.',
+  routeArchivedToast: 'Route archived. Past runs still show it.',
   stopCount: (count: number) => (count === 1 ? '1 store' : `${count} stores`),
 
   // --- The soft duplicate check (never a refusal) --------------------------
   duplicate: (count: number) =>
     count === 1
-      ? 'There is already a run on that route at that time. This one was still published — check you meant both.'
-      : `There are already ${count} runs on that route at those times. These were still published — check you meant both.`,
+      ? 'There is already a run on that route at that time. This one was still published, so check you meant both.'
+      : `There are already ${count} runs on that route at those times. These were still published, so check you meant both.`,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -645,7 +685,7 @@ export function patternSentence(
   if (days === null) return null;
   const first = firstOccurrence(form.weekdays, form.startTime, today, nowClock, form.endDate);
   if (first === null) {
-    return `${days}, but the end date you picked is before the first run — pick a later one.`;
+    return `${days}, but the end date you picked is before the first run. Pick a later one.`;
   }
   const ending =
     form.endDate === null ? 'no end' : `until ${formatShortDate(form.endDate, today)}`;
@@ -757,15 +797,24 @@ export interface RouteForm {
   /** Null while building a new route. */
   routeId: string | null;
   name: string;
+  /** D19's default for `shift.staff_note`. Empty means no default — the wire
+   *  carries `null` for that, because on a PATCH it has to CLEAR the stored one. */
+  defaultStaffNote: string;
   stops: StopDraft[];
 }
 
-export const EMPTY_ROUTE: RouteForm = { routeId: null, name: '', stops: [] };
+export const EMPTY_ROUTE: RouteForm = {
+  routeId: null,
+  name: '',
+  defaultStaffNote: '',
+  stops: [],
+};
 
 export function routeFormOf(route: RouteDetail): RouteForm {
   return {
     routeId: route.id,
     name: route.name,
+    defaultStaffNote: route.defaultStaffNote ?? '',
     stops: [...route.stops]
       .sort((a, b) => a.position - b.position)
       .map((stop: RouteStopSummary) => ({
@@ -851,14 +900,65 @@ export function validateRoute(form: RouteForm): string | null {
  *  client can never submit a sparse or colliding sequence. */
 export function buildRouteCreate(form: RouteForm): CreateRouteRequest | null {
   if (validateRoute(form) !== null) return null;
-  return { name: form.name.trim(), stops: form.stops.map((stop) => stop.donorId) };
+  return {
+    name: form.name.trim(),
+    stops: form.stops.map((stop) => stop.donorId),
+    defaultStaffNote: emptyToNull(form.defaultStaffNote),
+  };
 }
 
 /** A present `stops` REPLACES the whole ordered list — one save covers add,
  *  remove and reorder together. */
 export function buildRouteUpdate(form: RouteForm): UpdateRouteRequest | null {
   if (validateRoute(form) !== null) return null;
-  return { name: form.name.trim(), stops: form.stops.map((stop) => stop.donorId) };
+  return {
+    name: form.name.trim(),
+    stops: form.stops.map((stop) => stop.donorId),
+    // Always present, and `null` when cleared: an omitted field leaves the stored
+    // default alone, so emptying the box has to say so explicitly.
+    defaultStaffNote: emptyToNull(form.defaultStaffNote),
+  };
+}
+
+function emptyToNull(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * The default note a route carries, or `''` when it has none.
+ *
+ * D19 is a default for the EXISTING `shift.staff_note` channel (PRD cap 11), not a
+ * fifth channel: the route's text is copied into the publish form so staff can read
+ * and change it before the run is created, and the run then owns its own note. A
+ * published run is never rewritten by a later edit of the route — the same one-way
+ * relationship `recurrence_pattern.owner_default_id` has with an owner.
+ *
+ * Repeating runs need no equivalent here: `services/recurrence.ts` reads the route's
+ * default when it mints an instance, so there is no note field on the pattern form
+ * for this to prefill.
+ */
+export function routeDefaultNote(
+  routes: readonly RouteDetail[],
+  routeId: string | null,
+): string {
+  if (routeId === null) return '';
+  return routes.find((route) => route.id === routeId)?.defaultStaffNote ?? '';
+}
+
+/**
+ * The note the publish form should hold after the route changes.
+ *
+ * Staff's own typing wins. The default is written only into a field that is empty or
+ * still carrying the route staff just moved off — otherwise a coordinator who wrote
+ * a note and then corrected the route would silently lose it.
+ */
+export function noteAfterRouteChange(
+  current: string,
+  previousDefault: string,
+  nextDefault: string,
+): string {
+  return current.trim() === '' || current === previousDefault ? nextDefault : current;
 }
 
 /** Routes a run can be published on. An archived route is hidden from new use
@@ -903,15 +1003,32 @@ export function groupRunsByDay(runs: readonly ShiftSummary[], today: string): Ru
 }
 
 /**
- * Whether opening this run has to ask "just this date, or the weekly pattern?".
+ * Whether this run's editor has to offer a scope at all.
  *
  * PRD cap 4: editing a single recurring instance must not break the pattern. The
- * question is what keeps the two apart, and I23/I24 are what make the answer
+ * scope is what keeps the two apart, and I23/I24 are what make the answer
  * meaningful — a per-run edit never reaches the pattern, and only the explicit
- * pattern edit changes it.
+ * pattern edit changes it. What moved is only WHEN it is asked: the choice used to
+ * be a modal in front of the editor and is now a control inside it, defaulted to
+ * the per-run scope. The save path still branches on it, so both invariants hold
+ * for the same reason they did before.
  */
 export function needsEditScope(run: ShiftSummary): boolean {
   return run.recurrencePatternId !== null;
+}
+
+/**
+ * The pattern scope's label: "Every Tuesday".
+ *
+ * Named from the run's own `occurrenceDate` rather than from the stored rule,
+ * because `ShiftSummary` carries the pattern's id and nothing else — and a weekly
+ * rule that minted this run necessarily fires on this run's weekday (§5.3). A rule
+ * on two weekdays is therefore named by the one staff is standing on, which is the
+ * occurrence they opened; the pattern editor itself shows the full rule.
+ */
+export function patternScopeLabel(run: ShiftSummary): string {
+  const weekday = WEEKDAY_NAMES[isoWeekdayOf(run.occurrenceDate) - 1];
+  return weekday === undefined ? COPY.editThePattern : COPY.scopePattern(weekday);
 }
 
 /** Mirrors `assignDriver`'s own gate: a run under way cannot change hands

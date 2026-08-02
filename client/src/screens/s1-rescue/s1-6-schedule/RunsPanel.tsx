@@ -5,13 +5,20 @@
 // has a single high-emphasis button. That is why "Publish a run" opens a form rather
 // than the form sitting permanently above a list that has its own Save.
 //
-// A run minted from a repeating pattern asks the question PRD cap 4 requires before
-// it opens anything: "Edit just this date, or the weekly pattern?". The two are
-// different operations on different rows — I23 keeps a per-run edit off the pattern,
-// I24 makes the pattern edit the only thing that changes it — and the prompt is what
-// stops staff performing one while intending the other.
+// THE EDITOR OPENS INSIDE THE ROW IT BELONGS TO. It used to render above the whole
+// list, which pushed every row down and left staff reading an editor with no visible
+// tie to the run it was editing — on a list grouped by day, with several runs a day,
+// that is a real chance of editing the wrong one. It now renders in the `<li>` of the
+// selected run, under that row.
+//
+// A run minted from a repeating pattern no longer answers PRD cap 4's question before
+// it opens anything. The choice — this date, or the weekly pattern — moved INTO the
+// editor (`RunEditor`), which is where the invariants it protects are documented:
+// I23 keeps a per-run edit off the pattern, I24 makes the pattern edit the only thing
+// that changes it, and the editor's save path still branches on an explicit scope.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   Button,
   EmptyState,
@@ -19,7 +26,6 @@ import {
   List,
   ListItem,
   ListRow,
-  Modal,
   SkeletonRows,
   StatusChip,
 } from '../../../components/index.ts';
@@ -28,27 +34,19 @@ import type { RouteDetail, ShiftSummary } from '../../../api/shared.ts';
 import { PublishForm } from './PublishForm.tsx';
 import { RunEditor } from './RunEditor.tsx';
 import { fetchRoutes, fetchRuns } from './api.ts';
-import {
-  COPY,
-  formatInstantRange,
-  groupRunsByDay,
-  needsEditScope,
-  pantryToday,
-} from './logic.ts';
+import { COPY, formatInstantRange, groupRunsByDay, pantryToday } from './logic.ts';
 
 type Mode = { kind: 'list' } | { kind: 'publish' } | { kind: 'edit'; shiftId: string };
 
 export interface RunsPanelProps {
-  /** Switch to the Repeating tab with this pattern loaded — "Edit the weekly
-   *  pattern". */
+  /** Switch to the Recurring runs tab with this pattern loaded — "Edit the weekly
+   *  pattern". Passed through to the editor, where the scope is chosen. */
   onEditPattern: (patternId: string) => void;
 }
 
 export function RunsPanel({ onEditPattern }: RunsPanelProps) {
   const { timezone } = useSession();
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
-  /** The scope prompt for a repeating run, held until staff answers it. */
-  const [scopeFor, setScopeFor] = useState<ShiftSummary | null>(null);
 
   // Today at the PANTRY, not on this machine (A120): it bounds which runs are
   // fetched and which days the publish form offers, and a staff laptop in another
@@ -79,11 +77,6 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
     }
   }, [mode, runs.data, editing]);
 
-  const open = (run: ShiftSummary) => {
-    if (needsEditScope(run)) setScopeFor(run);
-    else setMode({ kind: 'edit', shiftId: run.id });
-  };
-
   return (
     <div className="s16-panel">
       <div className="s16-panel__head">
@@ -112,20 +105,6 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
         </>
       ) : null}
 
-      {mode.kind === 'edit' && editing !== null ? (
-        // Keyed by the run: the editor holds the note field's draft in local state,
-        // and switching runs without remounting would show one run's note over
-        // another's.
-        <RunEditor
-          key={editing.id}
-          run={editing}
-          today={today}
-          timeZone={timezone}
-          onChanged={runs.reload}
-          onClose={() => setMode({ kind: 'list' })}
-        />
-      ) : null}
-
       <RunsList
         groups={groups}
         showLoading={runs.showLoading}
@@ -133,42 +112,25 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
         onRetry={runs.reload}
         timeZone={timezone}
         selectedId={mode.kind === 'edit' ? mode.shiftId : null}
-        onOpen={open}
+        onOpen={(run) => setMode({ kind: 'edit', shiftId: run.id })}
+        // Rendered inside the selected row rather than passed as an element, so the
+        // list does not have to know what an editor is. Keyed by the run: the editor
+        // holds the note draft and the chosen scope in local state, and switching
+        // runs without remounting would carry one run's draft onto another.
+        renderEditor={(run) => (
+          <div className="s16-list-editor">
+            <RunEditor
+              key={run.id}
+              run={run}
+              today={today}
+              timeZone={timezone}
+              onChanged={runs.reload}
+              onClose={() => setMode({ kind: 'list' })}
+              onEditPattern={onEditPattern}
+            />
+          </div>
+        )}
       />
-
-      {scopeFor !== null ? (
-        <Modal
-          question={COPY.editScopeQuestion}
-          onCancel={() => setScopeFor(null)}
-          actions={
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setMode({ kind: 'edit', shiftId: scopeFor.id });
-                  setScopeFor(null);
-                }}
-              >
-                {COPY.editThisDate}
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  // Non-null by construction: the prompt only opens for a run that
-                  // came from a pattern (`needsEditScope`).
-                  const patternId = scopeFor.recurrencePatternId;
-                  setScopeFor(null);
-                  if (patternId !== null) onEditPattern(patternId);
-                }}
-              >
-                {COPY.editThePattern}
-              </Button>
-            </>
-          }
-        >
-          {COPY.editScopeConsequence}
-        </Modal>
-      ) : null}
     </div>
   );
 }
@@ -185,6 +147,8 @@ interface RunsListProps {
   timeZone: string | null;
   selectedId: string | null;
   onOpen: (run: ShiftSummary) => void;
+  /** Drawn inside the selected run's own list item, under its row. */
+  renderEditor: (run: ShiftSummary) => ReactNode;
 }
 
 function RunsList({
@@ -195,6 +159,7 @@ function RunsList({
   timeZone,
   selectedId,
   onOpen,
+  renderEditor,
 }: RunsListProps) {
   if (showLoading && groups.length === 0) return <SkeletonRows rows={5} label="Loading runs" />;
   if (error) return <ErrorBlock error={error} onRetry={onRetry} />;
@@ -228,14 +193,25 @@ function RunsList({
                       ) : null}
                     </>
                   }
-                  side={<StatusChip status={run.status} />}
+                  side={
+                    <>
+                      <StatusChip status={run.status} />
+                      {/* The whole row is the target (§3), so this names what the
+                          row does rather than being a second control inside it.
+                          Hidden from the reader, which has the row's own label. */}
+                      <span className="s16-run__edit" aria-hidden="true">
+                        {COPY.moveDateTime}
+                      </span>
+                    </>
+                  }
                   onClick={() => onOpen(run)}
                   ariaLabel={
                     run.id === selectedId
-                      ? `${run.routeName} — open below`
+                      ? `${run.routeName}, open for editing`
                       : `${run.routeName}, ${group.heading}`
                   }
                 />
+                {run.id === selectedId ? renderEditor(run) : null}
               </ListItem>
             ))}
           </List>

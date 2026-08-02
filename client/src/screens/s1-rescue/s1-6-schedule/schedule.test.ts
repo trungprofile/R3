@@ -29,6 +29,7 @@ import {
   assignIsBlocked,
   buildPatternCreate,
   buildPublish,
+  buildRouteCreate,
   buildRouteUpdate,
   canCancelRun,
   canMoveRun,
@@ -47,12 +48,15 @@ import {
   moveStop,
   moveStopTo,
   needsEditScope,
+  noteAfterRouteChange,
   pantryClock,
   pantryToday,
   patternLine,
+  patternScopeLabel,
   patternSentence,
   pickRangeDay,
   removeStop,
+  routeDefaultNote,
   routeFormOf,
   schedulableRoutes,
   toggleWeekday,
@@ -106,6 +110,8 @@ function donor(over: Partial<DonorSummary> = {}): DonorSummary {
     address: '1 Main St',
     contact: null,
     note: null,
+    mapUrl: null,
+    hasPhoto: false,
     active: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...over,
@@ -129,6 +135,7 @@ function route(over: Partial<RouteDetail> = {}): RouteDetail {
   return {
     id: 'r1',
     name: 'Riverside',
+    defaultStaffNote: null,
     active: true,
     stopCount: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -501,14 +508,56 @@ describe('the route builder', () => {
   });
 
   it('asks for a name and at least one store', () => {
-    expect(validateRoute({ routeId: null, name: '  ', stops })).toBe(COPY.routeNoName);
-    expect(validateRoute({ routeId: null, name: 'North', stops: [] })).toBe(COPY.routeNoStops);
-    expect(validateRoute({ routeId: null, name: 'North', stops })).toBeNull();
+    const base = { routeId: null, defaultStaffNote: '' };
+    expect(validateRoute({ ...base, name: '  ', stops })).toBe(COPY.routeNoName);
+    expect(validateRoute({ ...base, name: 'North', stops: [] })).toBe(COPY.routeNoStops);
+    expect(validateRoute({ ...base, name: 'North', stops })).toBeNull();
   });
 
   it('sends the order as a list of donor ids and no positions', () => {
-    const form: RouteForm = { routeId: 'r1', name: '  North  ', stops };
-    expect(buildRouteUpdate(form)).toEqual({ name: 'North', stops: ['a', 'b', 'c'] });
+    const form: RouteForm = {
+      routeId: 'r1',
+      name: '  North  ',
+      defaultStaffNote: '',
+      stops,
+    };
+    expect(buildRouteUpdate(form)).toEqual({
+      name: 'North',
+      stops: ['a', 'b', 'c'],
+      // D19: present and null rather than omitted, because an omitted field would
+      // leave a stored default in place instead of clearing it.
+      defaultStaffNote: null,
+    });
+  });
+
+  it('carries D19’s default note, trimmed, and clears it when emptied', () => {
+    const withNote: RouteForm = {
+      routeId: 'r1',
+      name: 'North',
+      defaultStaffNote: '  Ring the back bell.  ',
+      stops,
+    };
+    expect(buildRouteUpdate(withNote)?.defaultStaffNote).toBe('Ring the back bell.');
+    expect(buildRouteCreate(withNote)?.defaultStaffNote).toBe('Ring the back bell.');
+    expect(buildRouteCreate({ ...withNote, defaultStaffNote: '   ' })?.defaultStaffNote).toBeNull();
+  });
+
+  it('prefills a run’s note from the route, without overwriting staff’s own words', () => {
+    // D19 is a DEFAULT for `shift.staff_note` (PRD cap 11's channel 2), not a fifth
+    // note channel: it is copied at create and the run owns it from there.
+    const routes = [
+      route({ id: 'r1', defaultStaffNote: 'Ring the back bell.' }),
+      route({ id: 'r2', defaultStaffNote: null }),
+    ];
+    expect(routeDefaultNote(routes, 'r1')).toBe('Ring the back bell.');
+    expect(routeDefaultNote(routes, 'r2')).toBe('');
+    expect(routeDefaultNote(routes, null)).toBe('');
+
+    // Empty field, or still holding the route staff just moved off: take the default.
+    expect(noteAfterRouteChange('', '', 'Ring the back bell.')).toBe('Ring the back bell.');
+    expect(noteAfterRouteChange('Old default', 'Old default', 'New default')).toBe('New default');
+    // Anything staff actually typed survives correcting the route.
+    expect(noteAfterRouteChange('Mine', 'Old default', 'New default')).toBe('Mine');
   });
 
   it('reads a stored route back in position order', () => {
@@ -603,11 +652,19 @@ describe('the runs list', () => {
     expect(groups[0]?.heading).toBe('Today, Aug 4');
   });
 
-  it('asks the scope question only for a run that came from a pattern', () => {
+  it('offers the edit scope only for a run that came from a pattern', () => {
     // PRD cap 4: editing one date must not break the pattern. A one-off has nothing
-    // to ask about.
+    // to choose between, so its editor shows no scope control at all.
     expect(needsEditScope(run())).toBe(false);
     expect(needsEditScope(run({ recurrencePatternId: 'p1' }))).toBe(true);
+  });
+
+  it('names the pattern scope by the run own weekday', () => {
+    // The scope control's second option. `ShiftSummary` carries the pattern's id and
+    // nothing else, and a weekly rule that minted this run fires on this run's
+    // weekday (§5.3) — so the label is derived, not fetched.
+    expect(patternScopeLabel(run({ occurrenceDate: '2026-08-04' }))).toBe('Every Tuesday');
+    expect(patternScopeLabel(run({ occurrenceDate: '2026-08-09' }))).toBe('Every Sunday');
   });
 
   it('hides cancel and move once a run has started (I9, I10, cap 9)', () => {
@@ -671,9 +728,22 @@ describe('copy', () => {
     expect(COPY.assignHint).toContain('does not need a driver');
   });
 
-  it('keeps S1.6’s two edit labels verbatim', () => {
-    expect(COPY.editThisDate).toBe('Edit just this date');
+  it('keeps S1.6’s two edit scopes in the copy', () => {
+    // The modal that used to ask this became the editor's own scope control, so the
+    // question is a legend and the pattern half is the hand-off's label. Both
+    // sentences stay verbatim: S1.6 specifies the wording.
+    expect(COPY.editScopeQuestion).toBe('Edit just this date, or the weekly pattern?');
     expect(COPY.editThePattern).toBe('Edit the weekly pattern');
+    // The scope defaults to the per-instance one, which is the reversible choice.
+    expect(COPY.scopeThisRun).toBe('This run');
+  });
+
+  it('says no em dash anywhere a user reads (D21)', () => {
+    // Two sentences or a comma, never a hyphen swap. The en dash in a time RANGE is
+    // a glyph rather than prose and is not this rule's business.
+    for (const sentence of sentences) {
+      expect(sentence).not.toContain('—');
+    }
   });
 
   it('names the consequence on every destructive confirm (§6)', () => {

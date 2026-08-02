@@ -13,10 +13,10 @@
 // instant. The server converts once, against `app_config.timezone`.
 
 import { useState } from 'react';
-import { Button, Card, TextInput } from '../../../components/index.ts';
+import { Button, Card, TextInput, TimeField } from '../../../components/index.ts';
 import { useToast } from '../../../app/index.ts';
 import type { RouteDetail } from '../../../api/shared.ts';
-import { ChoiceList, DayPicker, TimeChoice } from './controls.tsx';
+import { ChoiceList, DayPicker } from './controls.tsx';
 import { publishRun } from './api.ts';
 import {
   COPY,
@@ -24,8 +24,11 @@ import {
   buildPublish,
   duplicateNotice,
   failureMessage,
+  formatTimeLabel,
   minutesOfTime,
   monthOf,
+  noteAfterRouteChange,
+  routeDefaultNote,
   schedulableRoutes,
   timeOptions,
   validatePublish,
@@ -101,7 +104,19 @@ export function PublishForm({ routes, today, onPublished }: PublishFormProps) {
         value={form.routeId}
         onSelect={(routeId) => {
           setProblem(null);
-          setForm((current) => ({ ...current, routeId }));
+          setForm((current) => ({
+            ...current,
+            routeId,
+            // D19: the route's default note is copied into THIS run's note, which
+            // staff may then edit. It is a prefill at create and nothing more — the
+            // run owns its note from here, and a later edit of the route never
+            // reaches it.
+            staffNote: noteAfterRouteChange(
+              current.staffNote,
+              routeDefaultNote(pickable, current.routeId),
+              routeDefaultNote(pickable, routeId),
+            ),
+          }));
         }}
         empty={COPY.routeEmptyBody}
       />
@@ -118,10 +133,11 @@ export function PublishForm({ routes, today, onPublished }: PublishFormProps) {
         }}
       />
 
-      <TimeChoice
+      <TimeField
         label={COPY.publishStart}
         value={form.startTime}
         options={times}
+        format={formatTimeLabel}
         onSelect={(startTime) => {
           setProblem(null);
           setForm((current) => ({
@@ -138,10 +154,11 @@ export function PublishForm({ routes, today, onPublished }: PublishFormProps) {
         }}
       />
 
-      <TimeChoice
+      <TimeField
         label={COPY.publishEnd}
         value={form.endTime}
         options={laterTimes}
+        format={formatTimeLabel}
         onSelect={(endTime) => {
           setProblem(null);
           setForm((current) => ({ ...current, endTime }));

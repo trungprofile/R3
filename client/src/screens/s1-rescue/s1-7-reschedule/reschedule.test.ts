@@ -226,20 +226,23 @@ describe('calendar arithmetic', () => {
 // ---------------------------------------------------------------------------
 
 describe('timeOptions', () => {
-  it('runs half-hourly from 5am to 10pm', () => {
+  it('runs quarter-hourly from 5am to 10pm, the same steps S1.6 publishes on', () => {
     const options = timeOptions();
     expect(options[0]).toBe('05:00');
-    expect(options[1]).toBe('05:30');
+    expect(options[1]).toBe('05:15');
     expect(options.at(-1)).toBe('22:00');
-    expect(options).toHaveLength(35);
+    // 17 hours at four steps an hour, plus the closing 22:00.
+    expect(options).toHaveLength(69);
   });
 
   it('carries a run own odd time so moving the day cannot change the hours', () => {
-    // A run at 9:15 is not on the half-hour grid. Without this, its own time would be
-    // unselectable and changing only the DAY would silently change the window too.
-    const options = timeOptions(['09:15']);
-    expect(options).toContain('09:15');
-    expect(options.indexOf('09:15')).toBe(options.indexOf('09:00') + 1);
+    // 9:07 is on no grid this screen offers. Without `include`, a run standing at
+    // that minute would find its own time unselectable, and changing only the DAY
+    // would silently change the window too. (9:15 no longer demonstrates this: the
+    // quarter-hour list carries it.)
+    const options = timeOptions(['09:07']);
+    expect(options).toContain('09:07');
+    expect(options.indexOf('09:07')).toBe(options.indexOf('09:00') + 1);
   });
 
   it('does not duplicate a time the grid already has', () => {
@@ -258,7 +261,7 @@ describe('withStartTime', () => {
     expect(withStartTime(form, '11:00')).toEqual({
       date: '2026-08-04',
       startTime: '11:00',
-      endTime: '11:30',
+      endTime: '11:15',
     });
   });
 });
@@ -440,6 +443,14 @@ describe('copy', () => {
       expect(sentence.toLowerCase()).not.toContain('notif');
       expect(sentence.toLowerCase()).not.toContain('alert');
       expect(sentence.toLowerCase()).not.toContain('we told');
+    }
+  });
+
+  it('says no em dash anywhere a user reads (D21)', () => {
+    // Two sentences or a comma, never a hyphen swap. The en dash inside a time RANGE
+    // is a glyph rather than prose and is not this rule's business.
+    for (const sentence of sentences) {
+      expect(sentence).not.toContain('—');
     }
   });
 

@@ -38,7 +38,7 @@ import type { ScreenProps } from '../../../app/index.ts';
 import type { ShiftDetail, ShiftSummary } from '../../../api/shared.ts';
 import { fetchRun, moveRun } from './api.ts';
 import { DayPicker } from './DayPicker.tsx';
-import { TimeGrid } from './TimeGrid.tsx';
+import { TimePick } from './TimePick.tsx';
 import {
   COPY,
   buildRequest,
@@ -196,7 +196,6 @@ function MoveRun({ run, timeZone, onStale, onDone }: MoveRunProps) {
 
           <fieldset className="s17-days">
             <legend className="s17-label">{COPY.dateLabel}</legend>
-            <p className="s17-hint">{COPY.dayHint}</p>
             <DayPicker
               value={form.date}
               month={month}
@@ -210,8 +209,10 @@ function MoveRun({ run, timeZone, onStale, onDone }: MoveRunProps) {
             />
           </fieldset>
 
+          {/* Kept under D21: the times are the PANTRY's, which the control cannot
+              show and a coordinator in another zone would otherwise assume wrong. */}
           <p className="s17-hint">{COPY.timeHint}</p>
-          <TimeGrid
+          <TimePick
             label={COPY.startLabel}
             value={form.startTime}
             options={starts}
@@ -220,7 +221,7 @@ function MoveRun({ run, timeZone, onStale, onDone }: MoveRunProps) {
               setForm((state) => withStartTime(state, time));
             }}
           />
-          <TimeGrid
+          <TimePick
             label={COPY.endLabel}
             value={form.endTime}
             options={ends}

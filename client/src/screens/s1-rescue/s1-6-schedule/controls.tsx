@@ -1,4 +1,4 @@
-// The four input controls S1.6 needs that `components/index.ts` does not export.
+// The three input controls S1.6 needs that `components/index.ts` does not export.
 //
 // They live here, inside this screen's own folder, because build-plan §3 makes
 // `client/src/components/` single-owner and a lane may not add to it. If a second
@@ -13,13 +13,7 @@
 // None of them ever produces an instant. A day is `YYYY-MM-DD` and a time is
 // `HH:MM`, both pantry-local, both passed to the server as text (`logic.ts` header).
 
-import {
-  WEEKDAY_INITIALS,
-  WEEKDAY_NAMES,
-  formatMonthLabel,
-  formatTimeLabel,
-  monthGrid,
-} from './logic.ts';
+import { WEEKDAY_INITIALS, WEEKDAY_NAMES, formatMonthLabel, monthGrid } from './logic.ts';
 
 // ---------------------------------------------------------------------------
 // A month of days
@@ -158,40 +152,13 @@ export function DayPicker({
   );
 }
 
-// ---------------------------------------------------------------------------
-// A grid of times
-// ---------------------------------------------------------------------------
-
-export function TimeChoice({
-  label,
-  value,
-  options,
-  onSelect,
-}: {
-  label: string;
-  value: string | null;
-  options: readonly string[];
-  onSelect: (time: string) => void;
-}) {
-  return (
-    <fieldset className="s16-times">
-      <legend className="s16-label">{label}</legend>
-      <div className="s16-times__grid">
-        {options.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={`s16-time${option === value ? ' s16-time--active' : ''}`}
-            aria-pressed={option === value}
-            onClick={() => onSelect(option)}
-          >
-            {formatTimeLabel(option)}
-          </button>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
+// The times used to be here too, as `TimeChoice` — a grid of every option, twice
+// per form. `timeOptions()` is quarter-hourly now, which would have made it 138
+// buttons on the publish form alone, so both fields moved to
+// `components/TimeField.tsx`: one trigger showing the chosen time, a list that
+// opens on demand. Still not a dropdown widget and still not a native time input.
+// Nothing outside this screen used `TimeChoice` — S1.4 has its own copy of the
+// grid, for its own coarser half-hour away windows.
 
 // ---------------------------------------------------------------------------
 // Days of the week

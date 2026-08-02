@@ -20,10 +20,10 @@
 // difference is which call it makes and what the response has to report.
 
 import { useState } from 'react';
-import { Button, Card } from '../../../components/index.ts';
+import { Button, Card, TimeField } from '../../../components/index.ts';
 import { useSession, useToast } from '../../../app/index.ts';
 import type { RouteDetail, UpdatePatternResponse } from '../../../api/shared.ts';
-import { ChoiceList, DayPicker, TimeChoice, WeekdayChoice } from './controls.tsx';
+import { ChoiceList, DayPicker, WeekdayChoice } from './controls.tsx';
 import { createPattern, updatePattern } from './api.ts';
 import {
   COPY,
@@ -31,6 +31,7 @@ import {
   buildPatternUpdate,
   duplicateNotice,
   failureMessage,
+  formatTimeLabel,
   minutesOfTime,
   monthOf,
   pantryClock,
@@ -141,10 +142,11 @@ export function PatternForm({ form, onChange, routes, onSaved }: PatternFormProp
         }}
       />
 
-      <TimeChoice
+      <TimeField
         label={COPY.publishStart}
         value={form.startTime}
         options={times}
+        format={formatTimeLabel}
         onSelect={(picked) => {
           setProblem(null);
           onChange({
@@ -158,10 +160,11 @@ export function PatternForm({ form, onChange, routes, onSaved }: PatternFormProp
         }}
       />
 
-      <TimeChoice
+      <TimeField
         label={COPY.publishEnd}
         value={form.endTime}
         options={laterTimes}
+        format={formatTimeLabel}
         onSelect={(endTime) => {
           setProblem(null);
           onChange({ ...form, endTime });

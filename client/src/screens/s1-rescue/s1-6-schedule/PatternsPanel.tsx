@@ -1,8 +1,10 @@
-// The Repeating runs tab: the builder, the list of repeating runs, and staff's
+// The Recurring runs tab: the builder, the list of repeating runs, and staff's
 // bulk-terminate.
 //
 // One primary action per mode (§1.1), same as the Runs tab: the list's primary opens
-// the builder, and the builder's primary saves.
+// the builder, and the builder's primary saves. The builder for an EXISTING rule
+// renders inside that rule's own list row, so it appears where staff clicked instead
+// of above a list that shifts down under them.
 //
 // The terminate range is the one destructive thing on this screen that is not a
 // single row, so its confirm names the consequence twice over: these runs cannot come
@@ -12,6 +14,7 @@
 // `domain-modeling.md §5.3`, not of this screen.
 
 import { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   Button,
   Card,
@@ -82,26 +85,17 @@ export function PatternsPanel({ editPatternId, onEditConsumed }: PatternsPanelPr
         ) : null}
       </div>
 
-      {form !== null ? (
+      {/* A NEW repeating run has no row to open inside, so it builds at the top —
+          the one case where the editor is not attached to a list item. */}
+      {form !== null && form.patternId === null ? (
         <>
-          {/* Both are keyed by which repeating run is open: each holds a month and a
-              draft range in local state, and switching between two patterns without
-              remounting would carry one's working state onto the other. */}
           <PatternForm
-            key={form.patternId ?? 'new'}
+            key="new"
             form={form}
             onChange={setForm}
             routes={routes.data ?? []}
             onSaved={patterns.reload}
           />
-          {form.patternId !== null ? (
-            <TerminateRangeForm
-              key={`terminate-${form.patternId}`}
-              patternId={form.patternId}
-              today={today}
-              onTerminated={patterns.reload}
-            />
-          ) : null}
           <Button variant="secondary" onClick={() => setForm(null)}>
             Back to the list
           </Button>
@@ -116,6 +110,32 @@ export function PatternsPanel({ editPatternId, onEditConsumed }: PatternsPanelPr
         onRetry={patterns.reload}
         selectedId={form?.patternId ?? null}
         onOpen={(pattern) => setForm(patternFormOf(pattern))}
+        // Drawn inside the open repeating run's own list item. Both children are
+        // keyed by which pattern it is: each holds a month and a draft range in
+        // local state, and switching between two patterns without remounting would
+        // carry one's working state onto the other.
+        renderEditor={(pattern) =>
+          form === null || form.patternId !== pattern.id ? null : (
+            <div className="s16-list-editor">
+              <PatternForm
+                key={pattern.id}
+                form={form}
+                onChange={setForm}
+                routes={routes.data ?? []}
+                onSaved={patterns.reload}
+              />
+              <TerminateRangeForm
+                key={`terminate-${pattern.id}`}
+                patternId={pattern.id}
+                today={today}
+                onTerminated={patterns.reload}
+              />
+              <Button variant="secondary" onClick={() => setForm(null)}>
+                Back to the list
+              </Button>
+            </div>
+          )
+        }
       />
     </div>
   );
@@ -133,6 +153,7 @@ function PatternList({
   onRetry,
   selectedId,
   onOpen,
+  renderEditor,
 }: {
   patterns: readonly RecurrencePatternSummary[];
   today: string;
@@ -141,9 +162,11 @@ function PatternList({
   onRetry: () => void;
   selectedId: string | null;
   onOpen: (pattern: RecurrencePatternSummary) => void;
+  /** Drawn inside the open repeating run's own list item, under its row. */
+  renderEditor: (pattern: RecurrencePatternSummary) => ReactNode;
 }) {
   if (showLoading && patterns.length === 0) {
-    return <SkeletonRows rows={3} label="Loading repeating runs" />;
+    return <SkeletonRows rows={3} label="Loading recurring runs" />;
   }
   if (error) return <ErrorBlock error={error} onRetry={onRetry} />;
   if (patterns.length === 0) {
@@ -167,10 +190,11 @@ function PatternList({
             onClick={() => onOpen(pattern)}
             ariaLabel={
               pattern.id === selectedId
-                ? `${pattern.routeName} — open above`
+                ? `${pattern.routeName}, open for editing`
                 : `${pattern.routeName}, ${patternLine(pattern, today)}`
             }
           />
+          {pattern.id === selectedId ? renderEditor(pattern) : null}
         </ListItem>
       ))}
     </List>

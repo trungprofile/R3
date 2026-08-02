@@ -65,7 +65,10 @@ export const COPY = {
   ownerKept: (owner: string) => `${owner} keeps this run.`,
   noOwner: 'No driver has taken this run yet.',
 
-  dayHint: 'Pick the new day.',
+  /** No day hint. "Pick the new day." said what the legend and the calendar under
+   *  it already said (D21). `timeHint` stays: which clock the times are read
+   *  against is not on the control, and a coordinator in another zone would
+   *  otherwise assume their own (A120). */
   timeHint: "The pantry's clock, not your own.",
 
   endBeforeStart: 'The end time has to be later in the day than the start time.',
@@ -87,7 +90,7 @@ export const COPY = {
    */
   releaseQuestion: 'Move it anyway?',
   releaseNoReplacement:
-    'Nobody is picked to take over — it goes back on the board as open for a driver to claim.',
+    'Nobody is picked to take over. It goes back on the board as open for a driver to claim.',
   /** "Release" is the word S1.3 already uses for a run going back to the board, so
    *  the button says what happens rather than merely agreeing. */
   releaseConfirm: 'Move it and release the run',
@@ -342,18 +345,24 @@ export function formatWhen(run: ShiftSummary, timeZone: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Half-hour steps, 5:00am to 10:00pm — the hours a food-rescue run can fall in. A
- * finer grid is a fragile control (§1.5) and a coarser one cannot express a 9:30
- * run.
+ * Quarter-hour steps, 5:00am to 10:00pm, the hours a food-rescue run can fall in.
  *
- * `include` adds times the grid does not carry, which is what lets a run already
- * standing at 9:15 be moved to another day WITHOUT its own time silently becoming
- * unselectable — and therefore without the form quietly changing a window the
- * coordinator never touched.
+ * It was half-hourly until QA asked for quarter-hours, which S1.6 got at the same
+ * time. Both screens step by the same amount deliberately: staff who publish a run
+ * at 9:15 and then move it should not find that the second screen cannot express
+ * the time the first one just accepted.
+ *
+ * A finer grid than this is a fragile control (§1.5), which is why the list is a
+ * `TimeField` that opens on demand rather than 69 buttons on the form.
+ *
+ * `include` adds times the list does not carry, which is what lets a run already
+ * standing at an odd minute be moved to another day WITHOUT its own time silently
+ * becoming unselectable, and therefore without the form quietly changing a window
+ * the coordinator never touched.
  */
 export function timeOptions(include: readonly string[] = []): string[] {
   const minutes = new Set<number>();
-  for (let step = 5 * 60; step <= 22 * 60; step += 30) minutes.add(step);
+  for (let step = 5 * 60; step <= 22 * 60; step += 15) minutes.add(step);
   for (const time of include) {
     const parsed = minutesOfTime(time);
     if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 24 * 60) minutes.add(parsed);
