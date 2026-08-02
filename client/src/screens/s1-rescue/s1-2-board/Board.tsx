@@ -14,6 +14,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   EmptyState,
   ErrorBlock,
   List,
@@ -40,9 +42,15 @@ import { claimRun, fetchBoard } from './api.ts';
 import {
   BOARD_FILTERS,
   COPY,
+  formatWeekRange,
   groupByDay,
+  isCurrentWeek,
+  nextWeek,
+  previousWeek,
   skippedLines,
   timeRange,
+  weekEndOf,
+  weekStartOf,
   weekdayName,
   withOptimisticClaim,
 } from './board.ts';
@@ -76,15 +84,39 @@ export function BoardScreen(_props: ScreenProps) {
   const [partial, setPartial] = useState<ClaimResult | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
 
-  // The PANTRY's today, not the device's (A138). This bounds `?from=`, so a device
-  // that has rolled over past midnight would otherwise ask for tomorrow and drop
-  // the runs still open today.
+  // The PANTRY's today, not the device's (A138). It decides which week the board
+  // opens on, so a device that has rolled over past midnight would otherwise land on
+  // next week and show the pantry an empty board.
   const today = todayInZone(timezone);
+
+  /**
+   * Which week is on screen. Null is "this week", resolved on every render rather
+   * than pinned at mount: the pantry's zone arrives with the session (A120), so a
+   * Monday computed once would be the DEVICE's Monday and would never correct
+   * itself. Once someone steps a week it is explicit from then on — the same shape
+   * S3.1 uses for the report's week.
+   *
+   * The window is Monday to Sunday (A178), which is `weekBounds()` on the server and
+   * therefore the week S3.1 reports on. Staff cross-check the board against the
+   * report, and two screens disagreeing about which seven days "this week" means
+   * would make that comparison quietly wrong.
+   */
+  const [pinnedWeek, setPinnedWeek] = useState<string | null>(null);
+  const weekStart = pinnedWeek ?? weekStartOf(today);
+  const weekEnd = weekEndOf(weekStart);
+
   const load = useCallback(
-    (signal: AbortSignal) => fetchBoard(filter, today, signal),
-    [filter, today],
+    (signal: AbortSignal) => fetchBoard(filter, weekStart, weekEnd, signal),
+    [filter, weekStart, weekEnd],
   );
   const state = useAsyncData<ShiftSummary[]>(load);
+
+  // A partial-claim summary belongs to the week it happened in; carrying it across
+  // would leave a Monday's skipped dates sitting above a different week's runs.
+  function goToWeek(next: string | null) {
+    setPinnedWeek(next);
+    setPartial(null);
+  }
 
   // The optimistic row stands until the server's own answer replaces it. Dropping
   // it the moment the request resolves would flash the run back to OPEN for as long
@@ -158,6 +190,36 @@ export function BoardScreen(_props: ScreenProps) {
     <div className="r3-board">
       <div className="r3-board__head">
         <h1 className="r3-board__title">{COPY.header}</h1>
+
+        {/* Which week, then which runs within it. The two controls are stacked in
+            that order because the week is the wider cut: changing it changes what
+            All · Open · Mine is filtering. S3.1's week nav is the same three-target
+            row with the same words. */}
+        <div className="r3-board__week" role="group" aria-label={COPY.weekNavLabel}>
+          <Button
+            variant="secondary"
+            aria-label={COPY.previousWeek}
+            onClick={() => goToWeek(previousWeek(weekStart))}
+          >
+            <ChevronLeftIcon />
+          </Button>
+          <p className="r3-board__week-range">{formatWeekRange(weekStart, weekEnd)}</p>
+          <Button
+            variant="secondary"
+            aria-label={COPY.nextWeek}
+            onClick={() => goToWeek(nextWeek(weekStart))}
+          >
+            <ChevronRightIcon />
+          </Button>
+          {/* Absent while it would do nothing (§3 prefers hiding to disabling), so
+              its presence is itself the signal that you are away from this week. */}
+          {isCurrentWeek(weekStart, today) ? null : (
+            <Button variant="secondary" onClick={() => goToWeek(null)}>
+              {COPY.thisWeek}
+            </Button>
+          )}
+        </div>
+
         <Segmented
           label={COPY.filterLabel}
           options={FILTER_OPTIONS}
@@ -187,6 +249,10 @@ export function BoardScreen(_props: ScreenProps) {
         timeZone={timezone}
         onClaim={onClaim}
         onOpen={(shiftId) => go('shift', { shiftId })}
+        // S1.6 owns the editing; the board only says which run. The id rides in the
+        // query rather than the path so `ROUTES` stays a flat list of screens
+        // (`app/router.tsx`).
+        onEdit={(shiftId) => go('schedule', undefined, { edit: shiftId })}
       />
 
       {scopePrompt ? (
@@ -220,6 +286,7 @@ interface BoardBodyProps {
   timeZone: string | null;
   onClaim: (shift: ShiftSummary) => void;
   onOpen: (shiftId: string) => void;
+  onEdit: (shiftId: string) => void;
 }
 
 function BoardBody({
@@ -232,6 +299,7 @@ function BoardBody({
   timeZone,
   onClaim,
   onOpen,
+  onEdit,
 }: BoardBodyProps) {
   // Loading first, and only after 300ms (§6) — skeleton rows sized like the real
   // ones so the board does not jump when they are replaced.
@@ -255,6 +323,7 @@ function BoardBody({
                   timeZone={timeZone}
                   onClaim={onClaim}
                   onOpen={onOpen}
+                  onEdit={onEdit}
                 />
               </ListItem>
             ))}
@@ -290,9 +359,10 @@ interface RowProps {
   timeZone: string | null;
   onClaim: (shift: ShiftSummary) => void;
   onOpen: (shiftId: string) => void;
+  onEdit: (shiftId: string) => void;
 }
 
-function Row({ row, busy, timeZone, onClaim, onOpen }: RowProps) {
+function Row({ row, busy, timeZone, onClaim, onOpen, onEdit }: RowProps) {
   const { shift } = row;
   const when = timeRange(shift.startsAt, shift.endsAt, timeZone ?? undefined);
   const owner = shift.ownerName ?? COPY.unowned;
@@ -300,6 +370,20 @@ function Row({ row, busy, timeZone, onClaim, onOpen }: RowProps) {
   const chip = (
     <StatusChip status={shift.status} mine={row.mine} atRisk={row.atRisk} />
   );
+
+  // Under the row, never inside it: an open row already carries Claim in its side
+  // slot, and a row that opens S1.3 is itself a `<button>` that cannot nest one.
+  const edit = row.canEdit ? (
+    <div className="r3-board__row-actions">
+      <Button
+        variant="secondary"
+        onClick={() => onEdit(shift.id)}
+        aria-label={COPY.editAria(shift.routeName, when)}
+      >
+        {COPY.edit}
+      </Button>
+    </div>
+  ) : null;
 
   const meta = (
     <>
@@ -314,40 +398,51 @@ function Row({ row, busy, timeZone, onClaim, onOpen }: RowProps) {
   // row's one action is Claim, not "open the detail".
   if (row.action === 'CLAIM') {
     return (
-      <ListRow
-        title={shift.routeName}
-        subtitle={when}
-        meta={meta}
-        side={
-          <span className="r3-board__side">
-            {chip}
-            <Button
-              variant="primary"
-              loading={busy}
-              onClick={() => onClaim(shift)}
-              aria-label={COPY.claimAria(shift.routeName, when)}
-            >
-              {COPY.claim}
-            </Button>
-          </span>
-        }
-      />
+      <div className="r3-board__row">
+        <ListRow
+          title={shift.routeName}
+          subtitle={when}
+          meta={meta}
+          side={
+            <span className="r3-board__side">
+              {chip}
+              <Button
+                variant="primary"
+                loading={busy}
+                onClick={() => onClaim(shift)}
+                aria-label={COPY.claimAria(shift.routeName, when)}
+              >
+                {COPY.claim}
+              </Button>
+            </span>
+          }
+        />
+        {edit}
+      </div>
     );
   }
 
   if (row.action === 'DETAIL') {
     return (
-      <ListRow
-        title={shift.routeName}
-        subtitle={when}
-        meta={meta}
-        side={chip}
-        onClick={() => onOpen(shift.id)}
-      />
+      <div className="r3-board__row">
+        <ListRow
+          title={shift.routeName}
+          subtitle={when}
+          meta={meta}
+          side={chip}
+          onClick={() => onOpen(shift.id)}
+        />
+        {edit}
+      </div>
     );
   }
 
-  return <ListRow title={shift.routeName} subtitle={when} meta={meta} side={chip} />;
+  return (
+    <div className="r3-board__row">
+      <ListRow title={shift.routeName} subtitle={when} meta={meta} side={chip} />
+      {edit}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

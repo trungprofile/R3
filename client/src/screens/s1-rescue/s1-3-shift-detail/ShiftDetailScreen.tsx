@@ -32,6 +32,7 @@ import {
 } from '../../../app/index.ts';
 import type { ScreenProps } from '../../../app/index.ts';
 import {
+  BackLink,
   Button,
   Card,
   EmptyState,
@@ -119,6 +120,9 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
     if (remote.error) {
       return (
         <div className="s13">
+          {/* The run failed to load, so Retry may not be the answer — leaving has to
+              be reachable from here too, not only from the loaded screen. */}
+          <BackLink label="Board" onBack={() => go('board')} />
           <ErrorBlock error={remote.error} onRetry={remote.reload} />
         </div>
       );
@@ -193,6 +197,12 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
 
   return (
     <div className="s13">
+      {/* The way out. Until this, the only `go('board')` on the screen fired after a
+          successful release, so a viewer who was not releasing anything had nothing
+          but the browser's Back button — and on the installed app there is no
+          browser chrome to press. */}
+      <BackLink label="Board" onBack={() => go('board')} />
+
       <header className="s13__head">
         {/* The pantry's day decides whether this run is "Today" (A120), not the
             device's — `occurrenceDate` is stated in the pantry's frame. */}
@@ -232,7 +242,7 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
           <dd>{shift.ownerName ?? COPY.noDriver}</dd>
           <dt>{COPY.truckLabel}</dt>
           {/* I8: no truck until the driver picks one at the start. */}
-          <dd>{shift.truckName ?? COPY.truckUnset}</dd>
+          <dd>{shift.truckName ?? COPY.unset}</dd>
         </dl>
       </Card>
 
@@ -253,12 +263,7 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
             <EmptyState title={COPY.noStops}>{COPY.noStopsBody}</EmptyState>
           )
         ) : (
-          <>
-            <p className="s13-label">
-              {stops.source === 'SNAPSHOT' ? COPY.stopsLive : COPY.stopsPlanned}
-            </p>
-            <StopList view={stops} onReassign={setReassignTarget} />
-          </>
+          <StopList view={stops} onReassign={setReassignTarget} />
         )}
       </section>
 

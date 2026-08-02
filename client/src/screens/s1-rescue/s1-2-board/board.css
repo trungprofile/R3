@@ -28,6 +28,48 @@
 /* The All · Open · Mine filter is `components/Segmented.tsx` (§3) — its styling
  * lives with the component, not here. */
 
+/* --- The week ------------------------------------------------------------- */
+
+/* Three targets in a row, wrapping rather than shrinking: §1.2 wants at least an
+ * 8px gap between adjacent targets, and "This week" joins the row only when the
+ * user is away from it. Mirrors `.s31-week` on the report screen. */
+.r3-board__week {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.r3-board__week-range {
+  /* Takes the middle and centres the dates between the two arrows; the basis is
+   * small enough that a phone still fits all three on one line. */
+  flex: 1 1 8rem;
+  margin: 0;
+  text-align: center;
+  font-size: var(--font-h3);
+}
+
+/* --- Rows ---------------------------------------------------------------- */
+
+/* A row is a `ListRow` plus, for staff, the Edit link under it — a button cannot
+ * nest inside the `<button>` that a tappable row is, so it sits below.
+ *
+ * That makes the separator the WRAPPER's: a line drawn by the row itself would run
+ * between a run and its own Edit link, and the pair would read as two list items. */
+.r3-board__row {
+  border-bottom: 1px solid var(--border);
+}
+
+.r3-board__row .r3-row {
+  border-bottom: 0;
+}
+
+.r3-board__row-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--space-4) var(--space-2);
+}
+
 /* --- Day groups ---------------------------------------------------------- */
 
 .r3-board__day + .r3-board__day {

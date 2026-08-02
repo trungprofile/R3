@@ -509,10 +509,20 @@ describe('copy', () => {
     }
   });
 
-  it('quotes S1.3 conflict banner exactly', () => {
+  it('states the S1.3 conflict banner, repunctuated for D21', () => {
+    // The spec writes this one with an em dash. D21 rules em dashes out of anything
+    // a user reads, so the two clauses became two sentences — same words, same
+    // order. If the spec's copy is ever re-quoted verbatim, this is the mismatch.
     expect(COPY.conflictBanner).toBe(
-      "This run conflicts with your declared availability — contact staff if that's a problem.",
+      "This run conflicts with your declared availability. Contact staff if that's a problem.",
     );
+  });
+
+  it('puts no em dash in anything a user reads (D21)', () => {
+    // `unset` is exempt: it is the empty-value glyph in the Truck field, not prose.
+    for (const sentence of sentences.filter((value) => value !== COPY.unset)) {
+      expect(sentence, sentence).not.toContain('—');
+    }
   });
 
   it('asks S1.3 recurring release question exactly', () => {

@@ -14,13 +14,17 @@ import {
   AT_RISK_LEAD_MS,
   COPY,
   actionFor,
+  canEditRun,
   dayHeading,
+  formatWeekRange,
   groupByDay,
   isAtRisk,
   isoWeekday,
   skippedLines,
   timeRange,
   todayCalendarDate,
+  weekEndOf,
+  weekStartOf,
   weekdayName,
   withOptimisticClaim,
 } from './board.ts';
@@ -279,10 +283,10 @@ describe('partial success (S1.2, PRD cap 6)', () => {
 
   it('says why each run was skipped, in the server own words where it has them', () => {
     expect(skippedLines([skipped(['OWNED_SHIFT_OVERLAP'])])[0]?.reason).toBe(
-      'You already have a run at that time — cancel it first.',
+      'You already have a run at that time. Cancel it first.',
     );
     expect(skippedLines([skipped(['AVAILABILITY_BLOCK'])])[0]?.reason).toBe(
-      "You marked yourself away then — clear that first if you can make it.",
+      "You marked yourself away then. Clear that first if you can make it.",
     );
   });
 
@@ -294,6 +298,56 @@ describe('partial success (S1.2, PRD cap 6)', () => {
 
   it('names the date of each skipped run', () => {
     expect(skippedLines([skipped(['AVAILABILITY_BLOCK'])])[0]?.when).toContain('August 11');
+  });
+});
+
+describe('the week on screen', () => {
+  it('opens on the Monday-to-Sunday week the report cuts (A178)', () => {
+    // A Wednesday. Both screens have to answer this the same way or a coordinator
+    // cross-checking the board against S3.1 is comparing different seven days.
+    const start = weekStartOf('2026-08-05');
+    expect(start).toBe('2026-08-03');
+    expect(weekEndOf(start)).toBe('2026-08-09');
+  });
+
+  it('names the window in the short form, both ends', () => {
+    expect(formatWeekRange('2026-08-03', '2026-08-09')).toBe('Aug 3 – Aug 9');
+  });
+
+  it('spans a month boundary without either end losing its month', () => {
+    expect(formatWeekRange('2026-08-31', '2026-09-06')).toBe('Aug 31 – Sep 6');
+  });
+
+  it('shows an unparseable bound rather than "undefined NaN"', () => {
+    expect(formatWeekRange('not-a-date', '2026-08-09')).toBe('not-a-date – Aug 9');
+  });
+});
+
+describe('the staff Edit link (S1.6)', () => {
+  it('is offered to staff on a run that has not started', () => {
+    expect(canEditRun(shift({ status: 'OPEN' }), coordinator)).toBe(true);
+    expect(canEditRun(shift({ status: 'CLAIMED', ownerId: ME }), coordinator)).toBe(true);
+  });
+
+  it('is never offered to a driver, whatever the run', () => {
+    expect(canEditRun(shift({ status: 'OPEN' }), driver)).toBe(false);
+    expect(canEditRun(shift({ status: 'CLAIMED', ownerId: ME }), driver)).toBe(false);
+  });
+
+  it('is absent once the run has started — the server refuses to move it then', () => {
+    // "Only a run that has not started can be moved." (`services/schedule.ts`), and
+    // I5 has already frozen the stop list by then.
+    expect(canEditRun(shift({ status: 'IN_PROGRESS', ownerId: ME }), coordinator)).toBe(false);
+    // S1.2's "Done" row is `COMPLETED` (§3.1); the spec's word is not the status.
+    expect(canEditRun(shift({ status: 'COMPLETED', ownerId: ME }), coordinator)).toBe(false);
+  });
+
+  it('rides on the row, not on the row action', () => {
+    // A staff row that opens S1.3 is itself a button; Edit has to be a sibling of
+    // the row rather than the row's one action.
+    const [group] = groupByDay([shift({ status: 'OPEN' })], coordinator, Date.now(), '2026-08-04');
+    expect(group?.rows[0]?.canEdit).toBe(true);
+    expect(group?.rows[0]?.action).toBe('DETAIL');
   });
 });
 
@@ -313,6 +367,7 @@ describe('microcopy (§7)', () => {
   const sentences: string[] = [
     ...Object.values(COPY).flatMap((value) => (typeof value === 'string' ? [value] : [])),
     COPY.claimAria('Riverside', '1:00 PM – 3:00 PM'),
+    COPY.editAria('Riverside', '1:00 PM – 3:00 PM'),
     COPY.scopeQuestion('Tuesday'),
     COPY.scopeSeries('Tuesday'),
     COPY.skipReason(['NO_LONGER_OPEN']),
@@ -338,5 +393,36 @@ describe('microcopy (§7)', () => {
 
   it('offers exactly the three filters S1.2 names', () => {
     expect([COPY.filterAll, COPY.filterOpen, COPY.filterMine]).toEqual(['All', 'Open', 'Mine']);
+  });
+
+  it('names the week control in S3.1 words, not new ones', () => {
+    // The same control over the same week on two screens; one spelling of it.
+    expect([COPY.previousWeek, COPY.nextWeek, COPY.thisWeek]).toEqual([
+      'Previous week',
+      'Next week',
+      'This week',
+    ]);
+  });
+
+  it('puts no em dash in anything this screen writes (D21)', () => {
+    // `skipReason` is left out on purpose: those sentences belong to
+    // `shared/src/coverage.ts` and still carry an em dash. That is shared copy the
+    // server sends verbatim, not this screen's to rewrite.
+    const own = [
+      ...Object.values(COPY).flatMap((value) => (typeof value === 'string' ? [value] : [])),
+      COPY.claimAria('Riverside', '1:00 PM – 3:00 PM'),
+      COPY.editAria('Riverside', '1:00 PM – 3:00 PM'),
+      COPY.scopeQuestion('Tuesday'),
+      COPY.scopeSeries('Tuesday'),
+    ];
+    for (const sentence of own) {
+      expect(sentence, sentence).not.toContain('—');
+    }
+  });
+
+  it('gives every empty state a body that says what to do next (§6)', () => {
+    for (const body of [COPY.emptyAllBody, COPY.emptyOpenBody, COPY.emptyMineBody]) {
+      expect(body.length).toBeGreaterThan(0);
+    }
   });
 });

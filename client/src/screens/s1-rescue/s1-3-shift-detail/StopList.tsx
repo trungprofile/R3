@@ -61,8 +61,8 @@ function Stop({ line, onReassign }: { line: StopLine; onReassign: (line: StopLin
         </p>
       ) : null}
 
-      {line.moved ? <p className="s13-stop__aside">{COPY.reassignedHint}</p> : null}
-
+      {/* A moved stop said "Moved to another driver" once already, in the row's own
+          status slot; it did not need saying twice under it (D21). */}
       {line.canReassign ? (
         <div className="s13-actions">
           <Button

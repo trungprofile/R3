@@ -18,6 +18,15 @@ import type {
   SkippedShift,
 } from '../../../api/shared.ts';
 
+// The board's week is `app/week.ts`'s week, which is `weekBounds()`'s week on the
+// server (A178). Re-exported here so the screen keeps one import, and so nothing in
+// this folder can grow a second answer to "which Monday?" — S3.1's report cuts the
+// same seven days and staff read the two side by side.
+//
+// `isoWeekday` is deliberately NOT re-exported: this file already has one of its
+// own for `weekdayLabel`, and two names would be one too many.
+export { isCurrentWeek, nextWeek, previousWeek, weekEndOf, weekStartOf } from '../../../app/week.ts';
+
 // ---------------------------------------------------------------------------
 // Copy (`ui-ux-spec.md S1.2`, §6, §7)
 //
@@ -37,14 +46,24 @@ export const COPY = {
   filterOpen: 'Open',
   filterMine: 'Mine',
 
+  /** The week control. S3.1's words, not new ones: it is the same control over the
+   *  same Monday-to-Sunday week, and two spellings of one idea is two things to
+   *  learn. */
+  weekNavLabel: 'Move between weeks',
+  previousWeek: 'Previous week',
+  nextWeek: 'Next week',
+  thisWeek: 'This week',
+
   /** S1.2, verbatim: Empty "No runs scheduled yet." */
   emptyAll: 'No runs scheduled yet.',
-  emptyAllBody: 'The coordinator adds runs here as they are scheduled.',
+  /** The board is one week wide, so an empty one usually means the wrong week
+   *  rather than an empty calendar — which is the part the title cannot say. */
+  emptyAllBody: 'Try another week, or ask the coordinator.',
   /** §6's empty-state example, verbatim, split into title and body. */
   emptyOpen: 'No open runs right now.',
   emptyOpenBody: 'Check back, or set your availability.',
   emptyMine: "You're not on any runs yet.",
-  emptyMineBody: 'Tap Open to see what needs a driver.',
+  emptyMineBody: 'Claim one from Open.',
 
   /** S1.2: "owner name (or 'OPEN')". */
   unowned: 'OPEN',
@@ -54,6 +73,11 @@ export const COPY = {
   claim: 'Claim',
   /** Named for a screen reader, which hears the button out of its row's context. */
   claimAria: (routeName: string, when: string) => `Claim ${routeName}, ${when}`,
+
+  /** Staff only. The board is where staff SEE a run; S1.6 is where its date, time
+   *  and route are changed, so this is a link there and not an editor. */
+  edit: 'Edit',
+  editAria: (routeName: string, when: string) => `Edit ${routeName}, ${when}`,
 
   /** S1.2's scope prompt, verbatim: "Claim every Tuesday run, or just this one?" */
   scopeQuestion: (weekday: string) => `Claim every ${weekday} run, or just this one?`,
@@ -158,6 +182,23 @@ export function dayHeading(date: string, today: string = todayCalendarDate()): s
   return `${weekdayName(date)}, ${monthDay}`;
 }
 
+/** "Aug 9" — the short form, for the week control, where two dates share the line
+ *  with two buttons and the full month name would push them onto a third row. */
+function shortMonthDay(date: string): string {
+  const parsed = parseCalendarDate(date);
+  const month = MONTHS[parsed.getMonth()];
+  // An unparseable date shows itself rather than "undefined NaN": the week control
+  // is navigation, and a wrong-looking label beats a broken one.
+  if (month === undefined || Number.isNaN(parsed.getDate())) return date;
+  return `${month.slice(0, 3)} ${parsed.getDate()}`;
+}
+
+/** "Aug 3 – Aug 9" — which week the board is showing. The dash is a range glyph,
+ *  not prose. */
+export function formatWeekRange(weekStart: string, weekEnd: string): string {
+  return `${shortMonthDay(weekStart)} – ${shortMonthDay(weekEnd)}`;
+}
+
 /** "9:00 AM – 11:00 AM" in the PANTRY's zone (A120), which the session carries.
  *  A run's window is a pantry-local fact: the 9am run is 9am at the pantry, not on
  *  whatever device is reading it. Left undefined the device's own zone is used —
@@ -207,6 +248,10 @@ export interface BoardRow {
   atRisk: boolean;
   action: RowAction;
   repeats: boolean;
+  /** Staff's link to S1.6 for this run. Separate from `action`, which is the ONE
+   *  thing the row itself does — a row that opens S1.3 is a `<button>`, and an Edit
+   *  button cannot live inside one. */
+  canEdit: boolean;
 }
 
 export interface DayGroup {
@@ -251,6 +296,19 @@ export function actionFor(shift: ShiftSummary, viewer: BoardViewer, mine: boolea
   return viewer.isStaff ? 'DETAIL' : 'NONE';
 }
 
+/**
+ * Staff's Edit link, and only where S1.6 could act on it.
+ *
+ * `rescheduleShift` refuses anything past `CLAIMED` — "Only a run that has not
+ * started can be moved." — and I5 freezes a started run's stop list, so a started or
+ * finished run has nothing S1.6 can change. Hiding the link is the courtesy; the
+ * refusal is still the rule (`architecture.md §4.5`).
+ */
+export function canEditRun(shift: ShiftSummary, viewer: BoardViewer): boolean {
+  if (!viewer.isStaff) return false;
+  return shift.status === 'OPEN' || shift.status === 'CLAIMED';
+}
+
 export function toRow(shift: ShiftSummary, viewer: BoardViewer, nowMs: number): BoardRow {
   const mine = shift.ownerId !== null && shift.ownerId === viewer.id;
   return {
@@ -259,6 +317,7 @@ export function toRow(shift: ShiftSummary, viewer: BoardViewer, nowMs: number): 
     atRisk: isAtRisk(shift, viewer, nowMs),
     action: actionFor(shift, viewer, mine),
     repeats: shift.recurrencePatternId !== null,
+    canEdit: canEditRun(shift, viewer),
   };
 }
 

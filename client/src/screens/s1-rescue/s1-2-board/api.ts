@@ -19,17 +19,22 @@ import type { BoardFilter } from './board.ts';
  * `CANCELLED` runs are off the board by default and stay that way — I10 makes the
  * state terminal and S1.2 has no cancelled row.
  *
- * `from` bounds the board to today forward. There is no `to`: how far ahead runs
- * exist is already bounded by `app_config.horizon_days` at materialization.
+ * `from` and `to` are the week on screen, both inclusive — the service compares
+ * `occurrence_date` with `>=` and `<=`, so `to` is the Sunday itself and not the
+ * boundary after it. The board used to send `from` alone and lean on
+ * `app_config.horizon_days` to end the list, which meant its window was however far
+ * materialization happened to have run rather than a week anyone had asked for.
  */
 export function fetchBoard(
   filter: BoardFilter,
   fromDate: string,
+  toDate: string,
   signal?: AbortSignal,
 ): Promise<ShiftSummary[]> {
   return api.get<ShiftSummary[]>('/shifts', {
     query: {
       from: fromDate,
+      to: toDate,
       ...(filter === 'OPEN' ? { open: true } : {}),
       ...(filter === 'MINE' ? { mine: true } : {}),
     },

@@ -48,17 +48,21 @@ export const COPY = {
   whenLabel: 'When',
   routeLabel: 'Route',
   truckLabel: 'Truck',
-  /** I8: the truck is picked by the driver at the start, never set at scheduling. */
-  truckUnset: 'The driver picks one when they start.',
+  /** The empty-value glyph, not a sentence. I8 leaves Truck blank until the driver
+   *  picks one at the start, and a line of prose explaining that says nothing the
+   *  blank field has not already said (D21). */
+  unset: '—',
   driverLabel: 'Driver',
   noDriver: 'Nobody yet',
   repeatsTag: 'repeats weekly',
   loading: 'Loading this run',
 
   // --- the conflict flag (I20's staff-assign exemption) -------------------
-  /** S1.3, verbatim. Informational only — it never blocks pickup execution. */
+  /** S1.3's sentence, repunctuated: the spec writes it with an em dash, and D21
+   *  rules em dashes out of anything a user reads. Same two clauses, same order, one
+   *  full stop instead. Informational only — it never blocks pickup execution. */
   conflictBanner:
-    "This run conflicts with your declared availability — contact staff if that's a problem.",
+    "This run conflicts with your declared availability. Contact staff if that's a problem.",
 
   // --- the coordinator -> driver note (cap 11, channel 1) -----------------
   /** The driver's heading for it. Same words as S1.5, which shows the same note. */
@@ -74,10 +78,10 @@ export const COPY = {
 
   // --- stops --------------------------------------------------------------
   stopsLabel: 'Stops',
-  /** Before the run starts there are no stop rows yet (I5) — what is on screen is
-   *  the route as staff built it. Said plainly, because staff may still change it. */
-  stopsPlanned: "The route as planned. It becomes the driver's list when they start.",
-  stopsLive: "The driver's list, in the order they are working it.",
+  /** No caption over the list. Which of the two lists it is — the route template
+   *  before the run starts (I5), or the driver's live order after — is legible from
+   *  the list itself, since only the live one puts a status on every stop; a
+   *  sentence saying so restates what is directly under it (D21). */
   noStops: 'This route has no stores yet.',
   noStopsBody: 'Staff add stores to a route on the schedule screen.',
   /** A started run whose route was empty. Its list is frozen (I5), so telling
@@ -139,7 +143,6 @@ export const COPY = {
     'A stop can only move to a run that has already started. Try again once someone is out.',
   reassignNotStarted: 'Has not started yet',
   reassignDone: (driver: string) => `Moved to ${driver}.`,
-  reassignedHint: 'Moved to another driver.',
   driversLabel: 'Drivers out today',
 
   // --- nothing to show ----------------------------------------------------
