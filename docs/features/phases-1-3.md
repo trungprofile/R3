@@ -60,10 +60,14 @@ over the merged diff, both mandatory, **the gate deciding pass/fail rather than 
 
 ---
 
-## 2. Standing decisions (D1–D15)
+## 2. Standing decisions (D1–D21)
 
 Numbering is one series across all three phases. Decisions are *settled*; they are not
 re-litigated. Where one supersedes another, both are kept.
+
+`D1`–`D15` were taken while building. `D16`–`D21` came out of the first hands-on QA pass
+over the running app (2026-08-02) and are recorded the same way, because three of them
+overturn or bend something earlier and none of that should have to be reconstructed later.
 
 ### Phase 1
 
@@ -133,12 +137,16 @@ that run.
 
 ### Phase 3
 
-**D11 — the AGFP→NTFB mapping lives on S3.1.**
+**D11 — the AGFP→NTFB mapping lives on S3.1.** *(Superseded by `D17`. Kept, per the rule above.)*
 `ui-ux-spec.md`'s own open assumption 3 asked where. Resolved to the Report screen: it is where the
 mapping's effect is visible, and a Reporter who finds an unmapped category mid-report should not
 have to change screens *and tiers* to fix it. Routes are `REPORT`-duty, not `ADMIN`-tier.
 **Still the human's to override** — moving it to S1.8 is a route-access change and a screen move,
 not a data change. *Cited by `routes/report.ts`; recorded in `ui-ux-spec.md §8` open assumption 3.*
+
+The human overrode it on 2026-08-02. The reasoning above was sound and the override does not
+say it was wrong; it says the pantry reads the mapping as configuration, and configuration lives
+in Admin. See `D17`.
 
 **D12 — NTFB categories ship EMPTY, and unmapped weight blocks the export.**
 The 11 AGFP category names are the pantry's and were seeded at launch (migration `0010`). The NTFB
@@ -193,6 +201,77 @@ category under two storage values is two lines and two line items; and `storage`
 D12's argument unchanged. A missing storage is surfaced on the mapping row but does **not** block
 the export — a weaker failure than an unmapped category, so a weaker response. *Recorded in
 `ui-ux-spec.md:357`.*
+
+### QA round 1 (2026-08-02)
+
+The first hands-on pass over the running app, on an admin account. Two items in that feedback
+turned out to be **already built** and are recorded here so nobody re-derives them: the volunteer
+PIN already defaults to the last four digits of the phone (`services/auth.ts` `defaultPin`,
+specified by `architecture.md §4.2`), and an admin can already set or reset a staff or admin
+password (`services/user.ts` `setCredential`, `ui-ux-spec.md` S1.8). There is deliberately no
+self-service reset and no unlock path; a forgotten admin password is a database-level fix.
+
+**D16 — "export to PDF" is a print view, not a PDF library.**
+QA asked for PDF. Every PDF library is a dependency, which `D5` forbids, and `D13` had already
+settled that the artefact is *a worksheet somebody reads while typing into a web form that has no
+import* — not a document anyone files. So S3.1 gained a print-styled view and the browser's own
+Save-as-PDF, which produces a real PDF at zero dependency cost. **The CSV stays**; this is an
+addition, not a replacement. The print view draws its rows from the *same* server function as the
+CSV, through `?format=json`, so `D13`'s grain and `A184`'s refusal cannot drift between the two
+outputs — a short report is invisible at the far end, which is the failure Success Metric 4 exists
+to kill.
+
+**D17 — the AGFP→NTFB mapping moves to Admin, under `tier: 'ADMIN'`. Supersedes `D11`.**
+`D11` resolved `ui-ux-spec.md` open assumption 3 to S3.1 and explicitly left the choice open to a
+human. The human chose Admin: the pantry reads "which of our categories reports as which of
+theirs" as a setup decision, and every other setup decision is already in S1.8. The Reporter's
+mid-report escape hatch that `D11` was protecting is weaker than it looked, because the same
+person is usually the admin at this pantry's scale. **The report routes themselves stay
+`REPORT`-duty** — an Admin without the duty is still not a Reporter, and `product-requirement.md
+§2` is explicit that `report` is not tier-restricted. Only the mapping routes changed tier.
+
+**D18 — S3.2 Metrics becomes S1.8's first tab.**
+Both were `tier: 'ADMIN'` top-level routes sitting adjacent in the nav, which made "Admin" and
+"Metrics" look like two places rather than one back office. Metrics is now Admin's default tab.
+`/metrics` still resolves, as a redirect, so an existing bookmark does not break. The screen keeps
+its **S3.2** spec ID: it is the same screen, reached differently. Nothing it computes changed —
+`domain-modeling.md §6` is locked, and Intake and NTFB-reported stay two distinct labelled numbers.
+
+**D19 — a route carries a default staff note, and it is a default, not a fifth note channel.**
+QA asked for a per-route note that new runs start with. The obvious build is a new note field,
+and it is wrong: PRD cap 11 and the **locked** `domain-modeling.md` enumerate exactly four note
+channels and state that none of them share storage. So `route.default_staff_note` **seeds
+`shift.staff_note`** — channel 2, coordinator to driver — at the moment a run is created, and
+nothing reads it afterwards. The precedent is `recurrence_pattern.owner_default_id`, which
+defaults an owner the same way. Two consequences, both intended and both tested: a recurring
+pattern reads the route's note **at materialization**, so a run minted next March carries whatever
+the route says next March; and editing a route **never** rewrites a run that already exists, which
+is `I25`'s independence applied to a field `I25` did not originally name.
+
+**D20 — a donor carries a map link and a photo; the bytes live in Postgres.**
+Drivers arriving somewhere new before dawn are looking for a door, and an address does not always
+name one. `donor.map_url` is an explicit override; `NULL` means "derive one from the address",
+which the client does. The photo is its own table, not a `donor` column, because every `SELECT`
+against `donor` in this codebase reads whole rows and a `bytea` column would drag images into the
+board, the route builder, the admin list and the report.
+Bytes in the database rather than on disk, and no upload library: multipart parsing is a
+dependency (`D5`) and a mounted volume is a **second thing to back up** beside the database — and
+there are no database backups on the pantry box yet, so that would be two problems instead of
+one. The client resizes on a `<canvas>` to ~800px JPEG and posts a data URL in ordinary JSON; the
+ceiling is a CHECK constraint, so the guard that cannot be bypassed is the database's.
+Its FK is `ON DELETE RESTRICT` like every other one in the schema (`data-model.md §0`), and
+`removeDonor` clears the photo inside the same transaction so the hard-delete escape hatch for a
+mistaken create still works. A photo is not history.
+
+**D21 — no em dashes in UI copy, and a hint that restates its control is deleted.**
+QA's words were that the app "reads like AI slop". The two tells were an em dash used where a
+full stop belongs, and a sentence under every control explaining what the control obviously does.
+Both are now rules, and `ui-ux-spec.md §7` carries them.
+What is **kept** is as much of the decision as what is cut: consequences of irreversible actions,
+why something is blocked, and what a number means where two similar numbers sit together. The two
+component contracts that force such copy — `EmptyState`'s required body ("say what to do next")
+and `ConfirmModal`'s required `consequence` — were **not** loosened. Their text was trimmed.
+An em dash used as an empty-value glyph is not prose and stays.
 
 ---
 
@@ -318,6 +397,10 @@ cites by number.
 - **A178 — the report week runs Monday to Sunday.** No doc names the boundary. Monday-start is the
   ISO week; the pantry's runs are named by weekday ("Tuesday Morning"), which suggests nothing
   either way. One function (`weekBounds`) if it should be Sunday-start. *Cited by `services/report.ts:86`.*
+  **Scope widened in QA round 1:** S1.2's board now defaults to this same week, so that staff
+  cross-checking the board against the report see the same seven days. The client half is
+  `app/week.ts`, extracted from the report screen for the purpose; it and `weekBounds` must change
+  together. Getting this wrong is now visible in two places instead of one, which is the point.
 - **A179 — metrics default to the last 28 days.** Four whole weeks, so the previous-period
   comparison is like-for-like rather than a ragged month. Both endpoints accept explicit `from`/`to`.
 - **A180 — the export groups; it does not emit one row per entry.** Two receivers adding 60 lb and

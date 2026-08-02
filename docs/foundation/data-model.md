@@ -99,8 +99,24 @@ CREATE TABLE donor (
   contact        text,                                -- free-text: phone/email/contact person, no fixed shape
   note           text,                                -- Donor.note: permanent per-store note (PRD cap 11, admin-authored)
   ntfb_donor_code text,                              -- NTFB's own number for this store, as Meal Connect's picker shows it: `H-E-B Food Stores (810)`. Nullable — it is theirs to issue (migration 0013)
+  map_url        text,                               -- D20: explicit map link for a store whose address does not name the door. NULL = derive one from `address`, which the client does (migration 0014)
   deactivated_at timestamptz,                        -- ACTIVE ⇄ DEACTIVATED (Domain Modeling §3.3)
   created_at     timestamptz NOT NULL DEFAULT now()
+);
+
+-- D20 — the store photo a driver sees on the current stop (migration 0014).
+-- Its OWN TABLE, not a `donor` column: every donor read in the codebase selects whole
+-- rows, so a bytea column would drag images into the board, the route builder, the
+-- admin list and the report. Only the one endpoint that wants an image pays for it.
+-- Bytes in Postgres rather than on disk because a file upload needs a multipart
+-- dependency (D5) and a mounted volume, and a volume is a second thing to back up.
+-- Here it is already inside pg_dump.
+CREATE TABLE donor_photo (
+  donor_id   uuid PRIMARY KEY REFERENCES donor(id) ON DELETE RESTRICT,  -- PK: one photo per store, so replacing is an UPSERT and versions cannot accumulate
+  bytes      bytea NOT NULL,
+  mime       text  NOT NULL CHECK (mime IN ('image/jpeg', 'image/png')),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT donor_photo_size CHECK (octet_length(bytes) BETWEEN 1 AND 400000)  -- ~400 KB; a client-resized 800px JPEG is tens of KB
 );
 
 CREATE TABLE category (
@@ -187,12 +203,20 @@ as one.
 CREATE TABLE route (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name           text NOT NULL,
+  default_staff_note text,                           -- D19: seeds shift.staff_note when a run is created on this route. A DEFAULT, not a fifth note channel (migration 0014)
   deactivated_at timestamptz,                        -- archive toggle (extends Domain Modeling §3.3)
   created_at     timestamptz NOT NULL DEFAULT now()
 );
 
 -- Lifecycle (Domain Modeling §3.3, Route row): archive via deactivated_at (soft), OR hard-delete
 -- when nothing references it (FK-RESTRICT lets it through). Same pattern as the I21 masters.
+--
+-- `default_staff_note` (D19) is read at the moment a Shift is created — by the publish
+-- form, and by recurrence materialization, which reads it per occurrence rather than
+-- capturing it when the pattern was made. It seeds `shift.staff_note`, PRD cap 11's
+-- channel 2. It is NOT a fifth note channel: Domain Modeling's four channels are
+-- unchanged and none of them share storage. Editing a route never rewrites a Shift
+-- that already exists, which is I25's independence applied to this field.
 
 CREATE TABLE route_stop (
   id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),

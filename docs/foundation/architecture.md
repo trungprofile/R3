@@ -288,10 +288,12 @@ Dispatch state (`delivered_at`, `attempts`, `last_attempt_at`) lives on `notific
 | Component | Role |
 | :---- | :---- |
 | **Node / Express container** | HTTP API, the React build, and the in-process job scheduler |
-| **PostgreSQL container** | all persistent state, including sessions and the notification outbox |
+| **PostgreSQL container** | all persistent state, including sessions, the notification outbox, and store photos |
 | **`cloudflared`** | outbound tunnel to Cloudflare; the only ingress path |
 
-That is the entire runtime. No reverse proxy, no cache, no queue broker, no worker.
+That is the entire runtime. No reverse proxy, no cache, no queue broker, no worker. **No object store and no upload volume either** (`D20`): a store photo is `bytea` in `donor_photo`, not a file on disk. Two reasons, in order — a multipart parser is a dependency (`D5`), and a mounted volume is a *second thing to back up* beside the database, which §5.3 would then have to cover separately. In the table it is already inside `pg_dump`.
+
+The cost is bounded by construction. The client resizes on a `<canvas>` to ~800px JPEG before sending, the body arrives as a base64 data URL in ordinary JSON, and `donor_photo` carries a `CHECK` capping bytes at ~400 KB and the mime at `image/jpeg` or `image/png`. `services/donor.ts` checks the same two things first so the refusal is readable, but the constraint is the guard that cannot be bypassed. `express.json` is set to `600kb` for the base64 inflation this implies; every other body in the app is an account form, a login or a weight.
 
 #### Ingress: Cloudflare Tunnel
 

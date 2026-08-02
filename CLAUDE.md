@@ -2,7 +2,13 @@
 
 System of record for Amazing Grace Food Pantry's weekly food-rescue cycle (rescue → receive → report), replacing a paper-and-phone process. PERN stack, self-hosted, single Docker box, ~15 pickups/week, under 10 concurrent users.
 
-**All three phases are built** — Phase 1 (rescue loop + scheduling), Phase 2 (receive), Phase 3 (report + metrics). Every capability in `product-requirement.md §3` has code; every screen in `ui-ux-spec.md §8` has an entry in `client/src/main.tsx`, except `S2.4`, which is a device-level banner the shell mounts rather than a route; and `./scripts/gate.sh` is green. Not yet deployed, and no production data exists.
+**All three phases are built** — Phase 1 (rescue loop + scheduling), Phase 2 (receive), Phase 3 (report + metrics). Every capability in `product-requirement.md §3` has code, `./scripts/gate.sh` is green, and every screen in `ui-ux-spec.md §8` is reachable — though **three are no longer their own route**, and looking for them in `client/src/main.tsx` will not find them:
+
+- `S2.4` is a device-level banner the shell mounts.
+- `S3.2` (metrics) is Admin's default **tab** since `D18`. `/metrics` still resolves, as a redirect.
+- The NTFB category mapping is Admin's **Category matching** tab since `D17`, not part of S3.1.
+
+Not yet deployed, and no production data exists. The first hands-on QA pass has been through it once — see [`qa-round-1-changes.md`](docs/features/qa-round-1-changes.md).
 
 One thing is **deliberately unbuilt because it is not ours to invent**, and a task that seems to need it should stop rather than guess: NTFB's own category names, and which of ours reports under each (the `ntfb_category` table ships empty — `phases-1-3.md` D12). A real receipt named ten of them and `phases-1-3.md §3.1` records the list, but it is one receipt's worth, our `Frz Non Meat` matches none of it, and seeding ten of eleven is the same failure one row smaller. The pantry enters them on S3.1.
 
@@ -30,6 +36,7 @@ Add `docs/features/<name>.md` once a feature accumulates worked examples or edge
 | :---- | :---- |
 | [`phases-1-3.md`](docs/features/phases-1-3.md) | changing behaviour anywhere — the build record for all three phases: standing decisions `D1`–`D15`, what still needs a human, the stored shapes that are cheap to change only while the database is empty, and the assumptions that change what a person sees |
 | [`test-plan.md`](docs/features/test-plan.md) | testing the app before the pilot — what a green gate does **not** prove, the ten test tracks and how to run them in parallel, exit criteria, and the risks to disclose rather than let a demo discover |
+| [`qa-round-1-changes.md`](docs/features/qa-round-1-changes.md) | undoing or questioning anything from the first QA pass — one row per piece of feedback, what was done, and what reverting it costs |
 
 **`D#` and `A#` citations in code resolve to that doc.** Roughly thirty comments across migrations, services, tests and client code cite a decision or an assumption by number — `phase-1-build-plan.md D3`, `phase-3-state.md A189`, and so on. The numbering is one series across the three phases and keeps its original meaning; only the file it lives in changed.
 
@@ -42,6 +49,7 @@ The six per-phase docs (`phase-{1,2,3}-{build-plan,state}.md`) and the 24 lane r
 ```
 client/src/
   screens/{s1-rescue,s2-receive,s3-report}/  one folder per UI §8 screen ID
+    s1-8-admin/{metrics,mapping}/            two screens that became Admin tabs (D17, D18)
   components/  tokens/  api/                 UI §3 contracts, §2 tokens, typed fetch
   sw.ts                                      service worker — push only, never cache-first (§4.5)
 server/
