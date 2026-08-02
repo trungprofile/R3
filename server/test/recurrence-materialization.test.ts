@@ -630,3 +630,90 @@ describe('occurrenceDates', () => {
     expect(isoWeekday({ year: 2026, month: 8, day: 9 })).toBe(7);
   });
 });
+
+// ---------------------------------------------------------------------------
+// D19 — the route's default staff note seeds a materialized run
+//
+// The thing worth testing is not that the value copies across; it is that it is
+// read at MATERIALIZATION rather than captured when the pattern was created, and
+// that a later edit to the route leaves already-minted runs alone. That second
+// half is I25's independence ("thereafter each instance is independent") applied
+// to a field I25 did not originally name, so it is asserted rather than assumed.
+//
+// This is a DEFAULT for `shift.staff_note`, PRD cap 11's channel 2 — not a fifth
+// note channel, which would contradict the locked `domain-modeling.md`.
+// ---------------------------------------------------------------------------
+
+describe('D19 — route default note seeds new runs', () => {
+  async function patternOnRouteWithNote(note: string | null) {
+    const author = await makeAdmin();
+    const { route } = await makeRoute();
+    await db
+      .updateTable('route')
+      .set({ default_staff_note: note })
+      .where('id', '=', route.id)
+      .execute();
+
+    const pattern = await db
+      .insertInto('recurrence_pattern')
+      .values({
+        route_id: route.id,
+        weekdays: [2],
+        start_time: '09:00',
+        end_time: '11:00',
+        end_date: null,
+        owner_default_id: null,
+        created_by: author.id,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    return { pattern, route };
+  }
+
+  async function staffNotesFor(patternId: string): Promise<(string | null)[]> {
+    const rows = await db
+      .selectFrom('shift')
+      .select('staff_note')
+      .where('recurrence_pattern_id', '=', patternId)
+      .orderBy('occurrence_date')
+      .execute();
+    return rows.map((row) => row.staff_note);
+  }
+
+  it('gives every minted run the route note', async () => {
+    const { pattern } = await patternOnRouteWithNote('Ring the bell at the back dock.');
+    await materializePattern(pattern.id);
+
+    const notes = await staffNotesFor(pattern.id);
+    expect(notes.length).toBeGreaterThan(0);
+    expect(new Set(notes)).toEqual(new Set(['Ring the bell at the back dock.']));
+  });
+
+  it('leaves the note null when the route has no default', async () => {
+    const { pattern } = await patternOnRouteWithNote(null);
+    await materializePattern(pattern.id);
+
+    const notes = await staffNotesFor(pattern.id);
+    expect(notes.length).toBeGreaterThan(0);
+    expect(notes.every((note) => note === null)).toBe(true);
+  });
+
+  it('does not rewrite runs that already exist when the route note changes (I25)', async () => {
+    const { pattern, route } = await patternOnRouteWithNote('First wording.');
+    await materializePattern(pattern.id);
+    const before = await staffNotesFor(pattern.id);
+    expect(before.length).toBeGreaterThan(0);
+
+    await db
+      .updateTable('route')
+      .set({ default_staff_note: 'Second wording.' })
+      .where('id', '=', route.id)
+      .execute();
+    // A second sweep is idempotent for dates that already have a row, so nothing
+    // is re-minted and nothing is rewritten.
+    await materializePattern(pattern.id);
+
+    expect(await staffNotesFor(pattern.id)).toEqual(before);
+  });
+});

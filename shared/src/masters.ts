@@ -28,6 +28,14 @@ export interface DonorSummary {
   contact: string | null;
   /** The admin's permanent per-store note (`domain-modeling.md §2.3`, cap 11 channel 4). */
   note: string | null;
+  /** D20. An explicit map link for a store whose address does not resolve to the
+   *  door — a dock round the back, a site with several entrances. `null` is the
+   *  normal state and means "derive one from `address`", which the client does.
+   *  Operational data a driver needs, so it is never trimmed (see the note above). */
+  mapUrl: string | null;
+  /** D20. Whether a photo exists, not the photo. Bytes live in their own table and
+   *  come from `GET /donors/:id/photo`, so a donor list never carries images. */
+  hasPhoto: boolean;
   /** I21 soft-delete: a deactivated donor is preserved everywhere it is referenced,
    *  so the flag travels with the record rather than the row vanishing. */
   active: boolean;
@@ -39,6 +47,7 @@ export interface CreateDonorRequest {
   address?: string | null;
   contact?: string | null;
   note?: string | null;
+  mapUrl?: string | null;
 }
 
 /** I21: field edits are always allowed, including on a deactivated donor —
@@ -49,7 +58,22 @@ export interface UpdateDonorRequest {
   address?: string | null;
   contact?: string | null;
   note?: string | null;
+  mapUrl?: string | null;
   active?: boolean;
+}
+
+/**
+ * D20 — a store photo, sent as a data URL rather than multipart.
+ *
+ * Multipart would need a parsing dependency (D5) and a mounted volume; a data URL
+ * rides the ordinary JSON body and the bytes land in Postgres, inside `pg_dump`.
+ * The client canvas-resizes to ~800px JPEG first, so a real upload is tens of KB
+ * against a ceiling the database enforces as a CHECK.
+ *
+ * `null` clears the photo.
+ */
+export interface SetDonorPhotoRequest {
+  dataUrl: string | null;
 }
 
 // ---------------------------------------------------------------------------

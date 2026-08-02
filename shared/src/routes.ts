@@ -30,6 +30,18 @@ export interface RouteStopSummary {
 export interface RouteSummary {
   id: string;
   name: string;
+  /**
+   * D19 — a note that seeds `shift.staff_note` when a run is published on this
+   * route, editable before the run is saved. `null` means the route has none.
+   *
+   * A DEFAULT, not a fifth note channel. PRD cap 11 and the locked
+   * `domain-modeling.md` enumerate exactly four channels and say none share
+   * storage; this one lands in channel 2 (coordinator to driver) at create time
+   * and stops mattering afterwards, the same way
+   * `recurrence_pattern.owner_default_id` defaults an owner. Editing the route
+   * never rewrites a run that is already published.
+   */
+  defaultStaffNote: string | null;
   /** False when archived (`domain-modeling.md §3.3`): hidden from the route
    *  picker, never removed. */
   active: boolean;
@@ -50,6 +62,7 @@ export interface RouteDetail extends RouteSummary {
 export interface CreateRouteRequest {
   name: string;
   stops: string[];
+  defaultStaffNote?: string | null;
 }
 
 /**
@@ -60,6 +73,7 @@ export interface CreateRouteRequest {
 export interface UpdateRouteRequest {
   name?: string;
   stops?: string[];
+  defaultStaffNote?: string | null;
 }
 
 /** Which removal actually happened (`domain-modeling.md §3.3`, Route row:

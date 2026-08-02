@@ -644,3 +644,108 @@ textarea.r3-field__control {
     animation: none;
   }
 }
+
+/* --- BackLink — one way out, at the top of a screen ------------------------ */
+
+.r3-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
+  border: none;
+  background: none;
+  color: var(--link);
+  font-size: var(--font-body);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- TimeField — a trigger, and a list only when asked for ---------------- */
+
+.r3-timefield {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.r3-timefield__label {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.r3-timefield__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--input-height);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-body);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.r3-timefield__trigger:disabled {
+  background: var(--disabled-fill);
+  color: var(--disabled-text);
+  cursor: not-allowed;
+}
+
+.r3-timefield__placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.r3-timefield__caret {
+  width: 0;
+  height: 0;
+  border-left: 0.35rem solid transparent;
+  border-right: 0.35rem solid transparent;
+  border-top: 0.4rem solid currentColor;
+}
+
+.r3-timefield__list {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  right: 0;
+  /* Nine rows before it scrolls: enough to see a working morning at a glance,
+   * short enough that it never covers the whole form. */
+  max-height: calc(var(--target-min) * 9);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-modal);
+}
+
+.r3-timefield__option {
+  display: flex;
+  align-items: center;
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-body);
+  cursor: pointer;
+}
+
+.r3-timefield__option--active {
+  background: var(--surface-paper);
+}
+
+.r3-timefield__option--selected {
+  font-weight: 700;
+  color: var(--link);
+}

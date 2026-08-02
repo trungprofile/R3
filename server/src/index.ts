@@ -35,7 +35,19 @@ export function createApp(): Express {
 
   // Bodies are small: an account form, a login, a weight. A low cap costs nothing
   // and removes a trivially available memory pressure.
-  app.use(express.json({ limit: '64kb' }));
+  //
+  // The exception is the D20 store photo, which rides in as a base64 data URL
+  // rather than multipart (a parser is a dependency, D5). Base64 inflates by 4/3,
+  // so the schema's 400 KB ceiling on `donor_photo.bytes` needs ~533 KB of body
+  // plus the JSON wrapper. 600kb covers it with room to spare and is still small
+  // enough to be uninteresting as memory pressure at ten concurrent users.
+  //
+  // Raising this does NOT widen what a photo may be: the size and mime limits are
+  // a CHECK constraint on the table and a check in `services/donor.ts`. This cap
+  // only decides whether the request reaches them at all — at 64kb it did not,
+  // and a 400 KB photo failed with a generic parse error instead of the readable
+  // refusal the service writes.
+  app.use(express.json({ limit: '600kb' }));
 
   // Identity resolution runs only for the API. Static assets are public and need
   // no actor — and resolving one would mean a session write per image.

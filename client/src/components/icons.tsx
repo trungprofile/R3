@@ -123,6 +123,58 @@ export function ChevronRightIcon({ size = '1.5em', className }: IconProps) {
   );
 }
 
+/** Back, and stepping a date range earlier. Never the only label — `BackLink`
+ *  puts a word beside it. */
+export function ChevronLeftIcon({ size = '1.5em', className }: IconProps) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <path d="M15 5l-7 7 7 7" />
+    </svg>
+  );
+}
+
+/** A store photo that has not loaded, and the "no photo yet" slot in Admin. */
+export function ImageIcon({ size = '1.5em', className }: IconProps) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 16l4.5-4.5 4 4 3-3L21 17" />
+      <circle cx="8.5" cy="9.5" r="1.2" />
+    </svg>
+  );
+}
+
+/** "Open in Maps" on a stop. A pin, because that is what every map app uses. */
+export function PinIcon({ size = '1.5em', className }: IconProps) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  );
+}
+
+/** Search, above the sign-in name list (S1.1). */
+export function SearchIcon({ size = '1.5em', className }: IconProps) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
+    </svg>
+  );
+}
+
+/** Print / Save as PDF on S3.1 (D16). */
+export function PrinterIcon({ size = '1.5em', className }: IconProps) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <path d="M7 9V3h10v6" />
+      <path d="M7 19H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" />
+      <rect x="7" y="15" width="10" height="6" rx="1" />
+    </svg>
+  );
+}
+
 export function WarningIcon({ size = '1.5em', className }: IconProps) {
   return (
     <svg {...svgProps(size, className)}>

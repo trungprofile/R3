@@ -47,6 +47,9 @@ function shapeRoute({ route, stops }: RouteWithStops): RouteDetail {
   return {
     id: route.id,
     name: route.name,
+    // D19 — the note a run published on this route starts with. A default, not a
+    // fifth note channel; see `shared/src/routes.ts`.
+    defaultStaffNote: route.default_staff_note,
     // ACTIVE ⇄ ARCHIVED (`domain-modeling.md §3.3`).
     active: route.deactivated_at === null,
     stopCount: shapedStops.length,
@@ -95,6 +98,7 @@ export const pickupRouteRoutes = [
       const created = await createRoute({
         name: input['name'] as string,
         stops: input['stops'] as string[],
+        defaultStaffNote: (input['defaultStaffNote'] as string | null | undefined) ?? null,
       });
       res.status(201).json(shapeRoute(created));
     },
@@ -111,6 +115,9 @@ export const pickupRouteRoutes = [
       const updated = await updateRoute(String(req.params['id']), {
         ...(input['name'] !== undefined ? { name: input['name'] as string } : {}),
         ...(input['stops'] !== undefined ? { stops: input['stops'] as string[] } : {}),
+        ...(input['defaultStaffNote'] !== undefined
+          ? { defaultStaffNote: input['defaultStaffNote'] as string | null }
+          : {}),
       });
       res.json(shapeRoute(updated));
     },

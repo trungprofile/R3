@@ -32,6 +32,8 @@ type Reader = Kysely<DB>;
 export interface RouteRecord {
   id: string;
   name: string;
+  /** D19 — seeds `shift.staff_note` at publish. Nothing reads it after that. */
+  default_staff_note: string | null;
   deactivated_at: Date | null;
   created_at: Date;
 }
@@ -50,7 +52,13 @@ export interface RouteWithStops {
   stops: RouteStopRecord[];
 }
 
-const ROUTE_COLUMNS = ['id', 'name', 'deactivated_at', 'created_at'] as const;
+const ROUTE_COLUMNS = [
+  'id',
+  'name',
+  'default_staff_note',
+  'deactivated_at',
+  'created_at',
+] as const;
 
 // ---------------------------------------------------------------------------
 // Reads
@@ -152,6 +160,14 @@ function validName(value: unknown): string {
   return value.trim();
 }
 
+/** D19's default note. Absent and blank both mean "no default", which the column
+ *  spells `NULL` — the same treatment every other optional free-text field gets. */
+function cleanNote(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) return null;
+  const note = value.trim();
+  return note === '' ? null : note;
+}
+
 /**
  * Validate the submitted ordering.
  *
@@ -248,6 +264,7 @@ async function setStopsIn(tx: Tx, routeId: string, donorIds: string[]): Promise<
 export interface CreateRouteParams {
   name: string;
   stops: string[];
+  defaultStaffNote?: string | null;
 }
 
 export async function createRoute(params: CreateRouteParams): Promise<RouteWithStops> {
@@ -257,7 +274,7 @@ export async function createRoute(params: CreateRouteParams): Promise<RouteWithS
   return writeTransaction(async (tx) => {
     const route = await tx
       .insertInto('route')
-      .values({ name })
+      .values({ name, default_staff_note: cleanNote(params.defaultStaffNote) })
       .returning([...ROUTE_COLUMNS])
       .executeTakeFirstOrThrow();
 
@@ -270,6 +287,8 @@ export interface UpdateRouteParams {
   name?: string;
   /** When present, replaces the whole ordered list. */
   stops?: string[];
+  /** When present, sets or clears the D19 default. `null` clears it. */
+  defaultStaffNote?: string | null;
 }
 
 /**
@@ -296,8 +315,17 @@ export async function updateRoute(
       .executeTakeFirst();
     if (!existing) throw notFound('No such route.');
 
-    if (name !== undefined) {
-      await tx.updateTable('route').set({ name }).where('id', '=', routeId).execute();
+    if (name !== undefined || params.defaultStaffNote !== undefined) {
+      await tx
+        .updateTable('route')
+        .set({
+          ...(name !== undefined ? { name } : {}),
+          ...(params.defaultStaffNote !== undefined
+            ? { default_staff_note: cleanNote(params.defaultStaffNote) }
+            : {}),
+        })
+        .where('id', '=', routeId)
+        .execute();
     }
     if (stops !== undefined) {
       await setStopsIn(tx, routeId, stops);

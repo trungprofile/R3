@@ -21,6 +21,12 @@ export type { StatusChipProps } from './StatusChip.tsx';
 export { TextInput } from './TextInput.tsx';
 export type { TextInputProps } from './TextInput.tsx';
 
+export { TimeField } from './TimeField.tsx';
+export type { TimeFieldProps } from './TimeField.tsx';
+
+export { BackLink } from './BackLink.tsx';
+export type { BackLinkProps } from './BackLink.tsx';
+
 export { NumericKeypad } from './NumericKeypad.tsx';
 export type { NumericKeypadProps } from './NumericKeypad.tsx';
 

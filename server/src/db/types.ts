@@ -92,9 +92,17 @@ export interface Donor {
   created_at: Generated<Timestamp>;
   deactivated_at: Timestamp | null;
   id: Generated<string>;
+  map_url: string | null;
   name: string;
   note: string | null;
   ntfb_donor_code: string | null;
+}
+
+export interface DonorPhoto {
+  bytes: Buffer;
+  donor_id: string;
+  mime: string;
+  updated_at: Generated<Timestamp>;
 }
 
 export interface Notification {
@@ -153,6 +161,7 @@ export interface RecurrencePattern {
 export interface Route {
   created_at: Generated<Timestamp>;
   deactivated_at: Timestamp | null;
+  default_staff_note: string | null;
   id: Generated<string>;
   name: string;
 }
@@ -256,6 +265,7 @@ export interface DB {
   category: Category;
   device: Device;
   donor: Donor;
+  donor_photo: DonorPhoto;
   notification: Notification;
   ntfb_category: NtfbCategory;
   pgmigrations: Pgmigrations;

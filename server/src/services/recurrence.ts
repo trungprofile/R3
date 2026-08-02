@@ -237,17 +237,24 @@ async function materializeIn(
   const config = await readConfig(tx);
   const pattern = await tx
     .selectFrom('recurrence_pattern')
+    // D19 — the route's default note is read HERE, at materialization, not copied
+    // onto the pattern when it was created. A pattern that mints a run next March
+    // should carry whatever the route says next March, and I25 already establishes
+    // that a newly-materialized instance inherits defaults and is independent
+    // thereafter. Editing the route never touches a run that already exists.
+    .innerJoin('route', 'route.id', 'recurrence_pattern.route_id')
     .select([
-      'id',
-      'route_id',
-      'weekdays',
-      'start_time',
-      'end_time',
-      'owner_default_id',
-      'created_by',
-      sql<string | null>`to_char(end_date, 'YYYY-MM-DD')`.as('end_date'),
+      'recurrence_pattern.id as id',
+      'recurrence_pattern.route_id as route_id',
+      'recurrence_pattern.weekdays as weekdays',
+      'recurrence_pattern.start_time as start_time',
+      'recurrence_pattern.end_time as end_time',
+      'recurrence_pattern.owner_default_id as owner_default_id',
+      'recurrence_pattern.created_by as created_by',
+      'route.default_staff_note as default_staff_note',
+      sql<string | null>`to_char(recurrence_pattern.end_date, 'YYYY-MM-DD')`.as('end_date'),
     ])
-    .where('id', '=', patternId)
+    .where('recurrence_pattern.id', '=', patternId)
     .executeTakeFirst();
 
   if (!pattern) return { patternId, created: 0, bornClaimed: 0 };
@@ -300,6 +307,11 @@ async function materializeIn(
         ends_at: window.endsAt,
         status: born ? 'CLAIMED' : 'OPEN',
         owner_id: born ? pattern.owner_default_id : null,
+        // D19. Channel 2 (coordinator to driver), seeded from the route's default.
+        // Not a fifth note channel — PRD cap 11's four are unchanged; this is the
+        // value the channel starts at, exactly as `owner_default_id` above is the
+        // value `owner_id` starts at.
+        staff_note: pattern.default_staff_note,
         // `assigned_over_conflict` is left at its default false: materialization is
         // gated by `eligible()` and so can never produce a conflicting assignment
         // (migration 0008's column comment says exactly this).
