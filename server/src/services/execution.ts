@@ -235,7 +235,7 @@ export async function startRun(
     // selection, not deleted. The picker already filters them; this is the server
     // saying it again, because a client-side check is communication only.
     if (truck.deactivated_at !== null) {
-      throw conflict('That truck is out of service — pick another.');
+      throw conflict('That truck is out of service. Pick another.');
     }
 
     const shift = await loadShiftGuard(tx, shiftId);
@@ -697,7 +697,7 @@ export async function reassignStop(
     if (!MOVABLE_DISPOSITIONS.includes(source.disposition)) {
       // I30: only PENDING or unweighed-COLLECTED may move. A resolved stop is not
       // "in" the stop list to move any more.
-      throw conflict('That stop is already resolved — there is nothing left to move.');
+      throw conflict('That stop is already resolved. There is nothing left to move.');
     }
 
     // The "unweighed" half of I30's eligibility, live from Phase 2 onward. A stop
@@ -714,7 +714,7 @@ export async function reassignStop(
       .executeTakeFirst();
 
     if (weighed) {
-      throw conflict('That stop has already been weighed — there is nothing left to move.');
+      throw conflict('That stop has already been weighed. There is nothing left to move.');
     }
 
     const destination = await tx

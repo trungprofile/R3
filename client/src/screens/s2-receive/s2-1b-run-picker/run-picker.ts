@@ -91,7 +91,6 @@ export const COPY = {
 
   /** S2.1b: "[ Unscheduled donation ] (goes to S2.3, no run needed)". */
   unscheduled: 'Unscheduled donation',
-  unscheduledHint: 'Food that arrived outside a run — no run needed.',
 
   /** Read out when a screen reader reaches the row, which it hears without the
    *  surrounding card. */

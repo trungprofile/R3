@@ -27,9 +27,7 @@ export function RecordedList({ rows, onToggleReport, busy }: RecordedListProps) 
     <section className="s23-recorded" aria-label={COPY.recordedLabel}>
       <h2 className="s23-heading">{COPY.recordedHeading}</h2>
       {rows.length === 0 ? (
-        <p className="s23-hint">
-          {COPY.nothingYet} {COPY.nothingYetHint}
-        </p>
+        <p className="s23-hint">{COPY.nothingYet}</p>
       ) : (
         <List label={COPY.recordedLabel}>
           {rows.map((row) => (
@@ -47,7 +45,7 @@ export function RecordedList({ rows, onToggleReport, busy }: RecordedListProps) 
                       {row.reportable ? COPY.reportedChip : COPY.notReportedChip}
                     </span>
                   }
-                  ariaLabel={`${row.donorDisplay} — ${describeRow(row)}`}
+                  ariaLabel={`${row.donorDisplay}, ${describeRow(row)}`}
                 />
                 {canEdit(row) ? (
                   <Button variant="secondary" disabled={busy} onClick={() => onToggleReport(row)}>

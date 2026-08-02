@@ -404,12 +404,10 @@ export const COPY = {
   weightRequired: 'Type the weight.',
   weightInvalid: 'That is not a weight. Type pounds, like 128 or 12.5.',
   noteLabel: 'Note (optional)',
-  noteHint: 'Anything worth remembering about this donation.',
   submitNew: 'Submit',
   submitConfirm: 'Submit',
   savedNew: 'Donation recorded.',
   savedConfirm: 'Donation recorded.',
-  addAnother: 'Add another kind of food from the same donation.',
 
   // --- the report toggle --------------------------------------------------
   reportLabel: 'Report this to North Texas Food Bank',
@@ -440,7 +438,6 @@ export const COPY = {
   startReporting: 'Report it',
   reportableSaved: 'Saved.',
   nothingYet: 'Nothing recorded yet.',
-  nothingYetHint: 'Weigh a donation below and it will show up here.',
 
   // --- leaving ------------------------------------------------------------
   backToRuns: 'Back to the runs',

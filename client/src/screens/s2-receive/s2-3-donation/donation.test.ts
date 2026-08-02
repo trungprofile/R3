@@ -82,6 +82,8 @@ function donor(over: Partial<DonorSummary> = {}): DonorSummary {
     address: null,
     contact: null,
     note: null,
+    mapUrl: null,
+    hasPhoto: false,
     active: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...over,
@@ -429,7 +431,7 @@ describe('pickers', () => {
 describe('errors', () => {
   it('prefers the server’s own sentence', () => {
     const refusal = new ApiError('conflict', {
-      detail: 'That store is already a stop on this run — add its weight to the stop instead.',
+      detail: 'That store is already a stop on this run. Add its weight to the stop instead.',
     });
     expect(messageFor(refusal)).toContain('already a stop on this run');
   });

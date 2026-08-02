@@ -61,7 +61,7 @@ export function PushStateChip({ enabled, onFix }: { enabled: boolean; onFix?: ()
   if (enabled) return <span className="r3-chip r3-chip--alerts-on">Alerts ON</span>;
   return (
     <button type="button" className="r3-chip r3-chip--alerts-off" onClick={onFix}>
-      Alerts OFF — tap to fix
+      Alerts OFF, tap to fix
     </button>
   );
 }

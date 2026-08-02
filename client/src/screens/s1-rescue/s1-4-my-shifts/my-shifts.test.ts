@@ -353,16 +353,16 @@ describe('a refused save', () => {
     // again from a second copy of the rule.
     const releasable = new ApiError('conflict', {
       status: 409,
-      detail: 'You own a run in this window — release it first',
+      detail: 'You own a run in this window. Cancel it first.',
     });
-    expect(failureMessage(releasable)).toBe('You own a run in this window — release it first');
+    expect(failureMessage(releasable)).toBe('You own a run in this window. Cancel it first.');
 
     const inProgress = new ApiError('conflict', {
       status: 409,
-      detail: "This run is in progress and can't be released — try again once it's done",
+      detail: "This run is in progress and can't be cancelled. Try again once it's done.",
     });
     expect(failureMessage(inProgress)).toBe(
-      "This run is in progress and can't be released — try again once it's done",
+      "This run is in progress and can't be cancelled. Try again once it's done.",
     );
   });
 
@@ -396,7 +396,7 @@ describe('microcopy (§7)', () => {
 
   it("keeps S1.4's explanation verbatim", () => {
     expect(COPY.explain).toBe(
-      "Telling us you're away helps the coordinator fill runs. It won't cancel runs you already own — you'll need to cancel those yourself first.",
+      "Telling us you're away helps the coordinator fill runs. It won't cancel runs you already own. You'll need to cancel those yourself first.",
     );
   });
 });

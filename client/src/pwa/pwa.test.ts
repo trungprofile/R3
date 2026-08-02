@@ -229,7 +229,7 @@ describe('remembering what was waved away', () => {
 describe('the copy obeys §7', () => {
   const strings = Object.values(COPY).flatMap((copy) => [
     copy.title,
-    copy.body,
+    ...(copy.body ? [copy.body] : []),
     copy.reassurance,
     copy.dismiss,
     ...(copy.action ? [copy.action] : []),
@@ -254,7 +254,7 @@ describe('the copy obeys §7', () => {
   });
 
   it('tells an iPhone user plainly that installing comes first', () => {
-    expect(COPY['install-ios'].body.toLowerCase()).toContain('only way');
+    expect((COPY['install-ios'].body ?? '').toLowerCase()).toContain('only way');
   });
 
   it('gives each install guide exactly two steps (§5)', () => {

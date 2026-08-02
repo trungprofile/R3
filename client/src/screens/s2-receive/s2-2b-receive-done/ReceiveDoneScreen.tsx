@@ -61,7 +61,7 @@ function StopLines({ lines, label }: { lines: readonly ReceiveDoneLine[]; label:
           <ListRow
             title={line.donorName}
             side={<span className="s22b-state">{lineStatus(line)}</span>}
-            ariaLabel={`${line.donorName} — ${lineStatus(line)}`}
+            ariaLabel={`${line.donorName}, ${lineStatus(line)}`}
           />
         </ListItem>
       ))}

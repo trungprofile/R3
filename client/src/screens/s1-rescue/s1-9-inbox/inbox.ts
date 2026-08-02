@@ -19,7 +19,7 @@ import type { InboxItem, InboxPage } from './api.ts';
  * the event has no run behind it (a driver's time off, say).
  */
 export function rowText(item: Pick<InboxItem, 'title' | 'detail'>): string {
-  return item.detail === null || item.detail === '' ? item.title : `${item.title} — ${item.detail}`;
+  return item.detail === null || item.detail === '' ? item.title : `${item.title}, ${item.detail}`;
 }
 
 /** One row read. The count floors at zero rather than trusting arithmetic against a

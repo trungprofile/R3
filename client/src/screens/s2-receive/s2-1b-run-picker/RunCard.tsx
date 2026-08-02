@@ -50,7 +50,7 @@ export function RunCard({ card, busy, onOpen }: RunCardProps) {
         >
           {/* S2.2b's own name on the affordance that leads there, so the receiver
               meets the same two words twice rather than two wordings once. */}
-          {card.action === 'RECEIVE_DONE' ? `${COPY.receiveDoneHint} — ` : ''}
+          {card.action === 'RECEIVE_DONE' ? `${COPY.receiveDoneHint}, ` : ''}
           {card.actionLabel}
         </span>
       )}

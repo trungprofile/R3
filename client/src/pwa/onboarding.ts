@@ -12,7 +12,7 @@
 //                            2-step guide for THAT platform. iOS must install
 //                            before alerts are possible at all, and says so.
 //   after install         -> one prompt, "Turn on alerts…". One tap.
-//   any state             -> the chip in the top bar says ON or "OFF — tap to fix",
+//   any state             -> the chip in the top bar says ON or "OFF, tap to fix",
 //                            and tapping re-walks this flow.
 //
 // The app is fully usable with alerts off and THE COPY MUST NEVER IMPLY OTHERWISE
@@ -96,7 +96,9 @@ export function visibleStep(
 
 export interface StepCopy {
   title: string;
-  body: string;
+  /** Absent where the title already says it: §7's plain-and-short rule, and D21
+   *  (a hint that only restates the control above it is deleted, not reworded). */
+  body?: string;
   /** The platform's two steps, §5's "matching 2-step illustration". */
   steps?: [string, string];
   /** The one high-emphasis action (§1 principle 1), where the step has one. */
@@ -106,12 +108,12 @@ export interface StepCopy {
   reassurance: string;
 }
 
-const INBOX_REASSURANCE = 'You can use R3 without alerts — everything also lands in your inbox.';
+const INBOX_REASSURANCE = 'You can use R3 without alerts. Everything also lands in your inbox.';
 
 export const COPY: Record<Exclude<OnboardingStep, 'none'>, StepCopy> = {
   'install-ios': {
     title: 'Add R3 to your home screen',
-    body: 'It works like an app once it is on your home screen. On an iPhone or iPad that is also the only way R3 can alert you.',
+    body: 'It works like an app, and on an iPhone or iPad it is the only way R3 can alert you.',
     steps: [
       'Tap the Share button at the bottom of Safari.',
       'Scroll down, tap "Add to Home Screen", then tap Add.',
@@ -121,7 +123,7 @@ export const COPY: Record<Exclude<OnboardingStep, 'none'>, StepCopy> = {
   },
   'install-android': {
     title: 'Add R3 to your home screen',
-    body: 'It works like an app once it is on your home screen, and it can alert you about open runs.',
+    body: 'It works like an app, and it can alert you about open runs.',
     steps: [
       'Tap the menu button at the top right of your browser.',
       'Choose "Add to Home screen", then tap Add.',
@@ -132,7 +134,6 @@ export const COPY: Record<Exclude<OnboardingStep, 'none'>, StepCopy> = {
   },
   'enable-alerts': {
     title: 'Turn on alerts',
-    body: 'Turn on alerts so you hear about open runs and reminders.',
     action: 'Turn on alerts',
     dismiss: 'Not now',
     reassurance: INBOX_REASSURANCE,

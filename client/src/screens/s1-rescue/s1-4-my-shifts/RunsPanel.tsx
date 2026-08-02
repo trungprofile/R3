@@ -67,7 +67,7 @@ export function RunsPanel() {
           </Button>
         }
       >
-        Open runs are on the board — take one from there.
+        Open runs are on the board.
       </EmptyState>
     );
   }
@@ -84,7 +84,7 @@ export function RunsPanel() {
             </Button>
           }
         >
-          Open runs are on the board — take one from there.
+          Open runs are on the board.
         </EmptyState>
       ) : (
         <List label="Your runs coming up">

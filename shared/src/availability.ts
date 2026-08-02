@@ -94,9 +94,9 @@ export interface AvailabilityConflictResponse {
  *  they say "cancel" rather than the domain's "release" — the run still goes back
  *  to the board, which is what the S1.3 confirm spells out. */
 export const AVAILABILITY_CONFLICT_RELEASABLE =
-  'You own a run in this window — cancel it first';
+  'You own a run in this window. Cancel it first.';
 export const AVAILABILITY_CONFLICT_IN_PROGRESS =
-  "This run is in progress and can't be cancelled — try again once it's done";
+  "This run is in progress and can't be cancelled. Try again once it's done.";
 
 // ---------------------------------------------------------------------------
 // Eligibility (`domain-modeling.md §5.2`)

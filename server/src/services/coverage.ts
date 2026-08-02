@@ -510,12 +510,12 @@ async function releaseRow(tx: Tx, shiftId: string, driverId: string): Promise<bo
 
 function releaseRefusal(shift: ShiftRow): Error {
   if (shift.status === 'IN_PROGRESS') {
-    return conflict("That run has already started — it can't be cancelled.");
+    return conflict("That run has already started, so it can't be cancelled.");
   }
   if (shift.status !== 'CLAIMED') {
     return conflict('That run is already back on the board.');
   }
-  return conflict("That run's start time has passed — it can't be cancelled.");
+  return conflict("That run's start time has passed, so it can't be cancelled.");
 }
 
 /**
@@ -606,7 +606,7 @@ export async function assignDriver(
     // (its truck is picked and its stops are snapshotted, I5/I8). CANCELLED and
     // COMPLETED are terminal (I10).
     if (shift.status !== 'OPEN' && shift.status !== 'CLAIMED') {
-      throw conflict("That run has already started — its driver can't be changed.");
+      throw conflict("That run has already started, so its driver can't be changed.");
     }
 
     const { eligibility, driver } = await assessDriver(tx, input.driverId, shift);

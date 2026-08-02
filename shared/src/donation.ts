@@ -100,7 +100,7 @@ export interface FlagAdHocRequest {
 
 /** The refusal when the flagged donor is already a stop on this run (I29). */
 export const DONATION_ON_ROUTE_MESSAGE =
-  'That store is already a stop on this run — add its weight to the stop instead.';
+  'That store is already a stop on this run. Add its weight to the stop instead.';
 
 // ---------------------------------------------------------------------------
 // S2.3 — the receiver's record / confirm

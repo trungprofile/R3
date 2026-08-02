@@ -43,7 +43,7 @@ export function PrefillList({ rows, activeId, onPick, onDiscard, busy }: Prefill
                 subtitle={describeRow(row)}
                 {...(row.note ? { meta: row.note } : {})}
                 onClick={() => onPick(row)}
-                ariaLabel={`${row.donorDisplay} — ${describeRow(row)}`}
+                ariaLabel={`${row.donorDisplay}, ${describeRow(row)}`}
               />
               <Button variant="secondary" disabled={busy} onClick={() => onDiscard(row)}>
                 {COPY.discard}

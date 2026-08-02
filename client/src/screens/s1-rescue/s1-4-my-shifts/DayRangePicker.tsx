@@ -124,7 +124,7 @@ export function DayRangePicker({
           }),
         )}
       </div>
-      <p className="s14-hint">Tap a day. Tap a second day to cover everything in between.</p>
+      <p className="s14-hint">Tap a second day to cover everything in between.</p>
     </div>
   );
 }

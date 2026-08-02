@@ -6,7 +6,7 @@
 // rather than per-person (the same volunteer on a new phone should see the guide
 // again), and losing it costs one dismissible card.
 //
-// A dismissal is never a dead end. §5 keeps the chip visible with "Alerts OFF — tap
+// A dismissal is never a dead end. §5 keeps the chip visible with "Alerts OFF, tap
 // to fix", and tapping it clears this and re-walks the flow.
 
 import type { OnboardingStep } from './onboarding.ts';

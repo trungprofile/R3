@@ -388,7 +388,6 @@ export const FORBIDDEN_EDIT_WORDS = [
 export const COPY = {
   // --- the sheet ----------------------------------------------------------
   unit: 'lb',
-  sheetHint: 'Tap a category, type the weight, then Add weight. The totals add up for you.',
   stopsLabel: 'Stops',
   weighingLabel: 'Weighing',
   loadingSheet: 'Loading the sheet',
@@ -423,7 +422,7 @@ export const COPY = {
   skipStop: 'Skip stop',
   skipQuestion: 'Skip this stop?',
   skipConsequence:
-    'It stays skipped — you cannot change it back here, and nothing from this store goes in the report.',
+    'It stays skipped. You cannot change it back here, and nothing from this store goes in the report.',
   skipConfirm: 'Skip stop',
   stopSkipped: 'Stop skipped.',
 
@@ -448,7 +447,7 @@ export const COPY = {
   skippedNext: 'Nothing came from this store. Pick another stop to keep weighing.',
   movedTitle: 'This stop moved to another run.',
   movedNext: 'Another driver has it now. Pick another stop to keep weighing.',
-  allDoneBanner: 'All stops done — Receive done available',
+  allDoneBanner: 'All stops done. Receive done is available.',
   goToReceiveDone: 'Go to Receive done',
   noStopTitle: 'No stop picked yet.',
   noStopNext: 'Pick the run and the store you are weighing.',

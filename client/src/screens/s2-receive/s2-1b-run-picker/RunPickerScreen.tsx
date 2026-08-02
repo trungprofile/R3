@@ -96,7 +96,6 @@ export function RunPickerScreen(_props: ScreenProps) {
         <Button variant="secondary" onClick={() => navigate(buildPath('donation'))}>
           {COPY.unscheduled}
         </Button>
-        <p className="s21b__aside-hint">{COPY.unscheduledHint}</p>
       </div>
     </div>
   );

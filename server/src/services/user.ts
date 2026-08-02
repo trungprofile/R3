@@ -365,7 +365,7 @@ export async function updateUser(
     // refused rather than half-implemented.
     if (params.active !== undefined) {
       if (params.active !== true) {
-        throw badRequest('To deactivate an account, use Delete — it decides what is safe.');
+        throw badRequest('To deactivate an account, use Delete. It decides what is safe.');
       }
       patch['deactivated_at'] = null;
     }

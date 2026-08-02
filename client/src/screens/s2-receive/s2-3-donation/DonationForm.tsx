@@ -164,7 +164,6 @@ export function DonationForm({
 
           <TextInput
             label={COPY.noteLabel}
-            hint={COPY.noteHint}
             value={draft.note}
             onChange={(note) => onDraft({ ...draft, note })}
             multiline
@@ -175,7 +174,6 @@ export function DonationForm({
           <Button variant="primary" block loading={busy} onClick={onSubmit}>
             {editing ? COPY.submitConfirm : COPY.submitNew}
           </Button>
-          <p className="s23-hint">{COPY.addAnother}</p>
         </div>
       </div>
     </section>

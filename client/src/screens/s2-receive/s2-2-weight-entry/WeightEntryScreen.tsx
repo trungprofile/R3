@@ -343,9 +343,7 @@ export function WeightEntryScreen({ params }: ScreenProps) {
 
       <StopNotes detail={detail} />
 
-      {open ? (
-        <p className="r3-sheet__hint">{COPY.sheetHint}</p>
-      ) : (
+      {open ? null : (
         <p className="r3-sheet__closed">
           <strong>{detail.state === 'SKIPPED' ? COPY.skippedTitle : COPY.movedTitle}</strong>{' '}
           {detail.state === 'SKIPPED' ? COPY.skippedNext : COPY.movedNext}
@@ -399,7 +397,7 @@ export function WeightEntryScreen({ params }: ScreenProps) {
       {confirmingSkip ? (
         <ConfirmModal
           question={COPY.skipQuestion}
-          consequence={`${detail.donorName} — ${COPY.skipConsequence}`}
+          consequence={`${detail.donorName}. ${COPY.skipConsequence}`}
           confirmLabel={COPY.skipConfirm}
           busy={busy}
           onCancel={() => setConfirmingSkip(false)}
@@ -410,7 +408,7 @@ export function WeightEntryScreen({ params }: ScreenProps) {
       {confirmingRemove && editing ? (
         <ConfirmModal
           question={COPY.removeQuestion}
-          consequence={`${editing.categoryName} — ${COPY.removeConsequence}`}
+          consequence={`${editing.categoryName}. ${COPY.removeConsequence}`}
           confirmLabel={COPY.removeConfirm}
           busy={busy}
           onCancel={() => setConfirmingRemove(false)}

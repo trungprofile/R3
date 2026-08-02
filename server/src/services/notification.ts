@@ -369,7 +369,7 @@ export interface PushMessage {
  */
 export function renderPush(notification: PendingNotification): PushMessage {
   const { route, when, who } = notification.payload ?? {};
-  const run = [when, route].filter(Boolean).join(' — ');
+  const run = [when, route].filter(Boolean).join(', ');
   const detail = run !== '' ? run : 'Open R3 to see the details.';
 
   let title: string;

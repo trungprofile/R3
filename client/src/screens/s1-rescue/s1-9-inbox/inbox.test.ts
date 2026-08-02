@@ -34,7 +34,7 @@ function page(items: InboxItem[]): InboxPage {
 
 describe('row text', () => {
   it('joins what happened to which run it was about', () => {
-    expect(rowText(item())).toBe("You're on a run — Tue Aug 4, 2:00 PM — Tuesday North");
+    expect(rowText(item())).toBe("You're on a run, Tue Aug 4, 2:00 PM — Tuesday North");
   });
 
   it('is just the sentence when the event has no run behind it', () => {

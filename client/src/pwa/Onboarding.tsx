@@ -57,7 +57,7 @@ export function OnboardingCard({ pwa }: OnboardingCardProps) {
     <div className="r3-onboarding" role="region" aria-label={copy.title}>
       <Card>
         <h2 className="r3-onboarding__title">{copy.title}</h2>
-        <p className="r3-onboarding__body">{copy.body}</p>
+        {copy.body ? <p className="r3-onboarding__body">{copy.body}</p> : null}
         {copy.steps ? <Steps steps={copy.steps} /> : null}
         {outcomeText ? (
           <p className="r3-onboarding__problem" role="status">

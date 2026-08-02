@@ -284,6 +284,12 @@ export const EXPORT_COLUMNS = [
   'Receipt Total (lb)',
 ] as const;
 
-/** Refused rather than silently short. See `UnmappedCategory`. */
+/**
+ * Refused rather than silently short. See `UnmappedCategory`.
+ *
+ * It used to end "Match it below", which was true while the mapping editor sat on
+ * S3.1. `D17` moved it to Admin, so the sentence now says where to go instead of
+ * pointing at a tab that is no longer there.
+ */
 export const EXPORT_BLOCKED_MESSAGE =
-  'Some food this week is not matched to a North Texas Food Bank category yet. Match it below and the report will be ready.';
+  'Some food this week is not matched to a North Texas Food Bank category yet. An admin matches it under Admin, Category matching, and then the report is ready.';

@@ -783,7 +783,7 @@ export async function cancelShift(
 
     if (Number(updated.numUpdatedRows) === 0) {
       // I9 / I10, reported as a sentence rather than as a constraint violation.
-      throw conflict('That run has already started or finished — it cannot be cancelled.');
+      throw conflict('That run has already started or finished, so it cannot be cancelled.');
     }
 
     return readShift(tx, shiftId);

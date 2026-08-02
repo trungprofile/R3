@@ -157,7 +157,7 @@ function describe(row: NotificationRow): { title: string; detail: string | null;
     payload,
     attempts: 0,
   });
-  const detail = [payload.when, payload.route].filter(Boolean).join(' — ');
+  const detail = [payload.when, payload.route].filter(Boolean).join(', ');
   return { title: rendered.title, detail: detail === '' ? null : detail, url: rendered.url };
 }
 

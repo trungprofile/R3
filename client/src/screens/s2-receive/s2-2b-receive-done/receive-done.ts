@@ -192,8 +192,8 @@ export const COPY = {
   confirmQuestion: 'Finish this run?',
   backToRuns: 'Back to the runs',
   closedToast: 'Run finished.',
-  oneExtraDropped: 'One flagged extra pickup was dropped — nobody weighed it.',
-  manyExtrasDropped: 'flagged extra pickups were dropped — nobody weighed them.',
+  oneExtraDropped: 'One flagged extra pickup was dropped. Nobody weighed it.',
+  manyExtrasDropped: 'flagged extra pickups were dropped. Nobody weighed them.',
 
   // --- not ready yet ------------------------------------------------------
   notReady: 'This run is not finished yet',
