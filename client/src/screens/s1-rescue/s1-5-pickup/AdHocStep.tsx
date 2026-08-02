@@ -223,9 +223,10 @@ export function AdHocStep({ run, onFlagged, onClose }: AdHocStepProps) {
       ) : null}
 
       <div className="r3-adhoc__note">
+        {/* No hint: "Note for the pantry" over an empty box already says what to
+            put in it and that leaving it empty is fine (D21). */}
         <TextInput
           label={COPY.flagNoteLabel}
-          hint={COPY.flagNoteHint}
           value={draft.note}
           onChange={(note) => setDraft((current) => ({ ...current, note }))}
           multiline

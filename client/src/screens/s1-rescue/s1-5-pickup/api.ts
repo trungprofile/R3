@@ -111,6 +111,26 @@ export function fetchDonors(signal: AbortSignal): Promise<DonorSummary[]> {
   return api.get<DonorSummary[]>('/donors', { signal });
 }
 
+/**
+ * The same list, for the two things the run payload does not carry: the map link
+ * and whether a photo exists (D20).
+ *
+ * `RunStopSummary` deliberately holds no donor fields beyond the ones it renders
+ * (`shared/src/execution.ts`), so the screen joins by donor id rather than the run
+ * endpoint growing two columns. It is one small list at ~15 stores.
+ *
+ * `includeInactive` because a deactivated donor can still be a stop on a run in
+ * flight — I21 preserves it everywhere it is referenced — and that driver still
+ * has to find its door. The photo bytes are NOT here: `hasPhoto` is a flag, and
+ * `GET /donors/:id/photo` is what the `<img>` asks for.
+ */
+export function fetchDonorPlaces(signal: AbortSignal): Promise<DonorSummary[]> {
+  return api.get<DonorSummary[]>('/donors', {
+    query: { includeInactive: true },
+    signal,
+  });
+}
+
 /** The category list for the flag's picker. Active only, same reason, and the set
  *  is live admin data (S1.8) rather than the 11 seeded names hardcoded. */
 export function fetchCategories(signal: AbortSignal): Promise<CategorySummary[]> {

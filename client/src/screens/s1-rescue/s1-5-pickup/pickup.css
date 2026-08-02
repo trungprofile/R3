@@ -127,7 +127,6 @@
 }
 
 .r3-stop {
-  padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface);
@@ -155,10 +154,47 @@
   color: var(--text-muted);
 }
 
+/* The head is the expand/collapse target and it is the WHOLE row: no hover state
+   to discover it by, and >=56px so a gloved thumb in a moving truck hits it
+   without aiming (§1.2, §3). It is a <button>, so it also carries the keyboard
+   and screen-reader affordance for free. */
 .r3-stop__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-3);
+  width: 100%;
+  min-height: var(--row-min);
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-card);
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Points right when closed, down when open. Decoration only — the row already
+   says the store's name and its status in words (§3). */
+.r3-stop__chevron {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 120ms ease;
+}
+
+.r3-stop--open .r3-stop__chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .r3-stop__chevron {
+    transition: none;
+  }
+}
+
+.r3-stop__body {
+  padding: 0 var(--space-4) var(--space-4);
 }
 
 .r3-stop__number {
@@ -204,6 +240,50 @@
 
 .r3-stop__note-editor {
   margin-top: var(--space-3);
+}
+
+/* --- Finding the door (D20) ----------------------------------------------- */
+
+/* Wide and short: a photo of a shopfront is read at a glance, and a tall one
+   would push the stop's actions off a phone screen. */
+.r3-stop__photo {
+  display: block;
+  width: 100%;
+  max-height: 11rem;
+  margin-top: var(--space-3);
+  border-radius: var(--radius-control);
+  object-fit: cover;
+  background: var(--surface-paper);
+}
+
+.r3-stop__photo-missing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-control);
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
+/* A link, styled as a control: it leaves R3 for the phone's map app, so it is a
+   real <a>. Full width and >=44px, one-handed, no hover affordance (§1.2). */
+.r3-stop__map {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--target-min);
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .r3-stop__actions {

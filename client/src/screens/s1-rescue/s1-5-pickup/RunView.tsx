@@ -7,6 +7,11 @@
 //   - the next unchecked stop is visually the focus (the one primary action)
 //   - once no stop is `PENDING`, "Heading back" appears (I27)
 //
+// "Visually the focus" is taken literally here: the current stop is the one card
+// open, and the rest are one-line rows a tap away (`isStopExpanded`). That is
+// presentation and nothing else — the list, its order and every action are
+// unchanged, and no rule in this file reads whether a card is open.
+//
 // What is NOT here, deliberately: any action that closes the run. The receiver's
 // receive-done is the only completion (I11) and it ships in Phase 2 (D1), so this
 // run stays `IN_PROGRESS` — including after "Heading back", which sets a
@@ -17,7 +22,7 @@
 // vanishes from a list the driver is reading while driving.
 
 import { useState } from 'react';
-import { useSession, useToast } from '../../../app/index.ts';
+import { useAsyncData, useSession, useToast } from '../../../app/index.ts';
 import { Button, ConfirmModal, EmptyState } from '../../../components/index.ts';
 import type {
   DonationSummary,
@@ -25,21 +30,27 @@ import type {
   RunDetail,
   RunStopSummary,
 } from '../../../api/shared.ts';
-import { resolveStop, saveOrder, saveStopNote } from './api.ts';
+import { fetchDonorPlaces, resolveStop, saveOrder, saveStopNote } from './api.ts';
 import {
   COPY,
+  NO_STOP_EXPANSION,
   canMoveDown,
   canMoveUp,
   flaggedLine,
+  forgetStopExpansion,
   headingBackState,
+  isStopExpanded,
   messageFor,
   moveStop,
   nextPendingStop,
   orderedStops,
+  placeFor,
   progressLabel,
   reorderPayload,
   shouldReloadAfter,
   stopsOnThisRun,
+  toggleStopExpansion,
+  type StopExpansion,
 } from './logic.ts';
 import { AdHocStep } from './AdHocStep.tsx';
 import { ReviewStep } from './ReviewStep.tsx';
@@ -67,6 +78,17 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
   const [flagged, setFlagged] = useState<DonationSummary[]>([]);
   const [skipTarget, setSkipTarget] = useState<RunStopSummary | null>(null);
   const [busyStopId, setBusyStopId] = useState<string | null>(null);
+  // Which cards the driver opened or closed by hand. Empty means "follow the
+  // current stop", which is the state a run starts in.
+  const [expansion, setExpansion] = useState<StopExpansion>(NO_STOP_EXPANSION);
+
+  // The map link and the photo flag (D20). A second request rather than fields on
+  // the run: `RunStopSummary` carries no donor data beyond what it renders, and
+  // the run endpoint is not this lane's. Failure is silent on purpose — a driver
+  // loses the shortcut to the door, never the stop, so an error block over a
+  // working stop list would be the worse trade.
+  const places = useAsyncData(fetchDonorPlaces);
+  const donors = places.data ?? [];
 
   const applyStop = (updated: RunStopSummary) => {
     onRun({ ...run, stops: run.stops.map((stop) => (stop.id === updated.id ? updated : stop)) });
@@ -78,6 +100,10 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
       // Idempotent server-side (A83): a second tap on a bad connection is not an
       // error, and there is no un-check to offer either way.
       applyStop(await resolveStop(run.shiftId, stop.id, disposition));
+      // A finished stop closes itself and the focus moves on. Dropping the choice
+      // rather than forcing it closed keeps the stop one tap from being reopened,
+      // which a driver still needs: the note for the pantry outlives the check-off.
+      setExpansion((current) => forgetStopExpansion(current, stop.id));
     } catch (error) {
       toast.error(messageFor(error));
       if (shouldReloadAfter(error)) onReload();
@@ -161,9 +187,14 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
               stop={stop}
               number={index + 1}
               focused={stop.id === focusId}
+              expanded={isStopExpanded(stop, run.stops, expansion)}
+              place={placeFor(stop, donors)}
               busy={busyStopId === stop.id}
               canMoveUp={canMoveUp(run.stops, stop.id)}
               canMoveDown={canMoveDown(run.stops, stop.id)}
+              onToggle={() =>
+                setExpansion((current) => toggleStopExpansion(current, stop, run.stops))
+              }
               onCollect={() => void resolve(stop, 'COLLECTED')}
               onSkip={() => setSkipTarget(stop)}
               onMove={(delta) => void move(stop, delta)}
@@ -175,12 +206,12 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
 
       {heading.offered ? (
         <div className="r3-pickup__handoff">
+          {/* The time is the whole message (D21): the driver can see they are
+              marked, and only the clock reading tells them anything more. */}
           {heading.confirmed ? (
             <p className="r3-pickup__confirmed">
               <strong>{COPY.confirmedTitle}</strong>
               {heading.confirmedAt ? ` · ${heading.confirmedAt}` : null}
-              <br />
-              <span className="r3-pickup__hint">{COPY.confirmedHint}</span>
             </p>
           ) : null}
           <div className="r3-pickup__primary">
@@ -192,7 +223,6 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
               {heading.confirmed ? COPY.reviewAgain : COPY.headingBack}
             </Button>
           </div>
-          {heading.confirmed ? null : <p className="r3-pickup__hint">{COPY.headingBackHint}</p>}
         </div>
       ) : null}
 
@@ -209,14 +239,14 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
                 <li key={donation.id}>{flaggedLine(donation)}</li>
               ))}
             </ul>
-            <p className="r3-pickup__hint">{COPY.flaggedListHint}</p>
+            {/* Kept (D21): the rows really do vanish on reload, and nothing else
+                on screen says they are safe on the server. */}
             <p className="r3-pickup__hint">{COPY.flaggedListNote}</p>
           </div>
         ) : null}
         <Button variant="secondary" block onClick={() => setFlagging(true)}>
           {COPY.flagAdHoc}
         </Button>
-        <p className="r3-pickup__hint">{COPY.flagAdHocHint}</p>
       </section>
 
       {skipTarget ? (
@@ -224,7 +254,9 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
         // machine has no edge back to `PENDING`, so this cannot be undone here.
         <ConfirmModal
           question={COPY.skipQuestion}
-          consequence={`${skipTarget.donorName} — ${COPY.skipConsequence}`}
+          // Two sentences, not an em dash (D21). `ConfirmModal.consequence` is a
+          // required prop by design and stays that way: this confirm has no way back.
+          consequence={`${skipTarget.donorName}. ${COPY.skipConsequence}`}
           confirmLabel={COPY.skipConfirm}
           onCancel={() => setSkipTarget(null)}
           onConfirm={() => {

@@ -8,14 +8,17 @@ import type {
   CreateDonorRequest,
   DonorSummary,
   RemoveMasterResponse,
+  SetDonorPhotoRequest,
   UpdateDonorRequest,
 } from '../../../shared/src/masters.js';
 import { badRequest, notFound } from '../middleware/error.js';
 import {
   createDonor,
   getDonor,
+  getDonorPhoto,
   listDonors,
   removeDonor,
+  setDonorPhoto,
   updateDonor,
   type DonorRecord,
 } from '../services/donor.js';
@@ -33,6 +36,11 @@ function toSummary(row: DonorRecord): DonorSummary {
     address: row.address,
     contact: row.contact,
     note: row.note,
+    // D20 — both are operational, like `address`: a driver looking for a loading
+    // dock needs them, so neither goes near `pii.ts`. The photo itself is not
+    // here; this is only whether one exists.
+    mapUrl: row.map_url,
+    hasPhoto: row.has_photo,
     // I21 — the flag travels with the record; a deactivated donor is preserved
     // everywhere it is referenced rather than vanishing.
     active: row.deactivated_at === null,
@@ -107,6 +115,7 @@ export const donorRoutes = [
         address: optionalString(input, 'address') ?? null,
         contact: optionalString(input, 'contact') ?? null,
         note: optionalString(input, 'note') ?? null,
+        mapUrl: optionalString(input, 'mapUrl') ?? null,
       });
       res.status(201).json(toSummary(created));
     },
@@ -124,6 +133,7 @@ export const donorRoutes = [
       const address = optionalString(input, 'address');
       const contact = optionalString(input, 'contact');
       const note = optionalString(input, 'note');
+      const mapUrl = optionalString(input, 'mapUrl');
       const active = optionalBoolean(input, 'active');
 
       const updated = await updateDonor(String(req.params['id']), {
@@ -131,8 +141,56 @@ export const donorRoutes = [
         ...(address !== undefined ? { address } : {}),
         ...(contact !== undefined ? { contact } : {}),
         ...(note !== undefined ? { note } : {}),
+        ...(mapUrl !== undefined ? { mapUrl } : {}),
         ...(active !== undefined ? { active } : {}),
       });
+      res.json(toSummary(updated));
+    },
+  }),
+
+  /**
+   * The bytes (D20). Any signed-in user, deliberately wider than the write that
+   * puts them there: the photo exists for the driver arriving somewhere new at
+   * 6am, and a driver is a Volunteer. This is the ONLY endpoint that pays for an
+   * image — every list carries `hasPhoto` and nothing else.
+   */
+  defineRoute({
+    method: 'get',
+    path: '/donors/:id/photo',
+    access: { tier: 'VOLUNTEER' },
+    handler: async (req, res) => {
+      const photo = await getDonorPhoto(String(req.params['id']));
+      if (!photo) throw notFound('No photo for that store.');
+
+      // `private` because this sits behind a session: nothing shared may hold it.
+      // A day is long enough that a driver on one bar re-fetches nothing during a
+      // run, and the cost is that a photo replaced today can be a day stale on a
+      // phone that already had the old one. For a picture of a door that is the
+      // right trade. Express answers `If-None-Match` from `res.send`, so the
+      // revalidation after the window costs a 304 rather than the bytes.
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.type(photo.mime).send(photo.bytes);
+    },
+  }),
+
+  /**
+   * Set or clear it. Admin, like every other donor write.
+   *
+   * Nothing is validated here: what counts as a photo is a domain rule and lives
+   * in the service (`architecture.md §4.1`). This only insists the field is
+   * PRESENT, because absent and `null` mean different things on the wire and only
+   * one of them means "clear the photo".
+   */
+  defineRoute({
+    method: 'put',
+    path: '/donors/:id/photo',
+    access: { tier: 'ADMIN' },
+    handler: async (req, res) => {
+      const input = body(req) as Record<string, unknown> & Partial<SetDonorPhotoRequest>;
+      const dataUrl = optionalString(input, 'dataUrl');
+      if (dataUrl === undefined) throw badRequest('dataUrl is required.');
+
+      const updated = await setDonorPhoto(String(req.params['id']), dataUrl);
       res.json(toSummary(updated));
     },
   }),

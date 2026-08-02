@@ -6,20 +6,29 @@
 // PII in this system's sense (phone/address on `app_user`) and are never shaped
 // out — see the scope note in `pii.ts`.
 
-import type { Selectable } from 'kysely';
+import type { Selectable, SelectQueryBuilder } from 'kysely';
 import type { RemovalOutcome } from '../../../shared/src/masters.js';
 import { db } from '../db/index.js';
 import { writeTransaction, type Tx } from '../db/transaction.js';
-import type { Donor } from '../db/types.js';
+import type { DB, Donor } from '../db/types.js';
 import { badRequest, conflict, notFound } from '../middleware/error.js';
 
-export type DonorRecord = Selectable<Donor>;
+/**
+ * A donor as every reader wants it: the row, plus whether a photo exists.
+ *
+ * `has_photo` is a flag and never the bytes (D20). The photo lives in its own
+ * table precisely so that the board, the route builder, the admin list and the
+ * report never carry images; selecting it here would undo that in one line.
+ */
+export type DonorRecord = Selectable<Donor> & { has_photo: boolean };
 
 export interface CreateDonorInput {
   name: string;
   address?: string | null;
   contact?: string | null;
   note?: string | null;
+  /** D20 — an explicit map link. `null` means "derive one from the address". */
+  mapUrl?: string | null;
 }
 
 export interface UpdateDonorInput {
@@ -27,6 +36,7 @@ export interface UpdateDonorInput {
   address?: string | null;
   contact?: string | null;
   note?: string | null;
+  mapUrl?: string | null;
   /** `domain-modeling.md §3.3` ACTIVE ⇄ DEACTIVATED. */
   active?: boolean;
 }
@@ -68,24 +78,47 @@ export interface ListDonorsOptions {
   includeInactive?: boolean;
 }
 
+/** `has_photo` as a correlated EXISTS, so a donor read is still one round trip and
+ *  still never touches `donor_photo.bytes` (D20). */
+function withPhotoFlag(qb: SelectQueryBuilder<DB, 'donor', object>) {
+  return qb.selectAll('donor').select((eb) =>
+    eb
+      .exists(
+        eb
+          .selectFrom('donor_photo')
+          .select('donor_photo.donor_id')
+          .whereRef('donor_photo.donor_id', '=', 'donor.id'),
+      )
+      .as('has_photo'),
+  );
+}
+
+/** Kysely types `exists()` as `SqlBool` — `boolean | number` — because SQLite has
+ *  no boolean. Postgres returns a real one, so this narrows at the read boundary
+ *  rather than letting `number` leak into the service's public type. */
+function narrowPhotoFlag<T extends { has_photo: boolean | number }>(
+  row: T,
+): T & { has_photo: boolean } {
+  return { ...row, has_photo: Boolean(row.has_photo) };
+}
+
 export async function listDonors(
   options: ListDonorsOptions = {},
 ): Promise<DonorRecord[]> {
-  let query = db.selectFrom('donor').selectAll().orderBy('name');
+  let query = withPhotoFlag(db.selectFrom('donor')).orderBy('name');
   if (options.includeInactive !== true) {
     // I21 — active reads filter on the soft-delete predicate; `ix_donor_active`
     // is the partial index for exactly this (`data-model.md §12`).
     query = query.where('deactivated_at', 'is', null);
   }
-  return query.execute();
+  return (await query.execute()).map(narrowPhotoFlag);
 }
 
 export async function getDonor(donorId: string): Promise<DonorRecord | undefined> {
-  return db
-    .selectFrom('donor')
-    .selectAll()
+  const row = await withPhotoFlag(db.selectFrom('donor'))
     .where('id', '=', donorId)
     .executeTakeFirst();
+  return row === undefined ? undefined : narrowPhotoFlag(row);
 }
 
 // ---------------------------------------------------------------------------
@@ -102,9 +135,13 @@ export async function createDonor(input: CreateDonorInput): Promise<DonorRecord>
         address: cleanText(input.address),
         contact: cleanText(input.contact),
         note: cleanText(input.note),
+        map_url: cleanText(input.mapUrl),
       })
       .returningAll()
-      .executeTakeFirstOrThrow(),
+      .executeTakeFirstOrThrow()
+      // A donor that was created a statement ago cannot have a photo. Stated
+      // rather than re-queried.
+      .then((row) => ({ ...row, has_photo: false })),
   );
 }
 
@@ -126,6 +163,7 @@ export async function updateDonor(
     address?: string | null;
     contact?: string | null;
     note?: string | null;
+    map_url?: string | null;
     deactivated_at?: Date | null;
   } = {};
 
@@ -133,6 +171,7 @@ export async function updateDonor(
   if (patch.address !== undefined) values.address = cleanText(patch.address);
   if (patch.contact !== undefined) values.contact = cleanText(patch.contact);
   if (patch.note !== undefined) values.note = cleanText(patch.note);
+  if (patch.mapUrl !== undefined) values.map_url = cleanText(patch.mapUrl);
 
   return writeTransaction(async (tx) => {
     const current = await tx
@@ -151,12 +190,137 @@ export async function updateDonor(
 
     if (Object.keys(values).length === 0) throw badRequest('Nothing to change.');
 
-    return tx
+    const row = await tx
       .updateTable('donor')
       .set(values)
       .where('id', '=', donorId)
       .returningAll()
       .executeTakeFirstOrThrow();
+
+    // The photo is not among the editable fields, so this reads the flag rather
+    // than assuming it. Same transaction, so it cannot see a half-applied state.
+    const photo = await tx
+      .selectFrom('donor_photo')
+      .select('donor_id')
+      .where('donor_id', '=', donorId)
+      .executeTakeFirst();
+
+    return { ...row, has_photo: photo !== undefined };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The store photo (D20)
+// ---------------------------------------------------------------------------
+
+/** What the photo endpoint streams. Bytes and mime travel together: a browser
+ *  cannot render one without the other. */
+export interface DonorPhotoRecord {
+  bytes: Buffer;
+  mime: string;
+  updatedAt: Date;
+}
+
+/** The two `donor_photo.mime`'s CHECK admits (migration 0014). Restated here so a
+ *  wrong file is a sentence the admin can act on rather than a 23514 that reaches
+ *  `errorHandler` as a 500. The CHECK is still the guard that cannot be bypassed
+ *  (`architecture.md §4.1` tier 1); this only decides what the person reads. */
+const PHOTO_MIME_TYPES: readonly string[] = ['image/jpeg', 'image/png'];
+
+/** `donor_photo_size`'s upper bound, restated for the same reason. */
+const MAX_PHOTO_BYTES = 400_000;
+
+/** `data:<mime>;base64,<payload>` and nothing else. A data URL is how the photo
+ *  arrives (`masters.ts` `SetDonorPhotoRequest`): multipart would need a parsing
+ *  dependency, which no lane may add (D5). */
+const PHOTO_DATA_URL = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([a-z0-9+/\s]+={0,2})$/i;
+
+/**
+ * A data URL as bytes, or a refusal a driver's admin can act on.
+ *
+ * Every check here has a CHECK constraint behind it. This exists for the message,
+ * not for the correctness — the same rule is enforced again one layer down, which
+ * is the point of §4.1's tiers.
+ */
+function decodePhoto(dataUrl: string): { bytes: Buffer; mime: string } {
+  const match = PHOTO_DATA_URL.exec(dataUrl.trim());
+  if (!match) {
+    throw badRequest('That does not look like a photo. Choose an image and try again.');
+  }
+
+  const mime = match[1]!.toLowerCase();
+  if (!PHOTO_MIME_TYPES.includes(mime)) {
+    throw badRequest('A store photo has to be a JPEG or a PNG.');
+  }
+
+  const bytes = Buffer.from(match[2]!, 'base64');
+  if (bytes.length === 0) {
+    throw badRequest('That photo is empty. Choose an image and try again.');
+  }
+  if (bytes.length > MAX_PHOTO_BYTES) {
+    throw badRequest('That photo is too big. It has to be under 400 KB.');
+  }
+
+  return { bytes, mime };
+}
+
+/** The bytes, on their own endpoint. Nothing else in this file selects them (D20):
+ *  the flag `has_photo` is what every list carries. */
+export async function getDonorPhoto(
+  donorId: string,
+): Promise<DonorPhotoRecord | undefined> {
+  const row = await db
+    .selectFrom('donor_photo')
+    .select(['bytes', 'mime', 'updated_at'])
+    .where('donor_id', '=', donorId)
+    .executeTakeFirst();
+  if (row === undefined) return undefined;
+  return { bytes: row.bytes, mime: row.mime, updatedAt: row.updated_at };
+}
+
+/**
+ * Set or clear the photo. `null` clears it.
+ *
+ * Returns the donor, so the caller's `hasPhoto` is right without a second read.
+ */
+export async function setDonorPhoto(
+  donorId: string,
+  dataUrl: string | null,
+): Promise<DonorRecord> {
+  // Decoded BEFORE the transaction opens. It is pure CPU on a request-sized
+  // string, and `writeTransaction` may run its callback more than once (40001
+  // retry) — there is no reason to redo it inside every attempt.
+  const photo = dataUrl === null ? null : decodePhoto(dataUrl);
+
+  return writeTransaction(async (tx) => {
+    const donor = await tx
+      .selectFrom('donor')
+      .selectAll()
+      .where('id', '=', donorId)
+      .executeTakeFirst();
+    if (!donor) throw notFound('No such donor.');
+
+    if (photo === null) {
+      await tx.deleteFrom('donor_photo').where('donor_id', '=', donorId).execute();
+      return { ...donor, has_photo: false };
+    }
+
+    // One photo per store: `donor_id` is the PRIMARY KEY, so replacing is an
+    // UPSERT and there is no way to accumulate versions of the same door.
+    // `updated_at` is written explicitly because its DEFAULT fires on insert only.
+    await tx
+      .insertInto('donor_photo')
+      .values({ donor_id: donorId, bytes: photo.bytes, mime: photo.mime })
+      .onConflict((oc) =>
+        oc.column('donor_id').doUpdateSet({
+          bytes: photo.bytes,
+          mime: photo.mime,
+          updated_at: new Date(),
+        }),
+      )
+      .execute();
+
+    return { ...donor, has_photo: true };
   });
 }
 
@@ -229,6 +393,13 @@ export async function removeDonor(donorId: string): Promise<RemovalOutcome> {
     }
 
     try {
+      // A photo is not history, so it does not make a donor undeletable — but its
+      // FK is `ON DELETE RESTRICT` like every other one in the schema
+      // (`data-model.md §0`, migration 0014), so it has to go first and inside
+      // this transaction. `donorHasHistory` deliberately does NOT probe for it:
+      // that predicate answers "would deleting this lose something", and a
+      // photograph of a loading dock is not something history needs back.
+      await tx.deleteFrom('donor_photo').where('donor_id', '=', donorId).execute();
       await tx.deleteFrom('donor').where('id', '=', donorId).execute();
     } catch (err) {
       // A writer that created history between the predicate and the DELETE is

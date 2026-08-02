@@ -161,6 +161,147 @@ export function progressLabel(stops: readonly RunStopSummary[]): string {
   return `${done} of ${total} done`;
 }
 
+// ---------------------------------------------------------------------------
+// Which stop is open (D21)
+// ---------------------------------------------------------------------------
+
+/**
+ * The driver's own open/closed choices, by stop id. A stop with no entry follows
+ * the default below.
+ *
+ * PRESENTATION ONLY. Nothing in this section reads or writes a disposition, and
+ * every stop stays in the list, in order, whatever this says — the run screen is
+ * still "an ordered list of stops" (S1.5), just not four of them open at once.
+ */
+export type StopExpansion = Readonly<Record<string, boolean>>;
+
+export const NO_STOP_EXPANSION: StopExpansion = {};
+
+/**
+ * Whether a stop is shown in full.
+ *
+ * The default is "the current stop, and only the current stop" — the next
+ * `PENDING` one, which S1.5 already makes the visual focus. A driver standing in
+ * one store's car park should not be reading four other stores' notes, and on a
+ * phone held in one hand that is what an all-expanded list means.
+ *
+ * A tap overrides the default either way, so every stop is one tap from being
+ * fully readable: a collected stop can be reopened to add the note the receiver
+ * will read (`canEditNote`), and a moved one to see why it went.
+ */
+export function isStopExpanded(
+  stop: RunStopSummary,
+  stops: readonly RunStopSummary[],
+  expansion: StopExpansion,
+): boolean {
+  const chosen = expansion[stop.id];
+  if (chosen !== undefined) return chosen;
+  return nextPendingStop(stops)?.id === stop.id;
+}
+
+export function toggleStopExpansion(
+  expansion: StopExpansion,
+  stop: RunStopSummary,
+  stops: readonly RunStopSummary[],
+): StopExpansion {
+  return { ...expansion, [stop.id]: !isStopExpanded(stop, stops, expansion) };
+}
+
+/**
+ * Drop a stop's choice so it follows the default again.
+ *
+ * Called when a stop resolves: the focus has moved to the next stop, and the
+ * finished one closes itself rather than sitting open above the work that is
+ * left. Reopening it is still one tap.
+ */
+export function forgetStopExpansion(
+  expansion: StopExpansion,
+  stopId: string,
+): StopExpansion {
+  if (expansion[stopId] === undefined) return expansion;
+  const next = { ...expansion };
+  delete next[stopId];
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Finding the door (D20)
+// ---------------------------------------------------------------------------
+
+/** Google Maps' documented search link. Every phone hands it to whichever map app
+ *  the driver actually uses; a `geo:` URI does not work on iOS at all. */
+const MAP_SEARCH_BASE = 'https://www.google.com/maps/search/?api=1&query=';
+
+/** What a stop needs to be findable, gathered from the two places it lives: the
+ *  address rides on the stop, the rest on the donor (D20). */
+export interface StopPlace {
+  /** `Donor.map_url`. Null is the normal state and means "derive one". */
+  mapUrl: string | null;
+  address: string | null;
+  hasPhoto: boolean;
+}
+
+/**
+ * The aids for one stop.
+ *
+ * `RunStopSummary` carries the address and nothing else about the place, so the
+ * map link and the photo flag are joined in from the donor list by id. A donor
+ * that is not in the list simply has no aids and the stop renders exactly as it
+ * did before — a driver never loses a stop because a second request lagged.
+ */
+export function placeFor(
+  stop: RunStopSummary,
+  donors: readonly DonorSummary[],
+): StopPlace {
+  const donor = donors.find((candidate) => candidate.id === stop.donorId);
+  return {
+    mapUrl: donor?.mapUrl ?? null,
+    address: stop.donorAddress,
+    hasPhoto: donor?.hasPhoto ?? false,
+  };
+}
+
+/**
+ * Where "Open in Maps" goes, or null when there is nothing to open.
+ *
+ * An explicit `Donor.map_url` wins: it exists precisely for the store whose
+ * address does not resolve to the right door — a dock round the back, a site with
+ * several entrances (D20). Otherwise a search for the address.
+ */
+export function mapLinkFor(place: StopPlace): string | null {
+  const explicit = (place.mapUrl ?? '').trim();
+  if (explicit !== '') return explicit;
+
+  const address = (place.address ?? '').trim();
+  if (address === '') return null;
+
+  return `${MAP_SEARCH_BASE}${encodeURIComponent(address)}`;
+}
+
+/**
+ * The photo's own endpoint.
+ *
+ * An `<img>` is the browser's own GET and cannot go through `api/client.ts` — it
+ * does not need to either: it carries the same-origin session cookie by itself,
+ * and there is no JSON error shape to map, only a broken image to replace with a
+ * label. `/api` is the mount point Express serves the SPA from (§4.5).
+ */
+export function photoUrlFor(donorId: string): string {
+  return `/api/donors/${encodeURIComponent(donorId)}/photo`;
+}
+
+/** Alt text: what the picture is of, not the fact that it is a picture. */
+export function photoAlt(stop: RunStopSummary): string {
+  return `${stop.donorName}, as seen on arrival`;
+}
+
+/** The toggle's spoken label. The row's own words are the store name and its
+ *  status; this says what tapping does, which sighted users get from the chevron
+ *  (§3: an icon is never the only label). */
+export function stopToggleLabel(stop: RunStopSummary, expanded: boolean): string {
+  return `${expanded ? COPY.hideStop : COPY.showStop}: ${stop.donorName}`;
+}
+
 export function stopStatusLabel(disposition: ShiftStopDisposition): string {
   switch (disposition) {
     case 'PENDING':
@@ -519,11 +660,17 @@ export const FORBIDDEN_IN_COPY = [
  *   - Nothing may promise the pantry was told. The truck-inbound alert is the one
  *     piece of cap 13 held back to Phase 2 (PRD §5), and the server deliberately
  *     enqueues nothing, so copy that says "we let them know" would be false.
+ *
+ * And one rule about what is NOT here (D21): a hint that only restates the
+ * control under it is noise on a screen read one-handed in a truck. Several were
+ * deleted. What stays is what a driver cannot see for themselves — the
+ * consequence of a one-way action, why something is blocked, what a number means.
+ *
+ * No em dash anywhere below, either (D21). Two sentences, or a comma.
  */
 export const COPY = {
   // --- start step ---------------------------------------------------------
   pickTruck: 'Pick your truck',
-  pickTruckHint: 'Which truck are you taking? Tap it, then start your run.',
   startRun: 'Start run',
   noTrucks: 'No trucks are set up yet.',
   noTrucksNext: 'Ask an admin to add one, then come back and start your run.',
@@ -548,40 +695,50 @@ export const COPY = {
   pickedUp: 'Picked up',
   skip: 'Skip',
   skipQuestion: 'Skip this stop?',
-  skipConsequence: 'It stays skipped for the rest of the run — you cannot undo it here.',
+  skipConsequence: 'It stays skipped for the rest of the run. You cannot undo it here.',
   skipConfirm: 'Skip stop',
   moveUp: 'Move up',
   moveDown: 'Move down',
   movedHint: 'Staff moved this stop to another driver. It is off your run.',
+  // --- one stop at a time (D21) -------------------------------------------
+  showStop: 'Show this stop',
+  hideStop: 'Hide this stop',
+  // --- finding the door (D20) ---------------------------------------------
+  openInMaps: 'Open in Maps',
+  storePhotoLabel: 'Store photo',
+  // Kept: the driver is looking at a grey box and cannot tell whether the photo
+  // is missing, still coming, or broken.
+  photoUnavailable: 'The store photo did not load.',
   noStops: 'This run has no stops.',
   noStopsNext: 'There is nothing to pick up, so you can head back whenever you like.',
 
   // --- heading back (I27) -------------------------------------------------
   headingBack: 'Heading back',
-  headingBackHint: 'Optional. It records that you finished your stops.',
   headingBackToast: 'Marked as heading back.',
   reviewAgain: 'Review your run',
   reviewTitle: 'Heading back',
   reviewIntro: 'A last look at your run. Anything you write here goes to the pantry with it.',
   runNoteLabel: 'Note about the whole run',
   runNoteHint: 'Last chance to add something before the pantry weighs it.',
-  confirmHeadingBack: 'Confirm — heading back',
+  // S1.5 names this action "Confirm — heading back". D21 forbids the em dash, and
+  // a hyphen swap is not the fix, so the punctuation goes and the words stay.
+  confirmHeadingBack: 'Confirm heading back',
   saveRunNote: 'Save note',
   backToStops: 'Back to my stops',
   confirmedTitle: "You're marked as heading back",
-  confirmedHint: 'Nothing else is needed from you. You can still add notes.',
 
   // --- flag a stop not on my route (cap 12) -------------------------------
   // Nothing here may promise anyone was told, for the same reason as above: the
   // flag writes a row the receiver finds on their own screen (S2.3). It sends no
   // alert of its own, and the truck-inbound one belongs to "Heading back".
   flagAdHoc: 'Flag a stop not on my route',
-  flagAdHocHint: 'Picked up something that was not on your list? Record it here.',
   flagTitle: 'A stop not on my route',
   flagIntro:
-    'Record something extra you picked up. You do not weigh it — the pantry does that when you get back.',
+    'Record something extra you picked up. You do not weigh it. The pantry does that when you get back.',
   flagStoreLabel: 'Which store?',
-  flagStoreHint: 'Stops already on your route are not listed — add their food to the stop itself.',
+  // Kept: a driver looking for a store that is missing from the list cannot
+  // otherwise tell whether it is absent or already handled.
+  flagStoreHint: 'Stops already on your route are not listed. Add their food to the stop itself.',
   flagOtherStore: 'Somewhere else',
   flagOtherStoreLabel: 'Store name',
   flagOtherStoreHint: 'For a store the pantry does not have on file yet.',
@@ -589,15 +746,18 @@ export const COPY = {
   flagCategoryLabel: 'What kind of food?',
   flagCategoryHint: 'Your best guess is fine. The pantry can change it when they weigh it.',
   flagNoteLabel: 'Note for the pantry',
-  flagNoteHint: 'Optional. Anything the pantry should know about this pickup.',
   flagSubmit: 'Flag this pickup',
   flagSuccess: 'Flagged. The pantry weighs it when you get back.',
   flagNoDonors: 'No stores to pick from.',
   flagNoDonorsNext: 'Type the store name instead, or ask an admin to add the store.',
   flagNoCategories: 'No kinds of food are set up yet.',
   flagNoCategoriesNext: 'Ask an admin to add one, then come back and flag this pickup.',
-  flaggedListLabel: 'Extra pickups you flagged',
-  flaggedListHint: 'These are not stops on your route. The pantry weighs them.',
+  // I14: a driver-add writes no ShiftStop, so the label has to keep these apart
+  // from the route above it. It is the label doing that job now, not a hint under
+  // the list repeating it (D21).
+  flaggedListLabel: 'Extra pickups you flagged, not stops on your route',
+  // Kept: the list really does vanish on reload, and nothing on screen says the
+  // rows are safe on the server.
   flaggedListNote: 'This list clears if you reload. The pantry keeps what you flagged.',
 
   // --- nothing to do here -------------------------------------------------

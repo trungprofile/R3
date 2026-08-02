@@ -34,6 +34,7 @@ import {
   COPY,
   EMPTY_AD_HOC_DRAFT,
   FORBIDDEN_IN_COPY,
+  NO_STOP_EXPANSION,
   actionsFor,
   adHocChoiceOf,
   adHocReady,
@@ -45,13 +46,19 @@ import {
   canEditNote,
   canResolve,
   flaggedLine,
+  forgetStopExpansion,
   headingBackState,
   isOnRouteRefusal,
+  isStopExpanded,
+  mapLinkFor,
   messageFor,
   moveStop,
   nextPendingStop,
   orderedStops,
   phaseFor,
+  photoAlt,
+  photoUrlFor,
+  placeFor,
   progressLabel,
   progressOf,
   reorderPayload,
@@ -62,8 +69,10 @@ import {
   selectableTrucks,
   shouldReloadAfter,
   stopStatusLabel,
+  stopToggleLabel,
   stopsOnThisRun,
   timeOfDay,
+  toggleStopExpansion,
   truckLabel,
 } from './logic.ts';
 
@@ -448,6 +457,8 @@ function donor(over: Partial<DonorSummary> = {}): DonorSummary {
     address: null,
     contact: null,
     note: null,
+    mapUrl: null,
+    hasPhoto: false,
     active: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...over,
@@ -682,6 +693,167 @@ describe('what a failure says', () => {
 });
 
 // ---------------------------------------------------------------------------
+// One stop open at a time (D21) — presentation, and provably nothing else
+// ---------------------------------------------------------------------------
+
+describe('which stop is open', () => {
+  it('opens the current stop and nothing else', () => {
+    const list = stops('COLLECTED', 'PENDING', 'PENDING');
+    const open = list.filter((s) => isStopExpanded(s, list, NO_STOP_EXPANSION));
+
+    expect(open.map((s) => s.id)).toEqual(['stop-2']);
+    // The same stop S1.5 already calls "visually the focus".
+    expect(nextPendingStop(list)?.id).toBe('stop-2');
+  });
+
+  it('opens nothing when there is no current stop', () => {
+    // Every stop resolved: the run's remaining work is "Heading back", which sits
+    // below the list and takes the primary. A wall of finished cards above it
+    // would be four screens of nothing to do.
+    const list = stops('COLLECTED', 'SKIPPED', 'REASSIGNED');
+    expect(list.some((s) => isStopExpanded(s, list, NO_STOP_EXPANSION))).toBe(false);
+    expect(canHeadBack(list)).toBe(true);
+  });
+
+  it('lets a tap override the default in both directions', () => {
+    const list = stops('PENDING', 'PENDING');
+    const current = list[0]!;
+    const other = list[1]!;
+
+    // Open one that is not current.
+    const opened = toggleStopExpansion(NO_STOP_EXPANSION, other, list);
+    expect(isStopExpanded(other, list, opened)).toBe(true);
+    // ...without closing the current one. Nothing here is exclusive.
+    expect(isStopExpanded(current, list, opened)).toBe(true);
+
+    // And close the current one.
+    const closed = toggleStopExpansion(opened, current, list);
+    expect(isStopExpanded(current, list, closed)).toBe(false);
+    expect(isStopExpanded(other, list, closed)).toBe(true);
+  });
+
+  it('lets a finished stop be reopened, because its note outlives the check-off', () => {
+    const list = stops('COLLECTED', 'PENDING');
+    const done = list[0]!;
+
+    expect(isStopExpanded(done, list, NO_STOP_EXPANSION)).toBe(false);
+    expect(canEditNote(done)).toBe(true);
+
+    const reopened = toggleStopExpansion(NO_STOP_EXPANSION, done, list);
+    expect(isStopExpanded(done, list, reopened)).toBe(true);
+  });
+
+  it('forgets a choice so the stop follows the default again', () => {
+    // What the screen does when a stop resolves: the focus moves on and the
+    // finished card closes itself rather than being pinned open by an old tap.
+    const before = stops('PENDING', 'PENDING');
+    const opened = toggleStopExpansion(NO_STOP_EXPANSION, before[1]!, before);
+
+    const after = stops('COLLECTED', 'PENDING');
+    const forgotten = forgetStopExpansion(opened, 'stop-1');
+
+    expect(isStopExpanded(after[0]!, after, forgotten)).toBe(false);
+    // And the next stop is now the current one, so it opens on its own.
+    expect(isStopExpanded(after[1]!, after, forgotten)).toBe(true);
+  });
+
+  it('forgetting a stop with no choice changes nothing', () => {
+    expect(forgetStopExpansion(NO_STOP_EXPANSION, 'stop-1')).toBe(NO_STOP_EXPANSION);
+  });
+
+  it('changes no rule the run depends on', () => {
+    // The load-bearing claim. Collapsing is presentation: every stop is still in
+    // the list, in the same order, with the same dispositions, and the gate, the
+    // count and the reorder payload all answer exactly as before.
+    const list = stops('PENDING', 'COLLECTED', 'REASSIGNED');
+    const collapsed = toggleStopExpansion(NO_STOP_EXPANSION, list[0]!, list);
+
+    expect(orderedStops(list).map((s) => s.id)).toEqual(['stop-1', 'stop-2', 'stop-3']);
+    expect(stopsOnThisRun(list)).toHaveLength(2);
+    expect(progressLabel(list)).toBe('1 of 2 done');
+    expect(canHeadBack(list)).toBe(false);
+    expect(reorderPayload(list)).toEqual(['stop-1', 'stop-2']);
+    // Not one of the above reads the expansion, which is the point.
+    expect(Object.keys(collapsed)).toEqual(['stop-1']);
+  });
+
+  it('names the store in the toggle, so the icon is never the only label', () => {
+    const one = stop({ donorName: "Sam's" });
+    expect(stopToggleLabel(one, false)).toContain("Sam's");
+    expect(stopToggleLabel(one, true)).toContain("Sam's");
+    expect(stopToggleLabel(one, false)).not.toBe(stopToggleLabel(one, true));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Finding the door (D20)
+// ---------------------------------------------------------------------------
+
+describe('the map link', () => {
+  it('prefers the link an admin set', () => {
+    // D20's whole reason: the address geocodes to the shopfront and the pantry
+    // collects from a dock round the back.
+    const place = placeFor(
+      stop({ donorId: 'donor-9', donorAddress: '1 Main St' }),
+      [donor({ id: 'donor-9', mapUrl: 'https://maps.example/dock' })],
+    );
+    expect(mapLinkFor(place)).toBe('https://maps.example/dock');
+  });
+
+  it('derives one from the address otherwise, escaped', () => {
+    const place = placeFor(stop({ donorAddress: '4400 N Freeway #2, Fort Worth' }), []);
+    expect(mapLinkFor(place)).toBe(
+      'https://www.google.com/maps/search/?api=1&query=' +
+        encodeURIComponent('4400 N Freeway #2, Fort Worth'),
+    );
+    // The `#` in a US address would truncate the URL at the fragment if it were
+    // pasted in raw, which is the bug this assertion exists for.
+    expect(mapLinkFor(place)).not.toContain('#2');
+  });
+
+  it('offers nothing to open when there is nothing to open', () => {
+    expect(mapLinkFor(placeFor(stop({ donorAddress: null }), []))).toBeNull();
+    expect(mapLinkFor(placeFor(stop({ donorAddress: '   ' }), []))).toBeNull();
+    // A blank stored link falls back rather than producing a dead control.
+    const blank = placeFor(stop({ donorAddress: '1 Main St' }), [
+      donor({ id: 'donor-1', mapUrl: '  ' }),
+    ]);
+    expect(mapLinkFor(blank)).toContain('1%20Main%20St');
+  });
+});
+
+describe('the store photo', () => {
+  it('is asked for only when one exists', () => {
+    const withPhoto = placeFor(stop({ donorId: 'donor-1' }), [
+      donor({ id: 'donor-1', hasPhoto: true }),
+    ]);
+    expect(withPhoto.hasPhoto).toBe(true);
+    expect(placeFor(stop({ donorId: 'donor-1' }), [donor({ id: 'donor-1' })]).hasPhoto).toBe(
+      false,
+    );
+  });
+
+  it('degrades to no aids when the donor list has not arrived', () => {
+    // A second request lagging must never cost the driver a stop. The address
+    // rides on the stop itself, so the map link still works.
+    const place = placeFor(stop({ donorAddress: '1 Main St' }), []);
+    expect(place.hasPhoto).toBe(false);
+    expect(place.mapUrl).toBeNull();
+    expect(mapLinkFor(place)).not.toBeNull();
+  });
+
+  it('points at the photo endpoint, not at a donor payload', () => {
+    // D20 — the bytes have their own route precisely so no list carries them.
+    expect(photoUrlFor('donor-1')).toBe('/api/donors/donor-1/photo');
+    expect(photoUrlFor('a/b')).toBe('/api/donors/a%2Fb/photo');
+  });
+
+  it('describes what the picture is of', () => {
+    expect(photoAlt(stop({ donorName: "Sam's" }))).toContain("Sam's");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Copy (§7)
 // ---------------------------------------------------------------------------
 
@@ -706,14 +878,12 @@ describe('microcopy', () => {
     // finished run is the COMPLETED branch, which Phase 1 cannot reach.
     const handoff = [
       COPY.headingBack,
-      COPY.headingBackHint,
       COPY.headingBackToast,
       COPY.reviewTitle,
       COPY.reviewAgain,
       COPY.reviewIntro,
       COPY.confirmHeadingBack,
       COPY.confirmedTitle,
-      COPY.confirmedHint,
       COPY.runNoteHint,
     ];
     for (const sentence of handoff) {
@@ -738,8 +908,27 @@ describe('microcopy', () => {
     expect(COPY.skipConsequence.toLowerCase()).toContain('undo');
   });
 
-  it('says the milestone is optional', () => {
-    expect(COPY.headingBackHint.toLowerCase()).toContain('optional');
+  it('uses no em dash (D21)', () => {
+    // Two sentences, or a comma. Never a hyphen swap either, which is why this
+    // matches the character rather than the punctuation's intent.
+    for (const sentence of sentences) expect(sentence).not.toContain('—');
+  });
+
+  it('keeps only the hints a driver could not work out from the control (D21)', () => {
+    // The deleted ones restated the button under them: "Which truck are you
+    // taking?" over a list of trucks, "Optional" under a button already sitting
+    // in an optional block. What survives says something the screen does not.
+    expect(COPY).not.toHaveProperty('pickTruckHint');
+    expect(COPY).not.toHaveProperty('headingBackHint');
+    expect(COPY).not.toHaveProperty('confirmedHint');
+    expect(COPY).not.toHaveProperty('flagAdHocHint');
+    expect(COPY).not.toHaveProperty('flagNoteHint');
+    expect(COPY).not.toHaveProperty('flaggedListHint');
+
+    // Kept: a consequence, and a fact about where data went.
+    expect(COPY.skipConsequence.length).toBeGreaterThan(0);
+    expect(COPY.flaggedListNote.toLowerCase()).toContain('reload');
+    expect(COPY.flagStoreHint.toLowerCase()).toContain('not listed');
   });
 
   it('never asks the driver for a weight they cannot take', () => {
@@ -755,8 +944,10 @@ describe('microcopy', () => {
 
   it('says the flagged pickup is not a stop', () => {
     // I14: a driver-add never creates a ShiftStop, so the copy must not let a
-    // driver think the route grew a stop.
-    expect(COPY.flaggedListHint.toLowerCase()).toContain('not stops');
+    // driver think the route grew a stop. D21 deleted the hint under the list
+    // that used to say this, so the LABEL carries it now — the sentence has not
+    // gone, it moved to where it is read first.
+    expect(COPY.flaggedListLabel.toLowerCase()).toContain('not stops');
   });
 
   it('tells an empty state what to do next', () => {

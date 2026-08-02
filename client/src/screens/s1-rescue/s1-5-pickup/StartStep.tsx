@@ -58,8 +58,9 @@ export function StartStep({ run, onStarted }: StartStepProps) {
         </section>
       ) : null}
 
+      {/* No hint under the heading: "Pick your truck" over a list of trucks and a
+          Start button is the instruction (D21). */}
       <h2>{COPY.pickTruck}</h2>
-      <p className="r3-pickup__hint">{COPY.pickTruckHint}</p>
 
       {trucks.error ? <ErrorBlock error={trucks.error} onRetry={trucks.reload} /> : null}
       {!trucks.error && !trucks.data && trucks.showLoading ? <SkeletonRows rows={3} /> : null}

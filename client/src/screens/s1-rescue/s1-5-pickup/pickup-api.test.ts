@@ -210,6 +210,9 @@ describe('D1/I14 — nothing here closes a run, and nothing here writes a stop',
     expect(Object.keys(pickupApi).sort()).toEqual([
       'confirmHeadingBack',
       'fetchCategories',
+      // D20 — the donor list again, for the map link and the photo flag. A read,
+      // like every other `fetch*` here.
+      'fetchDonorPlaces',
       'fetchDonors',
       'fetchRun',
       'fetchTrucks',
