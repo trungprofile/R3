@@ -24,7 +24,7 @@ import type {
   RouteCoverage,
   ShapedUser,
   StoreIntake,
-} from '../../../api/shared.ts';
+} from '../../../../api/shared.ts';
 import {
   ANY_FILTER,
   barFor,
@@ -642,6 +642,14 @@ describe('microcopy', () => {
   });
 
   it('has exactly S3.2’s two tabs', () => {
+    // Two, still, and unaffected by D18: folding S3.2 into S1.8's tab row changed
+    // the way in, not what the screen is made of.
     expect(TABS.map((tab) => tab.value)).toEqual(['intake', 'coverage']);
+  });
+
+  it('uses no em dash in anything a person reads (D21)', () => {
+    // An em dash is a typographer's mark that reads as a hyphen at 18px on a
+    // truck-cab screen. Two sentences or a comma instead, never a hyphen swap.
+    for (const sentence of sentences) expect(sentence, sentence).not.toContain('—');
   });
 });

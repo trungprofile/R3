@@ -18,14 +18,14 @@
 // admin can see and move: a request whose window was chosen by the server would
 // disagree with the label above the table the moment they stepped back.
 
-import { api } from '../../../api/index.ts';
+import { api } from '../../../../api/index.ts';
 import type {
   CoverageMetrics,
   CoverageQuery,
   IntakeMetrics,
   RouteDetail,
   ShapedUser,
-} from '../../../api/shared.ts';
+} from '../../../../api/shared.ts';
 import type { Period } from './metrics.ts';
 
 const withSignal = (signal?: AbortSignal) => (signal ? { signal } : {});

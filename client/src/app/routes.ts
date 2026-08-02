@@ -120,6 +120,12 @@ export const ROUTES: readonly RouteDef[] = [
   },
 
   { id: 'report', path: '/report', spec: 'S3.1', phase: 3, requires: { anyDuty: ['REPORT'] } },
+  // S3.2 — kept as a REDIRECT since D18 made metrics S1.8's first tab
+  // (`/admin?tab=metrics`). The entry stays for one reason: a `/metrics` bookmark
+  // from before the change must land on the metrics rather than on "that page
+  // isn't here". `requires` stays too — §4.3 default-deny does not exempt a route
+  // for being short, so anyone below Admin meets the no-access state here exactly
+  // as they did when this served the screen itself.
   { id: 'metrics', path: '/metrics', spec: 'S3.2', phase: 3, requires: { tier: 'ADMIN' } },
 ];
 

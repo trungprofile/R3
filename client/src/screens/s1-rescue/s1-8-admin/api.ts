@@ -20,6 +20,7 @@ import type {
   RemoveMasterResponse,
   RemoveUserResponse,
   SetCredentialRequest,
+  SetDonorPhotoRequest,
   ShapedUser,
   TruckSummary,
   UpdateCategoryRequest,
@@ -100,6 +101,30 @@ export function createDonor(body: CreateDonorRequest): Promise<DonorSummary> {
 
 export function updateDonor(id: string, body: UpdateDonorRequest): Promise<DonorSummary> {
   return api.patch<DonorSummary>(path('/donors', id), { body });
+}
+
+/**
+ * D20 — where a stored donor photo is SERVED from, for an `<img src>`.
+ *
+ * A plain URL rather than a fetch: the browser streams the bytes itself, sends the
+ * same-origin cookie without being asked, and caches the response. Pulling it
+ * through `api.get` would mean holding a base64 string in memory to hand straight
+ * back to the same `<img>`.
+ *
+ * `/api` is repeated here because `client.ts` owns that prefix for requests it
+ * makes, and this is not one of them (`architecture.md §4.5`: one process serves
+ * the API and the SPA, so the origin is the same either way).
+ */
+export function donorPhotoUrl(id: string): string {
+  return `/api${path('/donors', id)}/photo`;
+}
+
+/** D20 — set or clear the photo. `null` clears it; the resize happens before this
+ *  is ever called (`photo.ts`), so the string is already inside the size the
+ *  server enforces as a database CHECK. */
+export function setDonorPhoto(id: string, dataUrl: string | null): Promise<void> {
+  const body: SetDonorPhotoRequest = { dataUrl };
+  return api.put<void>(`${path('/donors', id)}/photo`, { body });
 }
 
 export function fetchTrucks(signal: AbortSignal): Promise<TruckSummary[]> {

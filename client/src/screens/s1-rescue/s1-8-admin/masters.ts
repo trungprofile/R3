@@ -18,16 +18,19 @@ import {
   createCategory,
   createDonor,
   createTruck,
+  donorPhotoUrl,
   fetchCategories,
   fetchDonors,
   fetchTrucks,
   removeMaster,
+  setDonorPhoto,
   updateCategory,
   updateDonor,
   updateTruck,
 } from './api.ts';
 import {
   nullableValue,
+  photoChange,
   trimmedValue,
   type MasterEntity,
   type MasterFieldSpec,
@@ -47,9 +50,20 @@ export interface MasterConfig {
   fields: readonly MasterFieldSpec[];
   load: (signal: AbortSignal) => Promise<MasterRecordView[]>;
   create: (values: Readonly<Record<string, string>>) => Promise<void>;
-  /** `active` is §3.3's lifecycle toggle, carried with the field edits so one
-   *  request cannot half-apply. */
-  save: (id: string, values: Readonly<Record<string, string>>, active: boolean) => Promise<void>;
+  /**
+   * `active` is §3.3's lifecycle toggle, carried with the field edits so one
+   * request cannot half-apply.
+   *
+   * Takes the RECORD rather than its id, since D20: a photo is not part of the
+   * record's JSON, so the only way to know whether it changed is to compare what
+   * was loaded with what is on screen. Passing the id alone would leave the donor
+   * config guessing, and guessing means a redundant photo write on every save.
+   */
+  save: (
+    record: MasterRecordView,
+    values: Readonly<Record<string, string>>,
+    active: boolean,
+  ) => Promise<void>;
   remove: (id: string) => Promise<RemovalOutcome>;
 }
 
@@ -60,6 +74,14 @@ export interface MasterConfig {
 const DONOR_FIELDS: readonly MasterFieldSpec[] = [
   { key: 'name', label: 'Store name', required: true },
   { key: 'address', label: 'Address', hint: 'What the driver navigates to.' },
+  {
+    // D20. Optional by design: `null` means "work it out from the address", which
+    // is right for almost every store. This is for the one whose address lands on
+    // the shop front when the dock is round the back.
+    key: 'mapUrl',
+    label: 'Map link',
+    hint: 'Only if the address does not land in the right place. Paste a link from your maps app.',
+  },
   { key: 'contact', label: 'Contact', hint: 'A phone number, an email, or a person.' },
   {
     key: 'note',
@@ -67,7 +89,15 @@ const DONOR_FIELDS: readonly MasterFieldSpec[] = [
     multiline: true,
     // Cap 11 channel 4: the admin's own per-store note, distinct from the three
     // note channels the drivers and coordinators write.
-    hint: 'Shown everywhere this store appears — dock round the back, ask for Sam.',
+    hint: 'Shown everywhere this store appears. Dock round the back, ask for Sam.',
+  },
+  {
+    // D20. The one non-text field in any master config, and the reason
+    // `MasterFieldSpec` grew a kind rather than donors growing their own panel.
+    key: 'photo',
+    label: 'Photo',
+    kind: 'image',
+    hint: 'The door or the dock, so a driver who has never been knows they are in the right place.',
   },
 ];
 
@@ -83,8 +113,13 @@ function donorView(row: DonorSummary): MasterRecordView {
     values: {
       name: row.name,
       address: row.address ?? '',
+      mapUrl: row.mapUrl ?? '',
       contact: row.contact ?? '',
       note: row.note ?? '',
+      // D20 — a REFERENCE, never the bytes. `hasPhoto` is a bit on the summary
+      // precisely so a list of stores is not a list of images; the browser fetches
+      // the one the admin is actually looking at.
+      photo: row.hasPhoto ? donorPhotoUrl(row.id) : '',
     },
   };
 }
@@ -101,21 +136,35 @@ export const DONOR_CONFIG: MasterConfig = {
   fields: DONOR_FIELDS,
   load: async (signal) => (await fetchDonors(signal)).map(donorView),
   create: async (values) => {
-    await createDonor({
+    // The record first, because the photo route is keyed on an id that does not
+    // exist yet. A failure on the second call leaves a donor with no photo, which
+    // is a state the screen already has a control for; the reverse ordering would
+    // leave bytes belonging to nothing.
+    const donor = await createDonor({
       name: trimmedValue(values, 'name'),
       address: nullableValue(values, 'address'),
+      mapUrl: nullableValue(values, 'mapUrl'),
       contact: nullableValue(values, 'contact'),
       note: nullableValue(values, 'note'),
     });
+    const photo = photoChange('', values['photo'] ?? '');
+    if (photo.kind === 'set') await setDonorPhoto(donor.id, photo.dataUrl);
   },
-  save: async (id, values, active) => {
-    await updateDonor(id, {
+  save: async (record, values, active) => {
+    await updateDonor(record.id, {
       name: trimmedValue(values, 'name'),
       address: nullableValue(values, 'address'),
+      mapUrl: nullableValue(values, 'mapUrl'),
       contact: nullableValue(values, 'contact'),
       note: nullableValue(values, 'note'),
       active,
     });
+    // D20 — a second request only when the photo actually moved. It is separate
+    // from the PATCH because the bytes are a separate resource, not because the
+    // two are unrelated: a donor edit that touched no photo makes one request.
+    const photo = photoChange(record.values['photo'] ?? '', values['photo'] ?? '');
+    if (photo.kind === 'set') await setDonorPhoto(record.id, photo.dataUrl);
+    else if (photo.kind === 'clear') await setDonorPhoto(record.id, null);
   },
   remove: (id) => removeMaster('/donors', id),
 };
@@ -147,7 +196,7 @@ export const TRUCK_CONFIG: MasterConfig = {
   editTitle: 'Edit truck',
   loadingLabel: 'Loading trucks',
   emptyTitle: 'No trucks yet.',
-  emptyBody: 'Add one — a driver picks a truck when they start a run.',
+  emptyBody: 'Add one. A driver picks a truck when they start a run.',
   fields: TRUCK_FIELDS,
   load: async (signal) => (await fetchTrucks(signal)).map(truckView),
   create: async (values) => {
@@ -156,8 +205,8 @@ export const TRUCK_CONFIG: MasterConfig = {
       plate: nullableValue(values, 'plate'),
     });
   },
-  save: async (id, values, active) => {
-    await updateTruck(id, {
+  save: async (record, values, active) => {
+    await updateTruck(record.id, {
       truckName: trimmedValue(values, 'truckName'),
       plate: nullableValue(values, 'plate'),
       active,
@@ -202,8 +251,8 @@ export const CATEGORY_CONFIG: MasterConfig = {
   create: async (values) => {
     await createCategory({ name: trimmedValue(values, 'name') });
   },
-  save: async (id, values, active) => {
-    await updateCategory(id, { name: trimmedValue(values, 'name'), active });
+  save: async (record, values, active) => {
+    await updateCategory(record.id, { name: trimmedValue(values, 'name'), active });
   },
   remove: (id) => removeMaster('/categories', id),
 };

@@ -17,6 +17,14 @@
   max-width: 48rem;
 }
 
+/* D18 — the Metrics tab is a wide table plus a row of bars (`metrics.css` asks
+ * for 68rem), where every other tab is a single column of fields. Widening the
+ * shell for all six would leave an account form adrift in white space, so the
+ * constraint follows the panel rather than the screen. */
+.s18--wide {
+  max-width: 68rem;
+}
+
 .s18-title {
   font-size: var(--font-h1);
   margin: 0 0 var(--space-4) 0;
@@ -141,6 +149,40 @@
   color: var(--disabled-text);
   border-color: var(--border);
   cursor: default;
+}
+
+/* --- Donor photo (D20) ---------------------------------------------------- */
+
+/* Bounded in BOTH directions: `max-width` so a landscape photo does not stretch
+ * the form, `max-height` so a portrait one does not push Save off the screen.
+ * The empty slot is the same box, so choosing a photo does not make the page
+ * jump. */
+.s18-photo {
+  display: block;
+  width: 100%;
+  max-width: 22rem;
+  max-height: 14rem;
+  object-fit: contain;
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.s18-photo--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 8rem;
+  color: var(--text-muted);
+}
+
+.s18-photo__actions {
+  display: flex;
+  flex-wrap: wrap;
+  /* §1.2: 8px minimum between adjacent targets. */
+  gap: var(--space-2);
 }
 
 /* --- PIN being set for someone else --------------------------------------- */

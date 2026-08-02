@@ -36,19 +36,55 @@ import type {
 } from '../../../api/shared.ts';
 
 // ---------------------------------------------------------------------------
-// The four sub-screens (S1.8 Layout)
+// The sub-screens (S1.8 Layout)
+//
+// S1.8 names four — "Accounts, Donors, Trucks, Categories — selected by the §3
+// segmented control in its tabs behavior". Two more have joined them since:
+//
+//   Metrics (D18)          — S3.2, which was its own route and its own left-nav
+//                            entry. It is a READ about the same records the other
+//                            tabs edit, and an admin opens R3 either to see how the
+//                            week went or to fix a record; one click apart beats
+//                            two places.
+//   Category matching (D12) — the NTFB category map. It is category master data by
+//                            another name, so it belongs beside Categories.
+//
+// Six is more than four, and §1 principle 5 still rules out hiding any of them
+// behind a dropdown, so all six stay visible in the tab row.
 // ---------------------------------------------------------------------------
 
-/** S1.8: "four sub-screens — Accounts, Donors, Trucks, Categories — selected by
- *  the §3 segmented control in its tabs behavior." Exactly one is shown. */
-export type PanelId = 'accounts' | 'donors' | 'trucks' | 'categories';
+export type PanelId =
+  | 'metrics'
+  | 'accounts'
+  | 'donors'
+  | 'trucks'
+  | 'categories'
+  | 'mapping';
 
 export const PANELS: readonly { value: PanelId; label: string }[] = [
+  { value: 'metrics', label: 'Metrics' },
   { value: 'accounts', label: 'Accounts' },
   { value: 'donors', label: 'Donors' },
   { value: 'trucks', label: 'Trucks' },
   { value: 'categories', label: 'Categories' },
+  { value: 'mapping', label: 'Category matching' },
 ];
+
+/** What `/admin` shows when the URL names no tab. D18 puts the read first: it is
+ *  the tab an admin opens without a specific record in mind. */
+export const DEFAULT_PANEL: PanelId = 'metrics';
+
+/** The query key the tab lives under, so a tab is a link someone can send.
+ *  `?tab=` rather than a path segment: `ROUTES` stays a flat list of real paths
+ *  instead of every screen's pattern growing an optional tail (`app/router.tsx`). */
+export const PANEL_QUERY_KEY = 'tab';
+
+/** Which panel a URL asks for. An unknown or absent value is the default rather
+ *  than an error: a stale bookmark should land somewhere useful, not on a 404. */
+export function panelFromQuery(value: string | undefined): PanelId {
+  const known = PANELS.find((panel) => panel.value === value);
+  return known ? known.value : DEFAULT_PANEL;
+}
 
 /** Which master list a panel edits. Accounts is not one of these: `app_user` is a
  *  person, with a credential and a tier, and none of the master-record machinery
@@ -60,21 +96,31 @@ export type MasterEntity = 'donor' | 'truck' | 'category';
 //
 // Collected here so one test can hold all of it to §7: plain, short, second
 // person, and none of the forbidden vocabulary.
+//
+// D21 — TWO RULES this block was pruned against, and both are testable:
+//
+//   1. A hint that only restates the control under it is deleted. "Fill in the
+//      name and R3 makes one" sat under a field that fills in as the name is
+//      typed; it told a reader what they were already watching happen. What
+//      survives is what the screen cannot otherwise show: the tier ladder, and
+//      the PIN default an admin has no way to guess.
+//   2. No em dash in anything a person reads. It renders as a hyphen at 18px on a
+//      cab-mounted screen, so a sentence that leans on one becomes two sentences
+//      or takes a comma — never a hyphen in its place.
 // ---------------------------------------------------------------------------
 
 export const COPY = {
   title: 'Admin',
-  tabsLabel: 'Accounts, donors, trucks and categories',
+  tabsLabel: 'Metrics, accounts, donors, trucks, categories and category matching',
 
   accounts: {
     heading: 'Accounts',
     add: 'Add someone',
     loading: 'Loading accounts',
     emptyTitle: 'No accounts yet.',
-    emptyBody: 'Add the first one — you can set what they do at the same time.',
+    emptyBody: 'Add the first one. You can set what they do at the same time.',
     createTitle: 'Add someone',
     editTitle: 'Edit account',
-    back: 'Back to accounts',
     save: 'Save',
     create: 'Add',
     remove: 'Remove account',
@@ -90,18 +136,16 @@ export const COPY = {
     lastName: 'Last name',
     username: 'Username',
     usernameHint: "Made from the name. It can't be changed later.",
-    usernamePending: 'Fill in the name and R3 makes one.',
-    usernameCollisionHint: 'A number is added if that one is already used.',
     tier: 'What they can reach',
+    /** Kept (D21): a hierarchy is not visible in a row of three buttons, and this
+     *  is the only place in R3 that says so. */
     tierHint:
       'Each level includes the one before it: staff can do everything a volunteer can, and admin everything staff can.',
-    tierAdminOnCreate: 'Add the account first, then change it to admin.',
     duties: 'What they do',
     dutiesHint:
-      'Any mix, and none is required. Drive — takes pickup runs. Receive — weighs deliveries. Report — files the food-bank report.',
+      'Any mix, and none is required. Drive takes pickup runs, Receive weighs deliveries, Report files the food-bank report.',
     phone: 'Phone',
     address: 'Address',
-    phoneHint: 'Staff can see this to call them. Only you can change it.',
     savedToast: 'Saved.',
   },
 
@@ -110,10 +154,11 @@ export const COPY = {
   credential: {
     pinLabel: 'Their 4-digit PIN',
     pinKeypad: 'PIN keypad',
+    /** Both kept (D21): they state a default the admin has no other way to know. */
     pinHintCreate: 'Leave it blank to use the last 4 digits of their phone.',
     pinHintEdit: 'Leave it blank to keep the PIN they have.',
     passwordLabel: 'Their password',
-    passwordHintCreate: `At least ${MIN_PASSWORD_LENGTH} characters. Tell them yourself — R3 won't show it again.`,
+    passwordHintCreate: `At least ${MIN_PASSWORD_LENGTH} characters. Tell them yourself, because R3 won't show it again.`,
     passwordHintEdit: 'Leave it blank to keep the password they have.',
     /** Shown when a tier change is what makes a new credential necessary. */
     reasonToPassword:
@@ -130,7 +175,7 @@ export const COPY = {
    *  something critical, and this is the only time the PIN is ever visible. */
   pinNotice: {
     dismiss: 'Got it',
-    writeItDown: "Write it down — R3 won't show it again.",
+    writeItDown: "Write it down. R3 won't show it again.",
   },
 
   master: {
@@ -142,8 +187,22 @@ export const COPY = {
      *  removal — I21 allows it whatever the record's history. */
     status: 'In use',
     inUse: 'In use',
-    /** Cancel out of a form. */
-    back: 'Back to the list',
+  },
+
+  /** D20 — the donor photo field. The words are entity-neutral because the field
+   *  kind is: only donors have one today, and nothing here says "store". */
+  photo: {
+    none: 'No photo yet.',
+    choose: 'Choose a photo',
+    replace: 'Replace the photo',
+    remove: 'Remove the photo',
+    /** Names the image for a screen reader. The photo is a landmark, not a
+     *  decoration, so it is not `alt=""`. */
+    alt: 'The photo on file',
+    working: 'Getting the photo ready',
+    /** §6: what happened, and what to do about it. Never a code. */
+    failed: "That file couldn't be read. Try a photo taken on a phone or camera.",
+    notAnImage: 'Choose a photo, not another kind of file.',
   },
 
   /** §6: a destructive confirm names the consequence. It does NOT predict which
@@ -584,12 +643,33 @@ export function statusChoices(
 // for each (`shared/src/masters.ts`). The fields differ; the panel does not.
 // ---------------------------------------------------------------------------
 
+/**
+ * What a master field IS, not just what it is called.
+ *
+ * Text-only until D20 asked for a donor photo. The alternative was a second panel
+ * for donors, which would have meant two places to keep I21's removal wording
+ * honest — the exact duplication `MasterPanel` exists to prevent. So the field
+ * list grew a kind instead, and `MasterPanel` renders one of two controls per
+ * field rather than one control per entity.
+ *
+ * `'text'` when absent, so the three configs that predate this need no edit and no
+ * field is a kind by accident of being written without one.
+ */
+export type MasterFieldKind = 'text' | 'image';
+
 export interface MasterFieldSpec {
   key: string;
   label: string;
+  /** Defaults to `'text'`. */
+  kind?: MasterFieldKind;
   required?: boolean;
+  /** Text only. */
   multiline?: boolean;
   hint?: string;
+}
+
+export function fieldKind(field: MasterFieldSpec): MasterFieldKind {
+  return field.kind ?? 'text';
 }
 
 export interface MasterRecordView {
@@ -636,6 +716,41 @@ export function nullableValue(
 ): string | null {
   const trimmed = trimmedValue(values, key);
   return trimmed === '' ? null : trimmed;
+}
+
+// ---------------------------------------------------------------------------
+// An image field's value (D20)
+//
+// The photo does not travel with the record: `DonorSummary` carries `hasPhoto`,
+// a bit, and the bytes come from `GET /donors/:id/photo` on demand, so a list of
+// fifteen stores is not fifteen images. That makes an image field's string one of
+// exactly three things:
+//
+//   ''            no photo. Also what a create form starts at, and what Remove
+//                 leaves behind.
+//   'data:...'    one the admin just chose, already canvas-resized (`photo.ts`).
+//                 The ONLY value that is bytes rather than a reference.
+//   anything else the URL the stored photo is served from, i.e. unchanged.
+//
+// Which means the save can be decided by comparing the loaded string with the
+// current one, and no photo request is made for a donor edit that did not touch
+// the photo.
+// ---------------------------------------------------------------------------
+
+export const DATA_URL_PREFIX = 'data:';
+
+export type PhotoChange =
+  | { kind: 'none' }
+  | { kind: 'set'; dataUrl: string }
+  | { kind: 'clear' };
+
+export function photoChange(before: string, after: string): PhotoChange {
+  if (after === before) return { kind: 'none' };
+  if (after.startsWith(DATA_URL_PREFIX)) return { kind: 'set', dataUrl: after };
+  if (after === '') return { kind: 'clear' };
+  // Back to the stored one from a data URL — an admin who chose a file and then
+  // changed their mind. Nothing to send.
+  return { kind: 'none' };
 }
 
 // ---------------------------------------------------------------------------

@@ -25,7 +25,7 @@
 // round-trips through a JS float can pick up a rounding error in the column that
 // feeds the food-bank report (A165).
 
-import { toApiError } from '../../../api/index.ts';
+import { toApiError } from '../../../../api/index.ts';
 import type {
   CoverageFailure,
   CoverageMetrics,
@@ -36,7 +36,7 @@ import type {
   RouteCoverage,
   ShapedUser,
   StoreIntake,
-} from '../../../api/shared.ts';
+} from '../../../../api/shared.ts';
 
 // ---------------------------------------------------------------------------
 // Weights
@@ -692,7 +692,7 @@ export const COPY = {
     noShowMeans: 'Someone took the run and it was never started.',
 
     byDriverHeading: 'By driver',
-    byDriverNote: 'No-shows only — an unclaimed run had no driver to name.',
+    byDriverNote: 'No-shows only. An unclaimed run had no driver to name.',
     byRouteHeading: 'By route',
     byRouteEmpty: 'No route missed a run in this period.',
     byDriverEmpty: 'No driver missed a run they had taken.',

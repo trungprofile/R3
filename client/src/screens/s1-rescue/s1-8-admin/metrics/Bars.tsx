@@ -15,7 +15,7 @@
 // again as unlabelled percentages. The heading and the note stay audible so the
 // chart is never a silent gap.
 
-import type { StoreIntake } from '../../../api/shared.ts';
+import type { StoreIntake } from '../../../../api/shared.ts';
 import { barsFor, COPY } from './metrics.ts';
 
 export interface BarsProps {

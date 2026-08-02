@@ -3,6 +3,13 @@
 // is no phone layout here on purpose, and nothing below is allowed to break at
 // tablet width either.
 //
+// STILL S3.2 IN THE SPEC; only the way in changed. D18 folded it into S1.8 as that
+// screen's FIRST tab rather than a seventh left-nav entry — the two things an admin
+// opens R3 for are "how are we doing" and "fix a record", and they now sit one
+// click apart instead of in two places. So this file exports a PANEL, not a screen:
+// no `<h1>` (the shell's Admin title owns that), no route of its own. `/metrics`
+// survives as a redirect (`MetricsRedirect.tsx`) so an existing bookmark resolves.
+//
 // Two tabs, per S3.2: the intake table it opens with, and the coverage tab PRD cap
 // 16 adds. They are the §3 segmented control in its TABS behavior — one panel
 // mounted at a time, `tabPanelProps` keeping `aria-controls` pointed at the panel
@@ -19,19 +26,19 @@
 //   - the window recomputes when the pantry's own zone arrives on the sign-in
 //     (A120) instead of freezing whatever the machine's clock said first.
 //
-// The screen is reached at `/metrics`, declared `requires: { tier: 'ADMIN' }` in
-// `app/routes.ts` — a hierarchical comparison (I1), and the shell hides the nav
-// entry from anyone below it. Both routes it calls declare ADMIN again; the client
-// check is communication, never the rule (`architecture.md §4.5`).
+// The panel is reached at `/admin?tab=metrics`, on a route declared
+// `requires: { tier: 'ADMIN' }` in `app/routes.ts` — a hierarchical comparison
+// (I1), and the shell hides the nav entry from anyone below it. Both routes it
+// calls declare ADMIN again; the client check is communication, never the rule
+// (`architecture.md §4.5`).
 //
 // Everything on this screen is a READ. S3.2: "Primary action: none destructive;
 // this is read + export." The one primary button per panel is its download, and
 // there is nothing here to edit, cancel or confirm.
 
 import { useMemo, useState } from 'react';
-import type { ScreenProps } from '../../../app/index.ts';
-import { todayInZone, useSession } from '../../../app/index.ts';
-import { Button, Segmented, tabPanelProps } from '../../../components/index.ts';
+import { todayInZone, useSession } from '../../../../app/index.ts';
+import { Button, Segmented, tabPanelProps } from '../../../../components/index.ts';
 import { CoverageTab } from './CoverageTab.tsx';
 import { IntakeTab } from './IntakeTab.tsx';
 import {
@@ -49,7 +56,7 @@ import './metrics.css';
 
 const ID_PREFIX = 's32';
 
-export function MetricsScreen(_props: ScreenProps) {
+export function MetricsPanel() {
   const { timezone } = useSession();
   const [tab, setTab] = useState<TabId>('intake');
   const [presetId, setPresetId] = useState<PeriodPresetId>(String(DEFAULT_PERIOD_DAYS) as PeriodPresetId);
@@ -64,9 +71,10 @@ export function MetricsScreen(_props: ScreenProps) {
 
   return (
     <div className="s32">
-      {/* Matches the nav item that leads here ("Metrics", `app/nav.tsx`), so the
-          heading confirms where the click landed rather than renaming the place. */}
-      <h1 className="s32-title">{COPY.title}</h1>
+      {/* Matches the tab that leads here ("Metrics", `logic.ts` PANELS), so the
+          heading confirms where the click landed rather than renaming the place.
+          An `<h2>`, not an `<h1>`: S1.8's own title is the page heading now. */}
+      <h2 className="s32-title">{COPY.title}</h2>
 
       <section className="s32-period" aria-label={COPY.period.heading}>
         <div className="s32-period__group">

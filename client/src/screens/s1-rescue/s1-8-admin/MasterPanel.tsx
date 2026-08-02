@@ -15,6 +15,7 @@
 
 import { useCallback, useState } from 'react';
 import {
+  BackLink,
   Button,
   ConfirmModal,
   EmptyState,
@@ -30,6 +31,7 @@ import { useAsyncData, useToast } from '../../../app/index.ts';
 import {
   COPY,
   emptyMasterValues,
+  fieldKind,
   inactiveLabel,
   isValid,
   removalText,
@@ -40,7 +42,7 @@ import {
   type MasterRecordView,
 } from './logic.ts';
 import type { MasterConfig } from './masters.ts';
-import { FieldGroup, InactiveChip } from './parts.tsx';
+import { FieldGroup, ImageField, InactiveChip } from './parts.tsx';
 
 type View =
   | { kind: 'list' }
@@ -98,7 +100,9 @@ export function MasterPanel({ config }: { config: MasterConfig }) {
       if (view.kind === 'create') {
         await config.create(values);
       } else if (view.kind === 'edit') {
-        await config.save(view.record.id, values, active);
+        // The whole record, not its id: a photo is not part of the record's JSON,
+        // so only a comparison with what was loaded says whether it changed (D20).
+        await config.save(view.record, values, active);
       }
       toast.success(COPY.master.saved);
       openList();
@@ -144,6 +148,10 @@ export function MasterPanel({ config }: { config: MasterConfig }) {
     const editing = view.kind === 'edit' ? view.record : null;
     return (
       <>
+        {/* §3's one way out of a screen, at the top where a person looks for it.
+            The label is the destination, in the user's words ("Donors"), not a
+            sentence — the chevron already says "back" (D21). */}
+        <BackLink label={config.heading} onBack={openList} />
         <form
           className="s18-form"
           onSubmit={(event) => {
@@ -155,19 +163,32 @@ export function MasterPanel({ config }: { config: MasterConfig }) {
             {view.kind === 'create' ? config.createTitle : config.editTitle}
           </h2>
 
-          {config.fields.map((field) => (
-            <TextInput
-              key={field.key}
-              label={field.label}
-              value={values[field.key] ?? ''}
-              onChange={(next) => setValues({ ...values, [field.key]: next })}
-              disabled={busy}
-              autoComplete="off"
-              {...(field.multiline === true ? { multiline: true } : {})}
-              {...(field.hint !== undefined ? { hint: field.hint } : {})}
-              {...(shown[field.key] !== undefined ? { error: shown[field.key] } : {})}
-            />
-          ))}
+          {config.fields.map((field) =>
+            // One control per FIELD KIND, not one panel per entity (D20). Donors
+            // are still this panel with a different config.
+            fieldKind(field) === 'image' ? (
+              <ImageField
+                key={field.key}
+                label={field.label}
+                hint={field.hint}
+                value={values[field.key] ?? ''}
+                onChange={(next) => setValues({ ...values, [field.key]: next })}
+                disabled={busy}
+              />
+            ) : (
+              <TextInput
+                key={field.key}
+                label={field.label}
+                value={values[field.key] ?? ''}
+                onChange={(next) => setValues({ ...values, [field.key]: next })}
+                disabled={busy}
+                autoComplete="off"
+                {...(field.multiline === true ? { multiline: true } : {})}
+                {...(field.hint !== undefined ? { hint: field.hint } : {})}
+                {...(shown[field.key] !== undefined ? { error: shown[field.key] } : {})}
+              />
+            ),
+          )}
 
           {/* §3.3's ACTIVE ⇄ inactive toggle. Only on edit: a record is created in
               use, and offering the choice up front would be a question with one
@@ -190,12 +211,10 @@ export function MasterPanel({ config }: { config: MasterConfig }) {
           ) : null}
 
           <div className="s18-actions">
-            {/* S1.8: "Primary action varies per sub-screen (Save)." */}
+            {/* S1.8: "Primary action varies per sub-screen (Save)." The way out is
+                the BackLink above, not a second button here (D21). */}
             <Button variant="primary" type="submit" loading={busy}>
               {view.kind === 'create' ? COPY.master.create : COPY.master.save}
-            </Button>
-            <Button variant="secondary" onClick={openList} disabled={busy}>
-              {COPY.master.back}
             </Button>
           </div>
 

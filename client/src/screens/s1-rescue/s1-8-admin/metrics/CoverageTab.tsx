@@ -24,9 +24,9 @@ import {
   ErrorBlock,
   Segmented,
   SkeletonRows,
-} from '../../../components/index.ts';
-import { useAsyncData, useSession } from '../../../app/index.ts';
-import type { CoverageMetrics, RouteDetail, ShapedUser } from '../../../api/shared.ts';
+} from '../../../../components/index.ts';
+import { useAsyncData, useSession } from '../../../../app/index.ts';
+import type { CoverageMetrics, RouteDetail, ShapedUser } from '../../../../api/shared.ts';
 import { fetchCoverage, fetchRoutes, fetchUsers } from './api.ts';
 import {
   ANY_FILTER,

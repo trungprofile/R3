@@ -1,0 +1,91 @@
+/* The AGFP→NTFB matching editor, S1.8's fourth panel (D17).
+ *
+ * Tokens only (`ui-ux-spec.md §2`): no literal hex, and no literal px where a
+ * spacing or size token exists. Sizes are relative units so 200% zoom reflows
+ * rather than breaks (§1.3).
+ *
+ * Class prefix `s18-map-` rather than the `s18-` the rest of Admin uses: this
+ * folder ships as a unit and must not depend on, or quietly reuse, a rule that
+ * lives in `admin.css`. It arrived here from S3.1 carrying `s31-` names, which
+ * would have been worse — a stylesheet the Report screen loads and Admin does not.
+ *
+ * CANONICAL DEVICE: the shared DESKTOP, same as the rest of Admin. Every row wraps
+ * and nothing is fixed-width, which is also what makes the layout survive 200%
+ * zoom.
+ */
+
+.s18-map section + section {
+  margin-top: var(--space-6);
+}
+
+.s18-map__subheading {
+  font-size: var(--font-h3);
+  margin: 0 0 var(--space-2) 0;
+}
+
+/* Non-critical explanation. Muted is §2's rule for a label; never body text that
+ * carries a decision on its own. */
+.s18-map__note {
+  font-size: var(--font-body);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3) 0;
+  max-width: 46rem;
+}
+
+.s18-map__error {
+  font-size: var(--font-body);
+  color: var(--danger);
+  margin: var(--space-2) 0;
+}
+
+.s18-map__list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.s18-map__target {
+  font-size: var(--font-body);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* Not matched yet: the state that blocks a Reporter's export. Danger would say
+ * something broke; this is a gap, so it takes the warning role's dark-on-light
+ * treatment. */
+.s18-map__target--none {
+  color: var(--text);
+  background: var(--surface-paper);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+}
+
+.s18-map__archived {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.s18-map__form {
+  max-width: 34rem;
+}
+
+.s18-map__form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.s18-map__form-danger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}

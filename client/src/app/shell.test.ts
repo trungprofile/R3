@@ -129,14 +129,38 @@ describe('navigation derived from tier and duty (UI §4)', () => {
     expect(ids(receiver, 'phone')).not.toContain('my-shifts');
   });
 
-  it('offers Report and Metrics now that Phase 3 has shipped', () => {
-    // Through Phases 1 and 2 this asserted the OPPOSITE — that both were absent,
+  it('offers Report now that Phase 3 has shipped', () => {
+    // Through Phases 1 and 2 this asserted the OPPOSITE — that it was absent,
     // because a nav item leading to the shell's placeholder is worse than no item.
-    // Phase 3 registered both screens and bumped CURRENT_PHASE in the same commit,
+    // Phase 3 registered the screen and bumped CURRENT_PHASE in the same commit,
     // which is the ordering `shipped()` exists to enforce, so the assertion flips
     // rather than being deleted.
     expect(ids(admin, 'desktop')).toContain('report');
-    expect(ids(admin, 'desktop')).toContain('metrics');
+  });
+
+  it('does not offer Metrics as its own entry — D18 made it a tab of Admin', () => {
+    // Two links to one screen is a worse map than one. The Admin entry leads there.
+    expect(ids(admin, 'desktop')).not.toContain('metrics');
+  });
+
+  it('puts the restricted entries before the ones everybody has', () => {
+    // The back office is what a desktop is for: a coordinator signs in to publish a
+    // week, not to open a board they could have opened on their phone.
+    expect(ids(admin, 'desktop')).toEqual(['admin', 'schedule', 'report', 'board', 'inbox']);
+    expect(ids(coordinator, 'desktop')).toEqual(['schedule', 'board', 'inbox']);
+  });
+
+  it('still lands everyone on the board after sign-in', () => {
+    // Reordering the nav is not a change of front door: the board is the spec's
+    // adoption centerpiece and the one screen everyone can open.
+    expect(HOME_PATH).toBe('/board');
+    for (const person of [driver, coordinator, admin]) {
+      expect(homePathFor(person, 'desktop')).toBe('/board');
+    }
+  });
+
+  it('leaves the phone nav alone (§3 caps it at 4, and those users are volunteers)', () => {
+    expect(ids(driver, 'phone')).toEqual(['board', 'my-shifts', 'inbox']);
   });
 
   it('offers the inbox to everyone — it is the source of truth for events', () => {

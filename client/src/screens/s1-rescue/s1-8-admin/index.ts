@@ -1,6 +1,8 @@
-// S1.8 Admin — accounts, donors, trucks, categories.
+// S1.8 Admin — metrics, accounts, donors, trucks, categories, category matching.
 //
-// The lead wires this into `main.tsx`'s `SCREENS` registry at merge; this lane
-// wires nothing, which is what lets four screens be built at once (build-plan §3).
+// Two exports, and the second is not a screen: `/metrics` was S3.2's own route
+// until D18 folded it into this one's tab row, and `MetricsRedirect` is what keeps
+// an existing bookmark resolving instead of 404ing.
 
 export { AdminScreen } from './AdminScreen.tsx';
+export { MetricsRedirect } from './MetricsRedirect.tsx';

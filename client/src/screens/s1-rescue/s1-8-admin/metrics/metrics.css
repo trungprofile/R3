@@ -23,8 +23,10 @@
   max-width: 68rem;
 }
 
+/* D18 — an `<h2>` inside S1.8's shell, not the page title, so it takes the
+ * subheading size the other admin panels use rather than h1. */
 .s32-title {
-  font-size: var(--font-h1);
+  font-size: var(--font-h2);
   margin: 0 0 var(--space-4) 0;
 }
 

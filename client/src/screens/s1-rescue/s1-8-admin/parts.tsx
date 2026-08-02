@@ -7,13 +7,14 @@
 // What is NOT here, because §3 already ships it: Button, TextInput, ListRow,
 // Segmented, Modal/ConfirmModal, the numeric keypad, and the three list blocks.
 
-import { useId } from 'react';
-import type { ReactNode } from 'react';
-import { NumericKeypad, TextInput } from '../../../components/index.ts';
+import { useId, useRef, useState } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
+import { Button, ImageIcon, NumericKeypad, TextInput } from '../../../components/index.ts';
 import { DUTIES, PIN_LENGTH } from '../../../api/shared.ts';
 import type { Duty } from '../../../api/shared.ts';
 import { COPY, DUTY_LABELS, toggleDuty } from './logic.ts';
 import type { CredentialPlan } from './logic.ts';
+import { resizedPhotoDataUrl } from './photo.ts';
 
 /**
  * A labelled group around something that is not a single input — the tier row, the
@@ -55,15 +56,21 @@ export function FieldGroup({
  * is rendered as text, not as a disabled input: a greyed-out field invites the
  * reading "editable later", and there is no later.
  */
+/** The empty-value glyph. Not a sentence, so D21's ban on em dashes in prose does
+ *  not reach it — this is the same mark the PIN field shows before any digits. */
+const EMPTY_VALUE = '—';
+
 export function ReadOnlyValue({
   label,
   value,
-  placeholder,
+  placeholder = EMPTY_VALUE,
   hint,
 }: {
   label: string;
   value: string;
-  placeholder: string;
+  /** What stands in before there is a value. Defaults to the em dash R3 uses
+   *  everywhere for "nothing here yet" — a glyph, not prose (D21). */
+  placeholder?: string;
   hint: string;
 }) {
   return (
@@ -81,6 +88,108 @@ export function ReadOnlyValue({
  *  and nothing else (`inactiveLabel`). */
 export function InactiveChip({ label }: { label: string }) {
   return <span className="r3-chip r3-chip--muted">{label}</span>;
+}
+
+/**
+ * D20 — a master record's picture, for the `kind: 'image'` field a config declares.
+ *
+ * §3 ships no file control, and this is not a new one: it is a hidden `<input
+ * type="file">` driven by an ordinary §3 Button, because a bare file input is a
+ * 20px system widget with a label nobody can change — the "fragile control" §1.5
+ * rules out, and unreachable at 44px besides.
+ *
+ * The chosen file is resized in the browser BEFORE it becomes the field's value
+ * (`photo.ts`), so what the form holds is already the small JPEG that will be sent.
+ * The preview is therefore the real thing rather than an optimistic stand-in.
+ */
+export function ImageField({
+  label,
+  hint,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  hint?: string | undefined;
+  /** '' for none, a `data:` URL for one just chosen, otherwise the URL the stored
+   *  photo is served from (`logic.ts`, `photoChange`). */
+  value: string;
+  onChange: (next: string) => void;
+  disabled: boolean;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [working, setWorking] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const choose = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Chrome fires this with no file when the picker is cancelled. Not an error,
+    // and it must not wipe the photo already on file.
+    if (!file) return;
+    // Reset first, so choosing the SAME file again still fires a change event.
+    event.target.value = '';
+
+    if (!file.type.startsWith('image/')) {
+      setFailure(COPY.photo.notAnImage);
+      return;
+    }
+
+    setWorking(true);
+    setFailure(null);
+    try {
+      onChange(await resizedPhotoDataUrl(file));
+    } catch {
+      // §6: what happened and what to do, never a code. The existing photo stays.
+      setFailure(COPY.photo.failed);
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  return (
+    <FieldGroup label={label} {...(hint !== undefined ? { hint } : {})} error={failure}>
+      {value === '' ? (
+        <div className="s18-photo s18-photo--empty">
+          <ImageIcon size="2em" />
+          <p className="s18-hint">{COPY.photo.none}</p>
+        </div>
+      ) : (
+        <img className="s18-photo" src={value} alt={COPY.photo.alt} />
+      )}
+
+      {/* Hidden from BOTH the eye and the tab order: the Button above is the
+          control, and this is the mechanism it drives. Left reachable it would be
+          a stop on the keyboard path with no visible thing to focus. */}
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        className="r3-sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        disabled={disabled || working}
+        onChange={(event) => void choose(event)}
+      />
+
+      <div className="s18-photo__actions">
+        <Button
+          variant="secondary"
+          onClick={() => input.current?.click()}
+          disabled={disabled}
+          loading={working}
+        >
+          {value === '' ? COPY.photo.choose : COPY.photo.replace}
+        </Button>
+        {/* Hidden rather than disabled (§3): with no photo there is nothing to
+            remove, and a greyed button with no explanation reads as a fault. */}
+        {value === '' ? null : (
+          <Button variant="secondary" onClick={() => onChange('')} disabled={disabled || working}>
+            {COPY.photo.remove}
+          </Button>
+        )}
+      </div>
+    </FieldGroup>
+  );
 }
 
 /**

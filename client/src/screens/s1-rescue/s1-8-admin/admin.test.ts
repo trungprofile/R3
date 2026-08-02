@@ -21,8 +21,10 @@ import {
   createdNotice,
   credentialPlan,
   crossesCredentialBoundary,
+  DEFAULT_PANEL,
   EMPTY_ACCOUNT_FORM,
   emptyMasterValues,
+  fieldKind,
   fullName,
   inactiveLabel,
   isNoOp,
@@ -30,6 +32,8 @@ import {
   normalizeNamePart,
   nullableValue,
   PANELS,
+  panelFromQuery,
+  photoChange,
   removalText,
   sameDuties,
   statusChoices,
@@ -42,6 +46,7 @@ import {
   type AccountForm,
 } from './logic.ts';
 import { MASTER_CONFIGS } from './masters.ts';
+import { scaledSize } from './photo.ts';
 
 function user(overrides: Partial<ShapedUser> = {}): ShapedUser {
   return {
@@ -71,23 +76,46 @@ function editForm(existing: ShapedUser, overrides: Partial<AccountForm> = {}): A
 }
 
 // ---------------------------------------------------------------------------
-// The four sub-screens (S1.8 Layout)
+// The sub-screens (S1.8 Layout, plus D18 and D12)
 // ---------------------------------------------------------------------------
 
 describe('the admin shell', () => {
-  it('has exactly the four sub-screens S1.8 names, in that order', () => {
+  it('has the four sub-screens S1.8 names, plus the two that joined them', () => {
+    // S1.8's own four, in S1.8's own order, are still contiguous and still in it.
+    // Metrics (D18) leads because it is the read an admin opens without a record
+    // in mind; category matching (D12) trails Categories because that is what it
+    // is about.
     expect(PANELS.map((panel) => panel.value)).toEqual([
+      'metrics',
       'accounts',
       'donors',
       'trucks',
       'categories',
+      'mapping',
     ]);
     expect(PANELS.map((panel) => panel.label)).toEqual([
+      'Metrics',
       'Accounts',
       'Donors',
       'Trucks',
       'Categories',
+      'Category matching',
     ]);
+  });
+
+  it('opens on Metrics when the URL names no tab (D18)', () => {
+    expect(DEFAULT_PANEL).toBe('metrics');
+    expect(panelFromQuery(undefined)).toBe('metrics');
+    expect(panelFromQuery('')).toBe('metrics');
+  });
+
+  it('opens the tab a link names', () => {
+    for (const panel of PANELS) expect(panelFromQuery(panel.value)).toBe(panel.value);
+  });
+
+  it('lands somewhere useful when a link names a tab that does not exist', () => {
+    // A bookmark from before a rename should not be a dead screen.
+    expect(panelFromQuery('nonsense')).toBe(DEFAULT_PANEL);
   });
 });
 
@@ -508,14 +536,84 @@ describe('master records', () => {
 
   it('keeps the donor address and contact as ordinary fields', () => {
     // PII gates people, not places: a donor's address is where the driver is
-    // going, and trimming it would break the driver's screens.
+    // going, and trimming it would break the driver's screens. The map link is
+    // the same kind of thing (D20) and is not PII either.
     const donor = MASTER_CONFIGS.find((config) => config.entity === 'donor');
     expect(donor?.fields.map((field) => field.key)).toEqual([
       'name',
       'address',
+      'mapUrl',
       'contact',
       'note',
+      'photo',
     ]);
+  });
+
+  it('treats a field with no kind as text, so the three old configs are unchanged', () => {
+    for (const config of MASTER_CONFIGS) {
+      for (const field of config.fields) {
+        if (field.key === 'photo') expect(fieldKind(field)).toBe('image');
+        else expect(fieldKind(field), field.key).toBe('text');
+      }
+    }
+  });
+
+  it('gives donors the only image field, and does not make it required', () => {
+    // A store without a photo is the ordinary case, not an incomplete record.
+    const image = MASTER_CONFIGS.flatMap((config) =>
+      config.fields.filter((field) => fieldKind(field) === 'image'),
+    );
+    expect(image).toHaveLength(1);
+    expect(image[0]?.required).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The donor photo (D20)
+// ---------------------------------------------------------------------------
+
+describe('an image field`s value', () => {
+  const STORED = '/api/donors/d1/photo';
+  const CHOSEN = 'data:image/jpeg;base64,abc';
+
+  it('sends nothing when the photo was not touched', () => {
+    expect(photoChange(STORED, STORED)).toEqual({ kind: 'none' });
+    // A donor that never had one, saved without adding one, must not fire a
+    // pointless clear on every edit.
+    expect(photoChange('', '')).toEqual({ kind: 'none' });
+  });
+
+  it('sends the new bytes when one was chosen', () => {
+    expect(photoChange('', CHOSEN)).toEqual({ kind: 'set', dataUrl: CHOSEN });
+    expect(photoChange(STORED, CHOSEN)).toEqual({ kind: 'set', dataUrl: CHOSEN });
+  });
+
+  it('clears only when there was one to clear', () => {
+    expect(photoChange(STORED, '')).toEqual({ kind: 'clear' });
+    expect(photoChange('', '')).not.toEqual({ kind: 'clear' });
+  });
+
+  it('sends nothing when a chosen photo is abandoned for the stored one', () => {
+    expect(photoChange(STORED, STORED)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('resizing before upload (D20)', () => {
+  // The server's ~400 KB CHECK is the backstop; this is what keeps a phone photo
+  // from ever reaching it. Only the arithmetic is testable here — the canvas
+  // itself needs a DOM, and this suite has none.
+  it('fits the long edge, whichever edge that is', () => {
+    expect(scaledSize(4000, 3000)).toEqual({ width: 800, height: 600 });
+    expect(scaledSize(3000, 4000)).toEqual({ width: 600, height: 800 });
+  });
+
+  it('never enlarges a photo that is already small', () => {
+    expect(scaledSize(320, 240)).toEqual({ width: 320, height: 240 });
+    expect(scaledSize(800, 800)).toEqual({ width: 800, height: 800 });
+  });
+
+  it('keeps a sliver of an image rather than rounding an edge to zero', () => {
+    expect(scaledSize(4000, 3).height).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -580,6 +678,22 @@ describe('the copy', () => {
       expect(text, text).not.toMatch(/\bapp_user\b/);
       expect(text, text).not.toMatch(/\bI\d+\b/);
     }
+  });
+
+  it('uses no em dash in anything a person reads (D21)', () => {
+    // It renders as a hyphen at 18px on a cab-mounted screen, so a sentence that
+    // leaned on one became two sentences or took a comma. The empty-value glyph in
+    // `parts.tsx` is a mark rather than prose and is not in this set.
+    for (const text of strings) expect(text, text).not.toContain('—');
+  });
+
+  it('keeps the hints that say something the screen cannot (D21)', () => {
+    // The cut was of hints that restated the control under them. These two are the
+    // opposite: a ladder is invisible in a row of three buttons, and the PIN
+    // default is knowable nowhere else.
+    expect(COPY.accounts.tierHint).toContain('includes the one before it');
+    expect(COPY.credential.pinHintCreate).toContain('last 4 digits');
+    expect(COPY.credential.pinHintEdit).toContain('keep the PIN');
   });
 
   it('says something in every empty state (§6: instructive, never `nothing here`)', () => {

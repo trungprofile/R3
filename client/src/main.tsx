@@ -28,7 +28,7 @@ import { MyShiftsScreen } from './screens/s1-rescue/s1-4-my-shifts/index.ts';
 import { PickupScreen } from './screens/s1-rescue/s1-5-pickup/index.ts';
 import { ScheduleScreen } from './screens/s1-rescue/s1-6-schedule/index.ts';
 import { RescheduleScreen } from './screens/s1-rescue/s1-7-reschedule/index.ts';
-import { AdminScreen } from './screens/s1-rescue/s1-8-admin/index.ts';
+import { AdminScreen, MetricsRedirect } from './screens/s1-rescue/s1-8-admin/index.ts';
 import { InboxScreen, useUnreadCount } from './screens/s1-rescue/s1-9-inbox/index.ts';
 import { RunPickerScreen } from './screens/s2-receive/s2-1b-run-picker/index.ts';
 import { WeightEntryScreen } from './screens/s2-receive/s2-2-weight-entry/index.ts';
@@ -36,7 +36,6 @@ import { ReceiveDoneScreen } from './screens/s2-receive/s2-2b-receive-done/index
 import { DonationScreen } from './screens/s2-receive/s2-3-donation/index.ts';
 import { TruckInboundHost } from './screens/s2-receive/s2-4-truck-inbound/index.ts';
 import { ReportScreen } from './screens/s3-report/s3-1-report/index.ts';
-import { MetricsScreen } from './screens/s3-report/s3-2-metrics/index.ts';
 import './tokens/tokens.css';
 
 const SCREENS: ScreenRegistry = {
@@ -59,7 +58,10 @@ const SCREENS: ScreenRegistry = {
   // Phase 3. The registry is now complete: every screen in `ui-ux-spec.md §8` has
   // an entry, and `AppShell`'s Placeholder is unreachable through the nav.
   report: ReportScreen, // S3.1
-  metrics: MetricsScreen, // S3.2
+  // S3.2 — a redirect, not the screen. D18 made metrics S1.8's first tab, and this
+  // route survives only so a saved `/metrics` link still lands on it. The screen
+  // itself lives at `s1-8-admin/metrics/` and is mounted by `AdminScreen`.
+  metrics: MetricsRedirect, // S3.2
 };
 
 linkManifest();

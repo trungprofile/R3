@@ -11,9 +11,9 @@
 // what to do next.
 
 import { useCallback } from 'react';
-import { Button, EmptyState, ErrorBlock, SkeletonRows } from '../../../components/index.ts';
-import { useAsyncData } from '../../../app/index.ts';
-import type { IntakeMetrics } from '../../../api/shared.ts';
+import { Button, EmptyState, ErrorBlock, SkeletonRows } from '../../../../components/index.ts';
+import { useAsyncData } from '../../../../app/index.ts';
+import type { IntakeMetrics } from '../../../../api/shared.ts';
 import { Bars } from './Bars.tsx';
 import { IntakeTable } from './IntakeTable.tsx';
 import { fetchIntake } from './api.ts';

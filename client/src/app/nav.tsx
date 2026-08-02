@@ -9,7 +9,21 @@
 //   - Tablet (receive): NO NAV. Login goes straight to weight entry, Phase 2.
 //   - Desktop (back office): left nav, sections by role/duty —
 //       `report` duty → Report; Staff tier → Schedule, Board; Admin tier →
-//       Admin, Metrics. A Staff member who also reports sees both. No switching.
+//       Admin. A Staff member who also reports sees both. No switching.
+//
+// ORDER ON THE DESKTOP IS STAFF-FIRST: Admin · Schedule · Report · Board ·
+// My Shifts · Inbox. The tier- and duty-restricted entries come before the ones
+// everybody has, because the back office is what a desktop is FOR — a coordinator
+// signs in to publish a week, not to look at the board they could have opened on
+// their phone. §4 lists the sections but does not fix their order, so this is a
+// house choice rather than a spec change.
+//
+// It does NOT move the landing screen. `HOME_PATH` is still `/board`: the board is
+// the spec's "adoption centerpiece" and the one screen everyone can open, so it
+// stays the front door even though it is no longer the first link.
+//
+// Metrics is absent on purpose. D18 made it S1.8's first tab, so the Admin entry
+// leads to it; a second entry would be two links to one screen.
 //
 // Tier is hierarchical, duty is set membership — see `access.ts`.
 
@@ -18,7 +32,6 @@ import {
   BellIcon,
   BoardIcon,
   CalendarIcon,
-  ChartIcon,
   ClockIcon,
   DocumentIcon,
   PeopleIcon,
@@ -63,19 +76,17 @@ export function navItemsFor(user: CurrentUser, viewport: Viewport): NavEntry[] {
     return items;
   }
 
-  // Desktop. §4's list is the back office; the responsive matrix also marks the
-  // board, my shifts and the inbox as usable here, so a driver at the shared
-  // desktop is not stranded with an empty nav.
-  if (staff || drives) items.push(entry('board', 'Board', <BoardIcon />));
+  // Desktop, staff-first. §4's list is the back office; the responsive matrix also
+  // marks the board, my shifts and the inbox as usable here, so a driver at the
+  // shared desktop is not stranded with an empty nav — those simply come after the
+  // work only this device can do.
+  if (atLeastTier(user, 'ADMIN')) items.push(entry('admin', 'Admin', <PeopleIcon />));
   if (staff) items.push(entry('schedule', 'Schedule', <ClockIcon />));
-  if (drives) items.push(entry('my-shifts', 'My Shifts', <CalendarIcon />));
-  items.push(entry('inbox', 'Inbox', <BellIcon />));
   if (hasDuty(user, 'REPORT') && shipped('report')) {
     items.push(entry('report', 'Report', <DocumentIcon />));
   }
-  if (atLeastTier(user, 'ADMIN')) {
-    items.push(entry('admin', 'Admin', <PeopleIcon />));
-    if (shipped('metrics')) items.push(entry('metrics', 'Metrics', <ChartIcon />));
-  }
+  if (staff || drives) items.push(entry('board', 'Board', <BoardIcon />));
+  if (drives) items.push(entry('my-shifts', 'My Shifts', <CalendarIcon />));
+  items.push(entry('inbox', 'Inbox', <BellIcon />));
   return items;
 }

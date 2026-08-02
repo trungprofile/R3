@@ -17,7 +17,7 @@
 // to think about. A store with no earlier figure is muted and says so in words —
 // null is not zero (`shared/src/metrics.ts`).
 
-import type { IntakeMetrics } from '../../../api/shared.ts';
+import type { IntakeMetrics } from '../../../../api/shared.ts';
 import { COPY, storeKey, storesByIntake, trendFor, weightWithUnit } from './metrics.ts';
 
 export interface IntakeTableProps {

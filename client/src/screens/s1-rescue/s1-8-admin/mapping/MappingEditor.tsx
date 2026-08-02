@@ -1,9 +1,12 @@
 // The AGFP→NTFB matching editor.
 //
-// It lives on S3.1 and not in Admin (D11, which resolved `ui-ux-spec.md`'s own
-// open assumption 3): this is where the mapping's effect is visible, and a
-// Reporter who hits the blocked export should be able to fix it without changing
-// screens — or tiers. The routes are `REPORT`-duty for the same reason.
+// IT LIVES IN ADMIN, NOT ON S3.1 (D17, overriding D11). D11 built it on the Report
+// screen and said so in the same breath as saying the location was "still the
+// human's to override — moving it to S1.8 is a route-access change and a screen
+// move, not a data change". `ui-ux-spec.md §8` open assumption 3 asked the pantry to
+// choose between the Report screen and Admin, and they chose Admin: this is master
+// data, and it belongs beside the rest of the master data with the rest of the
+// Admin-tier controls. See `mapping.ts` for what that costs a blocked Reporter.
 //
 // WHY THE FOOD BANK CATEGORY LIST STARTS EMPTY (D12). Those names are North Texas
 // Food Bank's, they appear in no foundation doc, and migration 0012 seeds nothing
@@ -19,7 +22,7 @@
 // afterwards reports the server's own answer. One button, never two.
 
 import { useCallback, useState } from 'react';
-import { useAsyncData, useToast } from '../../../app/index.ts';
+import { useAsyncData, useToast } from '../../../../app/index.ts';
 import {
   Button,
   Card,
@@ -31,8 +34,8 @@ import {
   ListRow,
   SkeletonRows,
   TextInput,
-} from '../../../components/index.ts';
-import type { CategoryMapping, NtfbCategory, UnmappedCategory } from '../../../api/shared.ts';
+} from '../../../../components/index.ts';
+import type { CategoryMapping, NtfbCategory, UnmappedCategory } from '../../../../api/shared.ts';
 import {
   createNtfbCategory,
   fetchMappings,
@@ -57,7 +60,8 @@ import {
   storageGapNote,
   weightWithUnit,
   type MappingRow,
-} from './report.ts';
+} from './mapping.ts';
+import './mapping.css';
 
 interface EditorData {
   mappings: CategoryMapping[];
@@ -70,17 +74,30 @@ type View =
   | { kind: 'create' }
   | { kind: 'edit'; category: NtfbCategory };
 
+/**
+ * Both props are optional, and Admin passes neither.
+ *
+ * They exist because this editor was built inside S3.1, where a week was on screen
+ * and could be re-read: `unmapped` sorted the categories blocking THAT week to the
+ * top, and `onChanged` told the report to reload. Admin has no week and nothing
+ * above it to refresh, so it renders `<MappingEditor />` and the defaults do the
+ * right thing — an empty blocking list simply means no row sorts to the top, which
+ * is exactly true here.
+ */
 export interface MappingEditorProps {
-  /** The categories carrying weight in the week on screen with nowhere to report
-   *  it. Passed in so the rows that are blocking the export sort to the top —
-   *  that is what the Reporter came here to fix. */
-  unmapped: readonly UnmappedCategory[];
-  /** Told when the matching changes, so the week above re-reads. A remap can turn
-   *  a blocked week into an exportable one in a single click. */
-  onChanged: () => void;
+  /** Categories carrying weight in a week with nowhere to report it, sorted to the
+   *  top. Empty from Admin, which has no week on screen. */
+  unmapped?: readonly UnmappedCategory[];
+  /** Told when the matching changes, for a caller with something to re-read. */
+  onChanged?: () => void;
 }
 
-export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
+const NOTHING_UNMAPPED: readonly UnmappedCategory[] = [];
+
+export function MappingEditor({
+  unmapped = NOTHING_UNMAPPED,
+  onChanged = () => undefined,
+}: MappingEditorProps = {}) {
   const toast = useToast();
 
   const load = useCallback(async (signal: AbortSignal): Promise<EditorData> => {
@@ -210,14 +227,14 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
 
   const errorNote =
     failure !== null ? (
-      <p className="s31-error" role="alert">
+      <p className="s18-map__error" role="alert">
         {failure}
       </p>
     ) : null;
 
   if (remote.error !== null) {
     return (
-      <div className="s31-mapping">
+      <div className="s18-map">
         <ErrorBlock error={remote.error} onRetry={remote.reload} />
       </div>
     );
@@ -226,7 +243,7 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
   if (remote.data === null) {
     // Nothing at all under 300ms (§6).
     return remote.showLoading ? (
-      <div className="s31-mapping">
+      <div className="s18-map">
         <SkeletonRows rows={6} label={COPY.ntfbLoading} />
       </div>
     ) : null;
@@ -238,12 +255,14 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
   if (view.kind === 'picker') {
     const options = pickerOptions(categories);
     return (
-      <div className="s31-mapping">
-        <h2 className="s31-subheading">{`${COPY.pickerLabel}: ${view.row.categoryName}`}</h2>
-        <p className="s31-note">{COPY.pickerHint}</p>
+      <div className="s18-map">
+        <h2 className="s18-map__subheading">{`${COPY.pickerLabel}: ${view.row.categoryName}`}</h2>
+        {/* D21: the hint that used to sit here said "Pick one, or leave it
+            unmatched." above a list whose last row IS "Leave it unmatched". A hint
+            that only restates the control under it is one more thing to read. */}
 
         {/* Storage sits ABOVE the category list because choosing a category is what
-            submits: the Reporter fills this in, then taps where it reports, and both
+            submits: the admin fills this in, then taps where it reports, and both
             halves of the line item go in one request. Free text, not a fixed list —
             the three values we have seen came off one receipt, and the pantry's own
             form is the authority on the rest (migration 0013). */}
@@ -281,15 +300,15 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
   if (view.kind === 'create' || view.kind === 'edit') {
     const editing = view.kind === 'edit' ? view.category : null;
     return (
-      <div className="s31-mapping">
+      <div className="s18-map">
         <form
-          className="s31-form"
+          className="s18-map__form"
           onSubmit={(event) => {
             event.preventDefault();
             void saveCategory();
           }}
         >
-          <h2 className="s31-subheading">
+          <h2 className="s18-map__subheading">
             {view.kind === 'create' ? COPY.createNtfbTitle : COPY.editNtfbTitle}
           </h2>
 
@@ -315,7 +334,7 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
 
           {errorNote}
 
-          <div className="s31-form__actions">
+          <div className="s18-map__form-actions">
             <Button variant="primary" type="submit" loading={busy}>
               {view.kind === 'create' ? COPY.createNtfb : COPY.saveNtfb}
             </Button>
@@ -325,7 +344,7 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
           </div>
 
           {editing !== null ? (
-            <div className="s31-form__danger">
+            <div className="s18-map__form-danger">
               {editing.active ? null : (
                 <Button variant="secondary" onClick={() => void reactivate(editing)} disabled={busy}>
                   {COPY.reactivate}
@@ -357,13 +376,13 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
   const ordered = sortNtfbCategories(categories);
 
   return (
-    <div className="s31-mapping">
+    <div className="s18-map">
       {errorNote}
 
       <section aria-label={COPY.mappingLabel}>
-        <h2 className="s31-subheading">{COPY.mappingHeading}</h2>
-        <p className="s31-note">{COPY.mappingIntro}</p>
-        <p className="s31-note">{COPY.remapNotice}</p>
+        <h2 className="s18-map__subheading">{COPY.mappingHeading}</h2>
+        <p className="s18-map__note">{COPY.mappingIntro}</p>
+        <p className="s18-map__note">{COPY.remapNotice}</p>
 
         {rows.length === 0 ? (
           <EmptyState title={COPY.mappingEmptyTitle}>{COPY.mappingEmptyBody}</EmptyState>
@@ -377,7 +396,7 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
                   side={
                     <span
                       className={
-                        row.ntfbCategoryId === null ? 's31-target s31-target--none' : 's31-target'
+                        row.ntfbCategoryId === null ? 's18-map__target s18-map__target--none' : 's18-map__target'
                       }
                     >
                       {mappingTargetLabel(row)}
@@ -388,7 +407,7 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
                     setFailure(null);
                     setView({ kind: 'picker', row });
                   }}
-                  ariaLabel={`${row.categoryName} — ${mappingTargetLabel(row)}`}
+                  ariaLabel={`${row.categoryName}, ${mappingTargetLabel(row)}`}
                 />
               </ListItem>
             ))}
@@ -397,13 +416,13 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
       </section>
 
       <section aria-label={COPY.ntfbLabel}>
-        <div className="s31-list-head">
-          <h2 className="s31-subheading">{COPY.ntfbHeading}</h2>
+        <div className="s18-map__list-head">
+          <h2 className="s18-map__subheading">{COPY.ntfbHeading}</h2>
           <Button variant="primary" onClick={openCreate}>
             {COPY.addNtfb}
           </Button>
         </div>
-        <p className="s31-note">{COPY.ntfbIntro}</p>
+        <p className="s18-map__note">{COPY.ntfbIntro}</p>
 
         {ordered.length === 0 ? (
           <EmptyState
@@ -426,12 +445,12 @@ export function MappingEditor({ unmapped, onChanged }: MappingEditorProps) {
                     subtitle={mappedCountLabel(category)}
                     {...(category.active
                       ? {}
-                      : { side: <span className="s31-archived">{COPY.archivedCategory}</span> })}
+                      : { side: <span className="s18-map__archived">{COPY.archivedCategory}</span> })}
                     onClick={() => openEdit(category)}
                     ariaLabel={
                       category.active
-                        ? `${category.name} — ${mappedCountLabel(category)}`
-                        : `${category.name} — ${COPY.archivedCategory}`
+                        ? `${category.name}, ${mappedCountLabel(category)}`
+                        : `${category.name}, ${COPY.archivedCategory}`
                     }
                   />
                 </ListItem>
