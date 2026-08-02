@@ -17,6 +17,7 @@ import {
   afterFailure,
   COPY,
   credentialReady,
+  filterRoster,
   findEntry,
   LOCKED_TEXT,
   MAX_TRIES,
@@ -170,6 +171,40 @@ describe('the name list', () => {
     expect(rosterName(person())).not.toContain('kholt');
   });
 
+  it('filters on what is displayed, in either case', () => {
+    const list = [
+      person({ id: '1', username: 'kholt', firstName: 'Karen', lastName: 'Holt' }),
+      person({ id: '2', username: 'adiaz', firstName: 'Ana', lastName: 'Diaz' }),
+    ];
+    expect(filterRoster(list, 'kar').map(rosterName)).toEqual(['Karen Holt']);
+    expect(filterRoster(list, 'KAR').map(rosterName)).toEqual(['Karen Holt']);
+    // A substring anywhere, so a last name finds someone too.
+    expect(filterRoster(list, 'diaz').map(rosterName)).toEqual(['Ana Diaz']);
+    // Across the space, because it matches the name as one displayed string.
+    expect(filterRoster(list, 'karen h').map(rosterName)).toEqual(['Karen Holt']);
+  });
+
+  it('shows everyone when nothing is typed, and matches nobody on a miss', () => {
+    const list = [person(), person({ id: '2', username: 'adiaz', firstName: 'Ana' })];
+    expect(filterRoster(list, '')).toHaveLength(2);
+    // Trailing space from a phone keyboard must not empty the list.
+    expect(filterRoster(list, '  ')).toHaveLength(2);
+    expect(filterRoster(list, 'zz')).toEqual([]);
+  });
+
+  it('never matches on the username, which is not what is on screen (§1.4, §7)', () => {
+    // Typing an identifier is the recall this screen exists to avoid, and a name
+    // appearing for text nobody can see reads as a bug.
+    expect(filterRoster([person()], 'kholt')).toEqual([]);
+  });
+
+  it('does not mutate the roster it was handed', () => {
+    const list = [person({ username: 'b', firstName: 'Bea' }), person({ username: 'a', firstName: 'Al' })];
+    expect(filterRoster(list, '')).not.toBe(list);
+    filterRoster(list, 'al');
+    expect(list).toHaveLength(2);
+  });
+
   it('finds the selected entry, and survives a name that is no longer on the roster', () => {
     const list = [person()];
     expect(findEntry(list, 'kholt')?.id).toBe('u1');
@@ -241,5 +276,19 @@ describe('microcopy (§7)', () => {
     for (const text of everything) {
       expect(text).not.toMatch(/username|error [a-z0-9]+|\bcode\b/i);
     }
+  });
+
+  it('uses no dashes as punctuation — two sentences or a comma instead', () => {
+    for (const text of everything) {
+      expect(text).not.toMatch(/[—–]/);
+    }
+  });
+
+  it('keeps the exact strings the filtered list and the empty roster depend on', () => {
+    // The two "nothing to show" states are different problems and must not read
+    // the same: one is fixed by typing less, the other by an admin.
+    expect(COPY.noMatch).toBe('No names match.');
+    expect(COPY.emptyBody).toBe('Ask an admin to add your account.');
+    expect(COPY.searchLabel).toBe('Find your name');
   });
 });

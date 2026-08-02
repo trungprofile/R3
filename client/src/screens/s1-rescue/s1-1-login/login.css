@@ -44,6 +44,42 @@
   color: var(--text-muted); /* §2: label size is muted-only */
 }
 
+/* --- The name list and its filter ----------------------------------------- */
+
+/* Sits directly on the list it filters, so the gap below it is smaller than the
+ * one `.r3-field` leaves between two unrelated fields. */
+.r3-login__search {
+  margin-bottom: var(--space-3);
+}
+
+/* BOUNDED, so a real roster scrolls inside the screen instead of pushing the
+ * wordmark, the title and the filter off the top of it — with fifty volunteers
+ * an unbounded column would put the box you type in out of reach of the rows it
+ * is narrowing.
+ *
+ * Six rows on a tall screen; half the viewport on a short one, which is what
+ * keeps the filter visible on a phone. Rows never shrink to fit — `--row-min` is
+ * the §3 row and the §1.2 tap target, and a list that fits by making its targets
+ * smaller has solved the wrong problem. */
+.r3-login__names {
+  max-height: min(calc(var(--row-min) * 6), 50vh);
+  overflow-y: auto;
+  /* Reaching the last name must not carry on into scrolling the page. */
+  overscroll-behavior: contain;
+}
+
+.r3-login__nomatch {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-body);
+  color: var(--text-muted);
+}
+
+/* It stays in the DOM whenever the list does, so a screen reader has a region to
+ * announce into; with no message it must take no space. */
+.r3-login__nomatch:empty {
+  margin: 0;
+}
+
 /* --- PIN entry ------------------------------------------------------------ */
 
 .r3-login__pin {

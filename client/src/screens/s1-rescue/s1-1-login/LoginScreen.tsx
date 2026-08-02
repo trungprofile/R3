@@ -14,7 +14,7 @@
 // Everything that is a rule rather than a pixel lives in `login.ts`, which has no
 // React in it and is tested.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   Button,
   EmptyState,
@@ -42,6 +42,7 @@ import {
   afterFailure,
   COPY,
   credentialReady,
+  filterRoster,
   findEntry,
   NO_ATTEMPTS,
   orderRoster,
@@ -99,6 +100,54 @@ function PinDots({ length }: { length: number }) {
   );
 }
 
+/** The filter above the name list.
+ *
+ *  A hand-rolled field rather than `TextInput`, for two reasons that are both
+ *  about this screen and not about that component: it needs `type="search"` (the
+ *  browser's own clear button, and the right keyboard hint), and it needs the
+ *  focus decision below, neither of which `TextInput` takes. It borrows that
+ *  component's `r3-field` classes wholesale so it is the same 48px control (§3)
+ *  with the same visible label above — never placeholder-only (§1.4).
+ *
+ *  AUTOFOCUS ON DESKTOP ONLY. On a phone, focusing a field raises the on-screen
+ *  keyboard, which would cover the very list §5 step 1 wants tapped — the search
+ *  box would take the screen away from the feature it is helping. The tablet is
+ *  the shared counter device and has the same keyboard, so it is treated the same
+ *  way; only the back-office desktop, where a keyboard is already on the desk and
+ *  typing is the faster path through a long roster, opens focused. */
+function NameSearch({
+  value,
+  onChange,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  autoFocus: boolean;
+}) {
+  const id = useId();
+  return (
+    <div className="r3-field r3-login__search">
+      <label className="r3-field__label" htmlFor={id}>
+        {COPY.searchLabel}
+      </label>
+      <input
+        id={id}
+        className="r3-field__control"
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete="off"
+        // Names, not sentences: a phone that capitalises or corrects the first
+        // letter makes the substring match miss what was actually typed.
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        autoFocus={autoFocus}
+      />
+    </div>
+  );
+}
+
 export function LoginScreen(_props: ScreenProps) {
   const { status, user, onSignedIn } = useSession();
   const viewport = useViewport();
@@ -110,6 +159,7 @@ export function LoginScreen(_props: ScreenProps) {
   const [store] = useState<NameStore | null>(() => browserStore());
 
   const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
   const [credential, setCredential] = useState('');
   const [attempt, setAttempt] = useState<AttemptState>(NO_ATTEMPTS);
   const [submitting, setSubmitting] = useState(false);
@@ -137,6 +187,7 @@ export function LoginScreen(_props: ScreenProps) {
 
   const entries = roster.data ? orderRoster(roster.data) : [];
   const entry = findEntry(entries, selected);
+  const shown = filterRoster(entries, query);
 
   const choose = (next: RosterEntry) => {
     setSelected(next.username);
@@ -147,6 +198,8 @@ export function LoginScreen(_props: ScreenProps) {
   const back = () => {
     forget(store);
     setSelected(null);
+    // The whole list again, not whatever was typed to reach the wrong name.
+    setQuery('');
     setCredential('');
     setAttempt(NO_ATTEMPTS);
   };
@@ -177,20 +230,41 @@ export function LoginScreen(_props: ScreenProps) {
       <div className="r3-login">
         <Wordmark />
         <h1 className="r3-login__title">{COPY.chooseTitle}</h1>
-        <p className="r3-login__hint">{COPY.chooseHint}</p>
         {roster.showLoading ? <SkeletonRows rows={5} label={COPY.loading} /> : null}
         {roster.error ? <ErrorBlock error={roster.error} onRetry={roster.reload} /> : null}
+        {/* No account exists yet — a different thing entirely from a filter that
+            matched nothing, and the only one of the two that needs an admin. */}
         {!roster.error && roster.data && entries.length === 0 ? (
           <EmptyState title={COPY.emptyTitle}>{COPY.emptyBody}</EmptyState>
         ) : null}
         {entries.length > 0 ? (
-          <List label={COPY.chooseTitle}>
-            {entries.map((candidate) => (
-              <ListItem key={candidate.id}>
-                <ListRow title={rosterName(candidate)} onClick={() => choose(candidate)} />
-              </ListItem>
-            ))}
-          </List>
+          <>
+            <NameSearch value={query} onChange={setQuery} autoFocus={viewport === 'desktop'} />
+            {/* The list keeps its own bounds so the search box, the wordmark and
+                the title stay put as it fills. Rows inside are buttons, so a
+                keyboard scrolls this region by tabbing through them and it needs
+                no tab stop of its own. */}
+            {shown.length > 0 ? (
+              <div className="r3-login__names">
+                <List label={COPY.chooseTitle}>
+                  {shown.map((candidate) => (
+                    <ListItem key={candidate.id}>
+                      <ListRow title={rosterName(candidate)} onClick={() => choose(candidate)} />
+                    </ListItem>
+                  ))}
+                </List>
+              </div>
+            ) : null}
+            {/* Filtered down to nothing: a line rather than a blank box. The
+                paragraph is always mounted and only its text changes, because a
+                live region that appears together with its message is announced
+                unreliably — and this is the one moment in the filter where
+                silence would leave a screen reader thinking the list is still
+                there. It collapses to nothing when empty (`:empty`, login.css). */}
+            <p className="r3-login__nomatch" role="status">
+              {shown.length === 0 ? COPY.noMatch : ''}
+            </p>
+          </>
         ) : null}
       </div>
     );

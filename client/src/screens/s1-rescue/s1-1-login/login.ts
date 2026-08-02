@@ -22,7 +22,13 @@ import type { CredentialKind, RosterEntry } from '../../../api/shared.ts';
 export const COPY = {
   /** Step 1. §5: a list of names — recognition, no typing. */
   chooseTitle: "Who's signing in?",
-  chooseHint: 'Tap your name.',
+  /** The filter above the list. Typing is a shortcut INTO the list, never a
+   *  replacement for it: §5 step 1 is still "tap your name", and someone who
+   *  scrolls past the box gets the same screen they always had. */
+  searchLabel: 'Find your name',
+  /** Filtered down to nothing. Short on purpose — the fix is to type less, and
+   *  the box holding the wrong text is right above this line. */
+  noMatch: 'No names match.',
   /** Step 2, per credential kind. */
   pinLabel: 'Your 4-digit PIN',
   passwordLabel: 'Your password',
@@ -32,7 +38,7 @@ export const COPY = {
   back: 'Not you? Choose a different name',
   /** §6: an empty state says what to do next, never just "nothing here". */
   emptyTitle: 'No names here yet.',
-  emptyBody: 'An admin adds accounts. Once yours exists, your name is on this list.',
+  emptyBody: 'Ask an admin to add your account.',
   loading: 'Loading names',
   keypadLabel: 'PIN keypad',
 } as const;
@@ -144,6 +150,30 @@ export function orderRoster(entries: readonly RosterEntry[]): RosterEntry[] {
       a.lastName.localeCompare(b.lastName) ||
       a.username.localeCompare(b.username),
   );
+}
+
+/**
+ * Narrow the roster to what has been typed: a case-insensitive substring of the
+ * name as it is DISPLAYED, so what someone matches on is exactly what they can
+ * see. Nothing smarter — no fuzzy match, no initials, no username. A search that
+ * hides a name for a reason the person cannot see is worse on this screen than a
+ * long list, because there is no other way in.
+ *
+ * Matching against `rosterName` and not the fields separately is what lets
+ * "karen h" find Karen Holt while still being one plain `includes`.
+ *
+ * DISCLOSES NOTHING. The roster is already public before sign-in by design —
+ * name-first login (`ui-ux-spec.md §5`, `product-requirement.md §2`) puts every
+ * name on the screen unauthenticated, and filtering a list the browser already
+ * holds tells an attacker nothing it did not just hand them. The PIN is what
+ * authenticates, and `architecture.md §4.2` defends it by throttling.
+ */
+export function filterRoster(entries: readonly RosterEntry[], query: string): RosterEntry[] {
+  // Trimmed so a trailing space from a phone's autocapitalise does not empty the
+  // list; inner spacing is left alone, since it is part of the name being typed.
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [...entries];
+  return entries.filter((entry) => rosterName(entry).toLowerCase().includes(needle));
 }
 
 export function findEntry(
