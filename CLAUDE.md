@@ -4,7 +4,7 @@ System of record for Amazing Grace Food Pantry's weekly food-rescue cycle (rescu
 
 **All three phases are built** — Phase 1 (rescue loop + scheduling), Phase 2 (receive), Phase 3 (report + metrics). Every capability in `product-requirement.md §3` has code; every screen in `ui-ux-spec.md §8` has an entry in `client/src/main.tsx`, except `S2.4`, which is a device-level banner the shell mounts rather than a route; and `./scripts/gate.sh` is green. Not yet deployed, and no production data exists.
 
-One thing is **deliberately unbuilt because it is not ours to invent**, and a task that seems to need it should stop rather than guess: NTFB's own category names, and which of ours reports under each (the `ntfb_category` table ships empty — `phase-3-build-plan.md` D12). A real receipt named ten of them and `phase-3-state.md` records the list, but it is one receipt's worth, our `Frz Non Meat` matches none of it, and seeding ten of eleven is the same failure one row smaller. The pantry enters them on S3.1.
+One thing is **deliberately unbuilt because it is not ours to invent**, and a task that seems to need it should stop rather than guess: NTFB's own category names, and which of ours reports under each (the `ntfb_category` table ships empty — `phases-1-3.md` D12). A real receipt named ten of them and `phases-1-3.md §3.1` records the list, but it is one receipt's worth, our `Frz Non Meat` matches none of it, and seeding ten of eleven is the same failure one row smaller. The pantry enters them on S3.1.
 
 The Meal Connect format itself is **no longer a guess**: a submitted receipt and its three entry screens settled it (`D13`, `D15`, migration 0013). The far end is a web form with no import, so the export is a hand-entry worksheet ordered by receipt, and a line item is `(category, storage)` rather than a category alone.
 
@@ -28,11 +28,14 @@ Add `docs/features/<name>.md` once a feature accumulates worked examples or edge
 
 | Feature doc | Load it when you're... |
 | :---- | :---- |
-| [`phase-1-build-plan.md`](docs/features/phase-1-build-plan.md) | building anything in Phase 1 — standing decisions (no `COMPLETED` in Phase 1, deferred `§7` tables), build order, single-owner files, and the rules every agent follows |
-| [`phase-2-build-plan.md`](docs/features/phase-2-build-plan.md) | building anything in Phase 2 — D7 lifts D1 (`COMPLETED` is now reachable, in exactly one place), D8 records a live conflict between `ui-ux-spec.md` and the locked doc, D9/D10 scope the edit window and the walk-in split |
-| [`phase-3-build-plan.md`](docs/features/phase-3-build-plan.md) | building anything in Phase 3 — the report/metrics union and the three ways to compute it wrong, D11 (mapping lives on S3.1), D12 (NTFB categories ship empty and unmapped weight blocks export), D13 (the export shape is provisional), D14 (the Reporter's edit deliberately ignores the receiver window) |
+| [`phases-1-3.md`](docs/features/phases-1-3.md) | changing behaviour anywhere — the build record for all three phases: standing decisions `D1`–`D15`, what still needs a human, the stored shapes that are cheap to change only while the database is empty, and the assumptions that change what a person sees |
+| [`test-plan.md`](docs/features/test-plan.md) | testing the app before the pilot — what a green gate does **not** prove, the ten test tracks and how to run them in parallel, exit criteria, and the risks to disclose rather than let a demo discover |
 
-Each phase also has a **state doc** beside its build plan — `phase-{1,2,3}-state.md`. The build plan holds decisions that are settled; the state doc holds the ledger of what was **assumed** (`A1`–`A187`), what is still open, and which bugs the build found. Read the state doc before changing behaviour in an area: an `A#` entry is a place the docs did not answer and the build picked a reading, so it is the likeliest thing to be wrong. Lane reports in `reports/` carry the same field per screen.
+**`D#` and `A#` citations in code resolve to that doc.** Roughly thirty comments across migrations, services, tests and client code cite a decision or an assumption by number — `phase-1-build-plan.md D3`, `phase-3-state.md A189`, and so on. The numbering is one series across the three phases and keeps its original meaning; only the file it lives in changed.
+
+An **`A#` is a place the docs did not answer and the build picked a reading**, so it is the likeliest thing to be wrong — read the relevant entry before changing behaviour in that area. A `D#` is settled and is not re-litigated; if one looks wrong, say so and stop.
+
+The six per-phase docs (`phase-{1,2,3}-{build-plan,state}.md`) and the 24 lane reports they cite are preserved verbatim under `archived/phase-docs/` and `archived/reports/`. They hold the full `A1`–`A191` ledger, the wave-by-wave merge record, the halt transcripts, and each screen's complete `Assumed:` list. `archived/` is gitignored — prior scratch work, ignore unless asked.
 
 ## Where code goes
 
