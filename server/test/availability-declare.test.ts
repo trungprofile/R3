@@ -238,7 +238,7 @@ describe('declaring unavailability', () => {
       toDate: '2026-08-04',
     });
 
-    await expect(attempt).rejects.toThrow(/cancel it first/);
+    await expect(attempt).rejects.toThrow(/Cancel it first/);
     const error = await refusal(attempt);
     expect(error.status).toBe(409);
     expect(error.details?.['error']).toBe('AVAILABILITY_CONFLICT');

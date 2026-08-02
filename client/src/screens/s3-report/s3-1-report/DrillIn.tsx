@@ -149,7 +149,7 @@ export function DrillIn({ week, categoryId, categoryName, onChanged, onClose }: 
   };
 
   return (
-    <div className="s31-drill" aria-label={`${COPY.drillLabel} — ${categoryName}`}>
+    <div className="s31-drill" aria-label={`${COPY.drillLabel}, ${categoryName}`}>
       {remote.error !== null ? <ErrorBlock error={remote.error} onRetry={remote.reload} /> : null}
 
       {failure !== null ? (

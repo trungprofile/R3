@@ -20,9 +20,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../api/index.ts';
-import { EXPORT_BLOCKED_MESSAGE } from '../../../api/shared.ts';
+import { EXPORT_BLOCKED_MESSAGE, EXPORT_COLUMNS } from '../../../api/shared.ts';
 import type {
-  CategoryMapping,
+  ExportRow,
   NtfbCategory,
   ReportEntry,
   UnmappedCategory,
@@ -40,6 +40,7 @@ import {
   entriesTotal,
   entryDescription,
   entrySource,
+  exportCells,
   exportFilename,
   formatDayLabel,
   formatWeekRange,
@@ -50,22 +51,14 @@ import {
   isEmptyWeek,
   isFutureWeek,
   isoWeekday,
-  mappedCountLabel,
-  mappingRows,
-  mappingSavedText,
-  mappingTargetLabel,
   mealConnectAccountNote,
   messageFor,
   missingItems,
   nextWeek,
-  normalizeOptional,
   normalizeWeight,
   ntfbLabel,
-  ntfbNameError,
-  ntfbRemovalText,
   openRunLabel,
   openRunsNotice,
-  pickerOptions,
   previousWeek,
   reportLineTitle,
   reportState,
@@ -74,8 +67,6 @@ import {
   rolledUpNames,
   runStatusWord,
   shouldReloadAfter,
-  sortNtfbCategories,
-  storageGapNote,
   toggleDrillIn,
   totalsView,
   unmappedSummary,
@@ -142,18 +133,6 @@ function entry(over: Partial<ReportEntry> = {}): ReportEntry {
 
 function ntfb(over: Partial<NtfbCategory> = {}): NtfbCategory {
   return { id: 'ntfb-1', name: 'Protein', code: '14', active: true, mappedCount: 2, ...over };
-}
-
-function mapping(over: Partial<CategoryMapping> = {}): CategoryMapping {
-  return {
-    categoryId: 'agfp-1',
-    categoryName: 'Frozen Meat',
-    categoryActive: true,
-    ntfbCategoryId: 'ntfb-1',
-    ntfbCategoryName: 'Protein',
-    storage: 'Frozen',
-    ...over,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -292,10 +271,21 @@ describe('totals', () => {
     const totals = totalsView(report());
     expect(totals.map((total) => total.key)).toEqual(['reported', 'unreported', 'intake']);
     expect(totals.map((total) => total.value)).toEqual(['324.00', '100.00', '424.00']);
-    for (const total of totals) {
-      expect(total.label.length).toBeGreaterThan(0);
-      expect(total.note.length).toBeGreaterThan(0);
-    }
+    for (const total of totals) expect(total.label.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the note that separates intake from reported, and drops the one that repeated a label', () => {
+    // D21 cut `reportedNote` ("This is the figure the export file will carry"):
+    // the label names the food bank and the Export button is directly below it.
+    // The other two STAY. `domain-modeling.md §6` is locked and defines intake and
+    // NTFB-reported as different unions, and these two sentences are the only
+    // place on this screen that difference is stated in words rather than implied
+    // by two numbers sitting side by side.
+    const byKey = new Map(totalsView(report()).map((total) => [total.key, total.note]));
+    expect(byKey.get('reported')).toBeNull();
+    expect(byKey.get('unreported')?.length).toBeGreaterThan(0);
+    expect(byKey.get('intake')?.length).toBeGreaterThan(0);
+    expect(byKey.get('intake')?.toLowerCase()).toContain('never the same');
   });
 
   it('never gives reported and intake the same label', () => {
@@ -417,6 +407,56 @@ describe('the export decision', () => {
 });
 
 // ---------------------------------------------------------------------------
+// The printed worksheet (D16)
+//
+// The rows themselves are the SERVER's, fetched from `/report/export?format=json`
+// and never rebuilt here (A186) — `server/test/report-access.test.ts` is what proves
+// the two formats carry the same rows and share one refusal. What is testable on
+// this side is the one thing left that could make them disagree: the order the
+// fields are laid out in.
+// ---------------------------------------------------------------------------
+
+describe('the printed worksheet', () => {
+  const row: ExportRow = {
+    day: '2026-07-28',
+    donor: "Sam's Club",
+    donorCode: '6228',
+    ntfbCategory: 'Protein',
+    storage: 'Frozen',
+    agfpCategory: 'Deli, Frozen Meat',
+    weightLb: '324.00',
+    receiptItems: '2',
+    receiptTotal: '424.00',
+  };
+
+  it('lays a row out in EXPORT_COLUMNS order', () => {
+    expect(exportCells(row)).toEqual([
+      '2026-07-28',
+      "Sam's Club",
+      '6228',
+      'Protein',
+      'Frozen',
+      'Deli, Frozen Meat',
+      '324.00',
+      '2',
+      '424.00',
+    ]);
+  });
+
+  it('emits exactly one cell per column, and never an NTFB code', () => {
+    // D13: Meal Connect picks a category by name from a dropdown, and the
+    // `MEAT48675888`-style ids on a receipt are its own per-line identifiers,
+    // issued on submission. A column count that drifts from `EXPORT_COLUMNS` is
+    // how the printed sheet and the CSV would silently stop being the same
+    // worksheet.
+    expect(exportCells(row)).toHaveLength(EXPORT_COLUMNS.length);
+    expect(EXPORT_COLUMNS).not.toContain('NTFB Code');
+    expect(EXPORT_COLUMNS[EXPORT_COLUMNS.length - 2]).toBe('Receipt Items');
+    expect(EXPORT_COLUMNS[EXPORT_COLUMNS.length - 1]).toBe('Receipt Total (lb)');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The table and the drill-in (Success Metric 4)
 // ---------------------------------------------------------------------------
 
@@ -488,129 +528,6 @@ describe('the drill-in', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The matching editor (D11, D12)
-// ---------------------------------------------------------------------------
-
-describe('the matching editor', () => {
-  it('puts the categories blocking the export at the top', () => {
-    const rows = mappingRows(
-      [
-        mapping({ categoryId: 'agfp-1', categoryName: 'Frozen Meat' }),
-        mapping({
-          categoryId: 'agfp-2',
-          categoryName: 'Bakery',
-          ntfbCategoryId: null,
-          ntfbCategoryName: null,
-        }),
-        mapping({
-          categoryId: 'agfp-3',
-          categoryName: 'Produce',
-          ntfbCategoryId: null,
-          ntfbCategoryName: null,
-        }),
-      ],
-      [unmappedRow({ categoryId: 'agfp-3', categoryName: 'Produce' })],
-    );
-    // Blocking first, then merely unmatched, then matched. Alphabetical order
-    // would bury the row the Reporter came to fix.
-    expect(rows.map((row) => row.categoryId)).toEqual(['agfp-3', 'agfp-2', 'agfp-1']);
-    expect(rows[0]?.blockingWeight).toBe('1222.35');
-    expect(rows[1]?.blockingWeight).toBeNull();
-  });
-
-  it('keeps an archived category of ours visible', () => {
-    const rows = mappingRows([mapping({ categoryActive: false })], []);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.archived).toBe(true);
-  });
-
-  it('says where a category reports, or that it does not yet', () => {
-    const [matched] = mappingRows([mapping()], []);
-    const [unmatched] = mappingRows(
-      [mapping({ ntfbCategoryId: null, ntfbCategoryName: null })],
-      [],
-    );
-    // Category AND storage: together they are one Meal Connect line item, and
-    // showing only the category hides half of what the Reporter will type.
-    expect(mappingTargetLabel(matched!)).toBe('Protein · Frozen');
-    expect(mappingTargetLabel(unmatched!)).toBe(COPY.notMatched);
-  });
-
-  it('falls back to the category alone when no storage is set', () => {
-    const [row] = mappingRows([mapping({ storage: null })], []);
-    expect(mappingTargetLabel(row!)).toBe('Protein');
-  });
-
-  it('names a missing storage, but only once the category is matched', () => {
-    const [matched] = mappingRows([mapping({ storage: null })], []);
-    const [unmatched] = mappingRows(
-      [mapping({ ntfbCategoryId: null, ntfbCategoryName: null, storage: null })],
-      [],
-    );
-    expect(storageGapNote(matched!)).toBe(COPY.storageMissing);
-    // Nothing to say yet: an unmatched category has a bigger problem, and it is
-    // already the one the row is sorted to the top for.
-    expect(storageGapNote(unmatched!)).toBeNull();
-    expect(storageGapNote(mappingRows([mapping()], [])[0]!)).toBeNull();
-  });
-
-  it('offers only live food bank categories, plus leaving it unmatched', () => {
-    const options = pickerOptions([
-      ntfb({ id: 'a', name: 'Protein', code: '14' }),
-      ntfb({ id: 'b', name: 'Archived one', active: false }),
-      ntfb({ id: 'c', name: 'Bakery', code: null }),
-    ]);
-    // Pointing a live category at an archived bucket would build the next
-    // unmapped block by hand.
-    expect(options.map((option) => option.id)).toEqual(['c', 'a', null]);
-    expect(options[options.length - 1]?.label).toBe(COPY.leaveUnmatched);
-  });
-
-  it('shows a Meal Connect code when there is one and never invents one', () => {
-    // D13: a guessed code is worse than a null, which is why the column is
-    // nullable in the first place.
-    expect(ntfbLabel({ name: 'Protein', code: '14' })).toBe('Protein (14)');
-    expect(ntfbLabel({ name: 'Protein', code: null })).toBe('Protein');
-    expect(ntfbLabel({ name: 'Protein', code: '' })).toBe('Protein');
-    expect(normalizeOptional('  ')).toBeNull();
-    expect(normalizeOptional(' 14 ')).toBe('14');
-  });
-
-  it('says how many of ours report under one of theirs (the I21 hint)', () => {
-    expect(mappedCountLabel(ntfb({ mappedCount: 0 }))).toBe(COPY.nothingMapped);
-    expect(mappedCountLabel(ntfb({ mappedCount: 1 }))).toBe(COPY.oneMapped);
-    expect(mappedCountLabel(ntfb({ mappedCount: 3 }))).toContain('3');
-  });
-
-  it('lists live categories before archived ones', () => {
-    const sorted = sortNtfbCategories([
-      ntfb({ id: 'a', name: 'Zucchini', active: true }),
-      ntfb({ id: 'b', name: 'Apples', active: false }),
-      ntfb({ id: 'c', name: 'Bakery', active: true }),
-    ]);
-    expect(sorted.map((category) => category.id)).toEqual(['c', 'a', 'b']);
-  });
-
-  it('requires a name and invents no other rule', () => {
-    // A duplicate-name rule is written down nowhere, so refusing one here would
-    // refuse a name the server accepts.
-    expect(ntfbNameError('', false)).toBeNull();
-    expect(ntfbNameError('  ', true)).toBe(COPY.ntfbNameRequired);
-    expect(ntfbNameError('Protein', true)).toBeNull();
-  });
-
-  it('reports the I21 answer rather than predicting it', () => {
-    expect(ntfbRemovalText('Protein', 'DELETED')).toContain('gone');
-    expect(ntfbRemovalText('Protein', 'DEACTIVATED')).toContain('archived');
-  });
-
-  it('warns that leaving a category unmatched holds the export up', () => {
-    expect(mappingSavedText('Produce', null)).toContain('export');
-    expect(mappingSavedText('Produce', 'Protein')).toContain('Protein');
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Errors (§6)
 // ---------------------------------------------------------------------------
 
@@ -659,23 +576,15 @@ const COMPOSED: string[] = [
   entrySource(entry({ shiftId: null, routeName: null })),
   reportableSavedText("Sam's", true),
   reportableSavedText("Sam's", false),
-  mappingSavedText('Produce', null),
-  mappingSavedText('Produce', 'Protein'),
-  mappingTargetLabel(mappingRows([mapping({ ntfbCategoryId: null, ntfbCategoryName: null })], [])[0]!),
-  mappingTargetLabel(mappingRows([mapping()], [])[0]!),
-  storageGapNote(mappingRows([mapping({ storage: null })], [])[0]!) ?? '',
   reportLineTitle({ ntfbCategoryName: 'Protein', ntfbCode: '14', storage: 'Frozen' }),
   mealConnectAccountNote({
     agencyCode: '026357P',
     foodBank: 'North Texas Food Bank',
     foodBankCode: '24',
   }),
-  mappedCountLabel(ntfb({ mappedCount: 3 })),
   ntfbLabel({ name: 'Protein', code: '14' }),
-  ntfbRemovalText('Protein', 'DELETED'),
-  ntfbRemovalText('Protein', 'DEACTIVATED'),
   exportFilename('2026-07-27', '2026-08-02'),
-  ...totalsView(report()).flatMap((total) => [total.label, total.note]),
+  ...totalsView(report()).flatMap((total) => [total.label, total.note ?? '']),
   ...reportableChoices().map((choice) => choice.label),
   ...['OPEN', 'CLAIMED', 'IN_PROGRESS', 'ANYTHING'].map(runStatusWord),
 ];
@@ -719,11 +628,59 @@ describe('microcopy', () => {
 
   it('names the account the receipts belong in', () => {
     // The one check the worksheet cannot make for the Reporter is whether they
-    // are signed in as the right agency.
+    // are signed in as the right agency. Now with a comma where an em dash was
+    // (D21) — the sentence is read off a printed sheet as often as off a screen.
     const note = mealConnectAccountNote(report().mealConnect);
-    expect(note).toContain('026357P');
-    expect(note).toContain('North Texas Food Bank');
-    expect(note).toContain('24');
+    expect(note).toBe('Enter these under agency 026357P, North Texas Food Bank (24).');
+  });
+
+  it('uses no em dash (D21)', () => {
+    // Two sentences or a comma, never a hyphen swap. The one exception is not
+    // prose: `DrillIn.tsx` draws a bare em dash as the empty-value glyph in the
+    // weight keypad's draft line, which is a symbol rather than a sentence and is
+    // not in this sweep.
+    for (const sentence of sentences) expect(sentence).not.toContain('—');
+  });
+
+  it('cut the hints that only restated the control under them (D21)', () => {
+    // Each of these was a sentence whose whole content was visible in the widget
+    // it sat above. What survived the cut is anything a person could not
+    // otherwise see: `intakeNote` and `unreportedNote` (locked §6 keeps intake
+    // and NTFB-reported distinguishable) and, in Admin, `remapNotice`.
+    const keys = Object.keys(COPY);
+    for (const gone of ['pickerHint', 'tableHint', 'reportedNote', 'futureWeekNote']) {
+      expect(keys).not.toContain(gone);
+    }
+    expect(COPY.intakeNote.length).toBeGreaterThan(0);
+    expect(COPY.unreportedNote.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the export hint short enough to be read (D21)', () => {
+    // It was the longest string in the app, and said three times over what the
+    // column headings already say. What it must still carry is the check Meal
+    // Connect's review screen offers before Submit.
+    expect(COPY.exportHint.length).toBeLessThan(200);
+    expect(COPY.exportHint).toContain('Meal Connect');
+  });
+
+  it('says who can clear the block, now that the Reporter cannot (D17)', () => {
+    // The matching moved to Admin, so the primary button that used to sit in the
+    // blocked state became a sentence about somewhere else. Leaving nothing at
+    // all would strand a Reporter in front of a block with no next step.
+    expect(COPY.matchingIsInAdmin.toLowerCase()).toContain('admin');
+    expect(Object.keys(COPY)).not.toContain('goToMatching');
+    expect(Object.keys(COPY)).not.toContain('tabMapping');
+  });
+
+  it('offers the print sheet as a sheet, not as a file that gets sent (D16)', () => {
+    // Same rule as the export hint: nothing may imply Meal Connect receives
+    // anything. "Save as PDF" is the browser's own wording and is what the
+    // Reporter will look for in the dialogue.
+    expect(COPY.print.toLowerCase()).toContain('pdf');
+    expect(COPY.print.toLowerCase()).toContain('print');
+    for (const promise of ['submitted', 'uploads', 'uploaded', 'sends']) {
+      expect(COPY.print.toLowerCase()).not.toContain(promise);
+    }
   });
 
   it('names both totals in full wherever they appear', () => {

@@ -73,10 +73,6 @@
   margin: 0;
 }
 
-.s31-panel {
-  margin-top: var(--space-4);
-}
-
 /* --- the block that stops the export -------------------------------------- */
 
 /* Warning fill behind dark text (§2): this needs attention, but nothing has gone
@@ -174,12 +170,6 @@
 
 .s31-table {
   margin-top: var(--space-5);
-}
-
-.s31-table__hint {
-  font-size: var(--font-body);
-  color: var(--text-muted);
-  margin: 0 0 var(--space-3) 0;
 }
 
 .s31-line {
@@ -347,63 +337,6 @@
   border-top: 1px solid var(--border);
 }
 
-/* --- the matching editor --------------------------------------------------- */
-
-.s31-mapping section + section {
-  margin-top: var(--space-6);
-}
-
-.s31-list-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-2);
-}
-
-.s31-target {
-  font-size: var(--font-body);
-  color: var(--text);
-  white-space: nowrap;
-}
-
-/* Not matched yet — the state that blocks the export. Danger would say something
- * broke; this is a gap, so it takes the warning role's dark-on-light treatment. */
-.s31-target--none {
-  color: var(--text);
-  background: var(--surface-paper);
-  border: 1px solid var(--warning);
-  border-radius: var(--radius-pill);
-  padding: var(--space-1) var(--space-3);
-}
-
-.s31-archived {
-  font-size: var(--font-label);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.s31-form {
-  max-width: 34rem;
-}
-
-.s31-form__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-
-.s31-form__danger {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-top: var(--space-6);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-}
-
 /* --- the one primary action ------------------------------------------------ */
 
 .s31-export {
@@ -414,4 +347,103 @@
   margin-top: var(--space-6);
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
+}
+
+/* Export and Print sit side by side and wrap together at tablet width or 200%
+ * zoom. §1.2's minimum gap between adjacent targets applies here as much as
+ * anywhere: these two do different things and are one mis-tap apart. */
+.s31-export__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* --- the printed worksheet (D16) ------------------------------------------- */
+
+/* Absent from the screen entirely. The Reporter's copy of these rows is the
+ * on-screen table above; this section exists for paper and for the browser's own
+ * "Save as PDF", which is the whole of the answer to "can we have a PDF" without
+ * the dependency D5 forbids. */
+.s31-print {
+  display: none;
+}
+
+@media print {
+  /* Everything the app draws — shell, nav, top bar, buttons, the on-screen table
+   * — is hidden, and the worksheet is promoted to the whole page. Written as
+   * `visibility` on the tree plus `position` on the section rather than
+   * `display: none` on named ancestors: this file must not know the shell's class
+   * names, and the shell is not this lane's to edit. */
+  body * {
+    visibility: hidden;
+  }
+
+  .s31-print,
+  .s31-print * {
+    visibility: visible;
+  }
+
+  .s31-print {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    color: #000;
+    background: #fff;
+  }
+
+  .s31-print__title {
+    font-size: 1.2rem;
+    margin: 0 0 0.2rem 0;
+  }
+
+  .s31-print__week,
+  .s31-print__account {
+    font-size: 0.9rem;
+    margin: 0 0 0.2rem 0;
+  }
+
+  /* The agency line is the one thing the worksheet cannot check for the Reporter
+   * (`ui-ux-spec.md` S3.1), so on the copy that leaves the screen it is the one
+   * thing set apart. */
+  .s31-print__account {
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+  }
+
+  .s31-print__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+
+  .s31-print__table th,
+  .s31-print__table td {
+    border: 1px solid #000;
+    padding: 0.15rem 0.3rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  /* A week can run to more rows than one sheet holds, and a receipt split across
+   * a page break with no headings above it is how a line gets typed twice or not
+   * at all. */
+  .s31-print__table thead {
+    display: table-header-group;
+  }
+
+  .s31-print__table tr {
+    break-inside: avoid;
+  }
+
+  /* Literal black on white, and the one place in this repo where a hex value is
+   * correct rather than a token violation: `ui-ux-spec.md §2`'s palette is a
+   * screen palette, and a printer has no theme to inherit. */
+  @page {
+    margin: 1.5cm;
+  }
 }

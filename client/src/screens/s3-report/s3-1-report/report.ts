@@ -29,11 +29,16 @@
 //      Success Metric 4 exists to kill.
 
 import { toApiError } from '../../../api/index.ts';
+import {
+  isCurrentWeek,
+  isoWeekday,
+  previousWeek,
+  weekStartOf,
+} from '../../../app/week.ts';
 import { EXPORT_BLOCKED_MESSAGE } from '../../../api/shared.ts';
 import type {
-  CategoryMapping,
+  ExportRow,
   NtfbCategory,
-  RemovalOutcome,
   ReportEntry,
   ReportLine,
   UnmappedCategory,
@@ -83,41 +88,19 @@ function isoOf(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** `iso` shifted by whole days. Returns `iso` untouched if it is not a date —
- *  guessing a date the server did not send would be worse than showing what
- *  arrived. */
-export function addDaysIso(iso: string, days: number): string {
-  const date = utcOf(iso);
-  if (!date) return iso;
-  date.setUTCDate(date.getUTCDate() + days);
-  return isoOf(date);
-}
-
-/** Monday = 1 … Sunday = 7. */
-export function isoWeekday(iso: string): number {
-  const date = utcOf(iso);
-  if (!date) return 0;
-  return ((date.getUTCDay() + 6) % 7) + 1;
-}
-
-/** The Monday of the week `iso` falls in (A178). */
-export function weekStartOf(iso: string): string {
-  const weekday = isoWeekday(iso);
-  if (weekday === 0) return iso;
-  return addDaysIso(iso, -(weekday - 1));
-}
-
-export function previousWeek(weekStart: string): string {
-  return addDaysIso(weekStart, -7);
-}
-
-export function nextWeek(weekStart: string): string {
-  return addDaysIso(weekStart, 7);
-}
-
-export function isCurrentWeek(weekStart: string, today: string): boolean {
-  return weekStart === weekStartOf(today);
-}
+// Week arithmetic moved to `app/week.ts` when S1.2's board started defaulting to
+// "this week" and needed the same Monday. Re-exported here so this module stays
+// the one import a report screen needs, and so there is exactly one definition of
+// where a week starts on the client.
+export {
+  addDaysIso,
+  isCurrentWeek,
+  isoWeekday,
+  nextWeek,
+  previousWeek,
+  weekEndOf,
+  weekStartOf,
+} from '../../../app/week.ts';
 
 /** A week that has not started yet. Navigating into one is allowed — it shows an
  *  empty week, which is a true answer — but the screen says so rather than
@@ -303,8 +286,18 @@ export interface TotalView {
   label: string;
   /** The decimal string, unchanged. Formatting happens at render. */
   value: string;
-  /** One sentence saying what this number is and is not. */
-  note: string;
+  /**
+   * One sentence saying what this number is and is NOT, or null when the label
+   * already says it.
+   *
+   * Null only for `reported` (D21): its label names the food bank and the Export
+   * button sits directly below it, so "this is the figure the export file will
+   * carry" was the control restating itself. The other two keep theirs and are not
+   * negotiable — `domain-modeling.md §6` is locked and defines intake and
+   * NTFB-reported as different unions, so the one place the difference is stated in
+   * words stays stated.
+   */
+  note: string | null;
   /** The one number the export file will contain. Rendered with emphasis. */
   primary: boolean;
 }
@@ -324,7 +317,7 @@ export function totalsView(report: WeeklyReport): TotalView[] {
       key: 'reported',
       label: COPY.reportedLabel,
       value: report.reportedTotal,
-      note: COPY.reportedNote,
+      note: null,
       primary: true,
     },
     {
@@ -406,10 +399,11 @@ export function runStatusWord(status: string): string {
   }
 }
 
-/** "Tue AM run — Tue, Jul 28, nobody has claimed it". One line of the incomplete
- *  block, composed from data and therefore swept by the §7 copy test. */
+/** "Tue AM run, Tue, Jul 28, nobody has claimed it". One line of the incomplete
+ *  block, composed from data and therefore swept by the §7 copy test. Commas
+ *  rather than an em dash (D21). */
 export function openRunLabel(run: WeeklyReport['openRuns'][number]): string {
-  return `${run.routeName} — ${formatDayLabel(run.occurrenceDate)}, ${runStatusWord(run.status)}`;
+  return `${run.routeName}, ${formatDayLabel(run.occurrenceDate)}, ${runStatusWord(run.status)}`;
 }
 
 /**
@@ -436,16 +430,51 @@ export function missingItems(report: WeeklyReport): string[] {
   return items;
 }
 
-/** "Enter these under agency 026357P — North Texas Food Bank (24)." Composed from
- *  data, so the §7 copy sweep covers it. */
+/**
+ * "Enter these under agency 026357P, North Texas Food Bank (24)."
+ *
+ * `ui-ux-spec.md` S3.1 calls this "the one thing the worksheet cannot check for
+ * them", so it goes beside the buttons AND at the top of the printed sheet — the
+ * printed sheet being the copy that leaves the screen and gets read alone.
+ * Composed from data, so the §7 copy sweep covers it. A comma rather than an em
+ * dash (D21).
+ */
 export function mealConnectAccountNote(account: WeeklyReport['mealConnect']): string {
-  return `${COPY.exportAccount} ${account.agencyCode} — ${account.foodBank} (${account.foodBankCode}).`;
+  return `${COPY.exportAccount} ${account.agencyCode}, ${account.foodBank} (${account.foodBankCode}).`;
 }
 
 /** Fallback name for the downloaded file, used only when the server sent no
  *  `content-disposition` to read one from. */
 export function exportFilename(weekStart: string, weekEnd: string): string {
   return `agfp-ntfb-${weekStart}-to-${weekEnd}.csv`;
+}
+
+/**
+ * One worksheet row as cells, in `EXPORT_COLUMNS` order.
+ *
+ * The printed sheet and the CSV are the same worksheet in two media (D16), and
+ * they get their rows from the same service call through the same refusal — so the
+ * only thing left that could make them disagree is the order the fields are laid
+ * out in. This function is that order on the client; `routes/report.ts` holds the
+ * matching one for the CSV, and both are pinned to `EXPORT_COLUMNS` by a test at
+ * each end.
+ *
+ * `NTFB Code` is deliberately absent: Meal Connect picks a category by name from a
+ * dropdown, and the `MEAT48675888`-style ids on a receipt are its own per-line
+ * identifiers, issued on submission (D13).
+ */
+export function exportCells(row: ExportRow): string[] {
+  return [
+    row.day,
+    row.donor,
+    row.donorCode,
+    row.ntfbCategory,
+    row.storage,
+    row.agfpCategory,
+    row.weightLb,
+    row.receiptItems,
+    row.receiptTotal,
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -524,8 +553,10 @@ export function hasReportToggle(entry: ReportEntry): boolean {
 }
 
 /** The one-line description a screen reader gets for an entry row: store, day,
- *  who logged it, weight — Success Metric 4's four facts in the order S3.1 names
- *  them. Composed from data, so the §7 copy test sweeps it too. */
+ *  who logged it, weight. Success Metric 4's four facts in the order S3.1 names
+ *  them, joined by commas rather than em dashes (D21) — a screen reader announces
+ *  a dash, and four of them in one label is noise. Composed from data, so the §7
+ *  copy test sweeps it too. */
 export function entryDescription(entry: ReportEntry): string {
   const parts = [
     entry.donorName,
@@ -534,7 +565,7 @@ export function entryDescription(entry: ReportEntry): string {
     weightWithUnit(entry.weight),
   ];
   if (hasReportToggle(entry) && !entry.reportable) parts.push(COPY.notReported);
-  return parts.join(' — ');
+  return parts.join(', ');
 }
 
 /** The words on the report switch. A plain field edit, last write wins (cap 15) —
@@ -556,99 +587,14 @@ export function reportableSavedText(donorName: string, reportable: boolean): str
 }
 
 // ---------------------------------------------------------------------------
-// The mapping editor (D11 — it lives here, not in Admin)
+// Naming a food bank category on the report line
+//
+// The matching EDITOR moved to Admin (D17, overriding D11) and took its own copy,
+// its own requests and its own row logic with it — see
+// `screens/s1-rescue/s1-8-admin/mapping/`. What stays here is only what the report
+// TABLE needs to name a line: the same "name (code)" rule, kept local rather than
+// imported, because no screen in this repo imports another one.
 // ---------------------------------------------------------------------------
-
-export interface MappingRow {
-  categoryId: string;
-  categoryName: string;
-  /** The NTFB category it reports under, or null while unmatched. */
-  ntfbCategoryId: string | null;
-  ntfbCategoryName: string | null;
-  /** The Storage value that goes beside the category on a Meal Connect line item
-   *  — `Frozen`, `Dry`, `Refrigeration` on the receipt we have. Null is a gap
-   *  worth naming but not a blocker: the weight still lands in the right
-   *  category, and only one of the form's four fields is left blank. */
-  storage: string | null;
-  /** The AGFP category itself is archived (§3.3). Still shown: archived
-   *  categories keep resolving in history and reports. */
-  archived: boolean;
-  /** Non-null when this category carries weight in the week on screen with
-   *  nowhere to report it — the row that is blocking the export. */
-  blockingWeight: string | null;
-}
-
-/**
- * The matching list, ordered so the Reporter's problem is at the top.
- *
- * A Reporter arrives here from the blocked export, so the categories actually
- * holding the week up come first, then the rest of the unmatched ones, then the
- * matched. Sorting alphabetically instead would bury the two rows they came to
- * fix somewhere in the middle of eleven.
- */
-export function mappingRows(
-  mappings: readonly CategoryMapping[],
-  unmapped: readonly UnmappedCategory[],
-): MappingRow[] {
-  const blocking = new Map(unmapped.map((row) => [row.categoryId, row.total]));
-
-  const rows: MappingRow[] = mappings.map((mapping) => ({
-    categoryId: mapping.categoryId,
-    categoryName: mapping.categoryName,
-    ntfbCategoryId: mapping.ntfbCategoryId,
-    ntfbCategoryName: mapping.ntfbCategoryName,
-    storage: mapping.storage,
-    archived: !mapping.categoryActive,
-    blockingWeight: blocking.get(mapping.categoryId) ?? null,
-  }));
-
-  const rank = (row: MappingRow): number => {
-    if (row.blockingWeight !== null) return 0;
-    if (row.ntfbCategoryId === null) return 1;
-    return 2;
-  };
-
-  return rows.sort((a, b) => {
-    const byRank = rank(a) - rank(b);
-    if (byRank !== 0) return byRank;
-    return a.categoryName.localeCompare(b.categoryName);
-  });
-}
-
-/**
- * What a matching row says on its right-hand side.
- *
- * Category and storage together, because together they are one Meal Connect line
- * item — "Produce · Refrigeration" is what the Reporter will actually type, and
- * showing only half of it hides half the mapping.
- */
-export function mappingTargetLabel(row: MappingRow): string {
-  if (row.ntfbCategoryName === null) return COPY.notMatched;
-  if (row.storage === null || row.storage === '') return row.ntfbCategoryName;
-  return `${row.ntfbCategoryName} · ${row.storage}`;
-}
-
-/** Named on the row rather than left to be discovered at the far end: a mapped
- *  category with no storage still exports, but leaves the Reporter guessing at
- *  one of the four fields the form asks for. */
-export function storageGapNote(row: MappingRow): string | null {
-  if (row.ntfbCategoryId === null) return null;
-  return row.storage === null || row.storage === '' ? COPY.storageMissing : null;
-}
-
-/** The picker's options: the food bank categories still in use, by name, plus the
- *  explicit "leave it unmatched". Archived ones are left out — pointing a live
- *  category at an archived bucket would build the next unmapped block by hand. */
-export function pickerOptions(
-  categories: readonly NtfbCategory[],
-): { id: string | null; label: string }[] {
-  const active = categories
-    .filter((category) => category.active)
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((category) => ({ id: category.id as string | null, label: ntfbLabel(category) }));
-  return [...active, { id: null, label: COPY.leaveUnmatched }];
-}
 
 /** "Produce (14)" — the code shown beside the name when Meal Connect has one.
  *  Null stays absent rather than printing "null" or a guessed code (D13). */
@@ -670,53 +616,6 @@ export function reportLineTitle(
 ): string {
   const base = ntfbLabel({ name: line.ntfbCategoryName, code: line.ntfbCode });
   return line.storage === null || line.storage === '' ? base : `${base} · ${line.storage}`;
-}
-
-/** How many AGFP categories report under one food bank category — the I21
- *  delete/archive hint, said as a sentence rather than a bare count. */
-export function mappedCountLabel(category: NtfbCategory): string {
-  if (category.mappedCount === 0) return COPY.nothingMapped;
-  if (category.mappedCount === 1) return COPY.oneMapped;
-  return `${category.mappedCount} ${COPY.manyMapped}`;
-}
-
-/** In-use categories first, archived ones after, each alphabetical. Archived stay
- *  visible so one archived by mistake can be put back (§3.3's reverse arrow). */
-export function sortNtfbCategories(categories: readonly NtfbCategory[]): NtfbCategory[] {
-  return categories.slice().sort((a, b) => {
-    if (a.active !== b.active) return a.active ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-}
-
-/** Required, and nothing else. A duplicate-name rule is not written down
- *  anywhere, and inventing one here would refuse a name the server accepts. */
-export function ntfbNameError(raw: string, attempted: boolean): string | null {
-  if (!attempted) return null;
-  return raw.trim() === '' ? COPY.ntfbNameRequired : null;
-}
-
-/** An empty optional field is *absent*, not `""` — `ntfb_category.code` and
- *  `category.ntfb_storage` are both nullable exactly so an unknown stays unknown
- *  rather than becoming an empty string that reads as an answer (D13). */
-export function normalizeOptional(raw: string): string | null {
-  const trimmed = raw.trim();
-  return trimmed === '' ? null : trimmed;
-}
-
-/** I21's answer, reported rather than predicted: the domain decides whether a
- *  removal archived or destroyed, and this says which happened. */
-export function ntfbRemovalText(name: string, outcome: RemovalOutcome): string {
-  return outcome === 'DELETED'
-    ? `${name} is gone. Nothing reported under it.`
-    : `${name} is archived. Past reports still resolve it.`;
-}
-
-/** What the toast says once a category is pointed somewhere (or nowhere). */
-export function mappingSavedText(categoryName: string, ntfbName: string | null): string {
-  return ntfbName === null
-    ? `${categoryName} is not matched to anything. It will hold up the export while it carries weight.`
-    : `${categoryName} reports under ${ntfbName}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -784,17 +683,18 @@ export const COPY = {
   thisWeekHeading: 'This week',
   lastWeekHeading: 'Last week',
   futureWeekHeading: 'A week that has not happened yet',
-  futureWeekNote: 'This week is still ahead. Anything here will fill in as runs are weighed.',
-
-  // --- the two panels ------------------------------------------------------
-  tabsLabel: 'Report or category matching',
-  tabReport: 'Report',
-  tabMapping: 'Category matching',
+  /* D21 cut `futureWeekNote`. The week picker already says which week is on
+     screen and `futureWeekHeading` already calls it one that has not happened;
+     a third sentence saying the same thing is one more thing to read. */
 
   // --- the totals ----------------------------------------------------------
   totalsLabel: 'The week in numbers',
   reportedLabel: 'Reported to North Texas Food Bank',
-  reportedNote: 'This is the figure the export file will carry.',
+  /* D21 cut `reportedNote` ("This is the figure the export file will carry").
+     The label already names it, and the Export button is directly below it.
+     `intakeNote` and `unreportedNote` STAY: `domain-modeling.md §6` is locked and
+     requires intake and NTFB-reported to stay distinguishable, and those two
+     sentences are the only place the difference between the numbers is stated. */
   unreportedLabel: 'Received but not reported',
   unreportedNote: 'Donations switched off for reporting. They still count in our own totals.',
   intakeLabel: 'Everything received',
@@ -802,7 +702,9 @@ export const COPY = {
 
   // --- the table -----------------------------------------------------------
   tableLabel: 'North Texas Food Bank categories',
-  tableHint: 'Pick one of our categories to see every entry behind its weight.',
+  /* D21 cut `tableHint`. Every one of our categories under a line is a button
+     with `aria-expanded` on it, and it opens on click; a sentence telling
+     somebody to click the buttons restates the buttons. */
   rolledUpLabel: 'Our categories counted under it',
   lineTotalLabel: 'Line total',
   emptyWeekTitle: 'Nothing was received this week.',
@@ -845,7 +747,13 @@ export const COPY = {
   // --- the block that stops the export -------------------------------------
   blockedTitle: 'This week cannot be exported yet',
   blockedLabel: 'What is missing',
-  goToMatching: 'Match the categories',
+  /** The matching moved to Admin (D17), so this stopped being a button on this
+   *  screen and became a sentence about somewhere else. A Reporter with no Admin
+   *  tier cannot fix the block themselves any more, and saying who can is the
+   *  least this screen owes them — hiding the fact would leave them re-reading a
+   *  block with nothing to act on. */
+  matchingIsInAdmin:
+    'An admin matches our categories to the food bank’s, under Admin, on the Category matching tab.',
   unmappedLabel: 'Carrying weight with nowhere to report it',
   oneCategory: 'category',
   manyCategories: 'categories',
@@ -856,89 +764,41 @@ export const COPY = {
   oneRun: 'run',
   manyRuns: 'runs',
   openRunsTail:
-    'this week are not finished. You can still export — anything they bring in will not be in the file.',
+    'this week are not finished. You can still export. Anything they bring in will not be in the file.',
   runOpen: 'nobody has claimed it',
   runClaimed: 'claimed, not started',
   runInProgress: 'out on the road',
   runUnfinished: 'not finished',
 
-  // --- the one primary action ----------------------------------------------
+  // --- the two ways out: a file, or a printed sheet ------------------------
   export: 'Export for Meal Connect',
-  /** Meal Connect has no file upload — the Reporter types receipts into it by
-   *  hand — so this sentence says what the file is FOR rather than implying it
-   *  gets sent anywhere (D13). One row per line item, in the order the receipts
-   *  are entered. */
+  /** Meal Connect has no file upload. The Reporter types receipts into it by
+   *  hand, so this sentence says what the file is FOR rather than implying it
+   *  gets sent anywhere (D13). Shortened under D21: it was the longest string in
+   *  the app and said three times over what the columns already say. */
   exportHint:
-    'Downloads a spreadsheet laid out the way Meal Connect asks for it: one row per line item, grouped by pickup date and store. Work down it as you enter each receipt, and check the last two columns against the totals Meal Connect shows you before you submit.',
+    'One row per line item, in receipt order. Check the last two columns against the totals Meal Connect shows you before you submit.',
   exportDone: 'Report downloaded.',
-  /** Prefix for the account line above Export. The one thing a worksheet cannot
-   *  check for the Reporter is whether they are signed in to the right Meal
-   *  Connect account, so the codes off the pantry's own receipts are printed
-   *  where they will look before they start typing. */
+  /** The other way out (D16). The user asked for "PDF"; D5 forbids the
+   *  dependency and D13 says the target is not a document anyway, so this is the
+   *  same worksheet laid out for paper and handed to the browser's own print
+   *  dialogue, where "Save as PDF" is one of the destinations. */
+  print: 'Print or save as PDF',
+  printing: 'Building the sheet',
+  /** Prefix for the account line beside the buttons and at the top of the printed
+   *  sheet. The one thing a worksheet cannot check for the Reporter is whether
+   *  they are signed in to the right Meal Connect account, so the codes off the
+   *  pantry's own receipts are printed where they will look before they start
+   *  typing. */
   exportAccount: 'Enter these under agency',
   exportedTitle: 'Downloaded',
   exportedNote:
-    'You downloaded this week’s file. Exporting again is fine — it is rebuilt from what is in R3 right now.',
+    'You downloaded this week’s file. Exporting again is fine. It is rebuilt from what is in R3 right now.',
 
-  // --- the matching editor -------------------------------------------------
-  mappingHeading: 'Which food bank category does each of ours report under?',
-  mappingIntro:
-    'Our categories are on the left. Point each one at the North Texas Food Bank category it belongs to, and say which storage it goes under. Two of ours can share one of theirs — under different storage if that is what they are.',
-  mappingLabel: 'Our categories',
-  mappingEmptyTitle: 'No categories of our own yet.',
-  mappingEmptyBody: 'An admin adds ours under Admin → Categories. Nothing can be reported until they do.',
-  notMatched: 'Not matched yet',
-  archivedCategory: 'Archived',
-  blockingTail: 'this week, with nowhere to report it',
-  pickerLabel: 'Report this under',
-  pickerCurrent: 'Chosen now',
-  pickerHint: 'Pick one, or leave it unmatched.',
-  leaveUnmatched: 'Leave it unmatched',
-  back: 'Back',
-  /** Storage is the other half of a Meal Connect line item, so it is chosen in the
-   *  same breath as the category rather than on a screen of its own. Free text and
-   *  three examples, not a fixed list: those three are what one receipt showed, and
-   *  the pantry's form is the authority on the rest (migration 0013). */
-  storageField: 'Storage (optional)',
-  storageHint:
-    'The Storage the food bank’s form asks for beside the category — usually Frozen, Dry or Refrigeration. Copy their wording.',
-  storageMissing: 'No storage set',
-  /** A181, said out loud where the remapping happens. Every week is computed on
-   *  read, so a mapping changed today changes what an already-exported week
-   *  *would* say if exported again. That is correct — a mapping states what a
-   *  category is, not what it was — but it is not obvious, and the Reporter is
-   *  the person it surprises. */
-  remapNotice:
-    'Matching applies to every week, not just this one. A week you already exported would come out differently if you exported it again.',
+  // --- the printed sheet ----------------------------------------------------
+  printLabel: 'Meal Connect worksheet',
+  printTitle: 'Meal Connect worksheet',
+  printWeek: 'Week of',
+  printEmpty: 'Nothing to enter for this week.',
 
-  ntfbHeading: 'North Texas Food Bank categories',
-  ntfbIntro:
-    'These are the food bank’s own names, so R3 ships without them — nobody here can invent them without getting the report wrong. Add the ones on your submission form.',
-  ntfbLabel: 'Food bank categories',
-  ntfbEmptyTitle: 'No food bank categories yet.',
-  ntfbEmptyBody:
-    'Add the categories from your North Texas Food Bank submission form. Nothing can be reported until at least one is here.',
-  ntfbLoading: 'Loading the categories',
-  addNtfb: 'Add a category',
-  createNtfbTitle: 'Add a food bank category',
-  editNtfbTitle: 'Edit food bank category',
-  ntfbNameField: 'Category name',
-  ntfbNameHint: 'Exactly as the food bank writes it.',
-  ntfbCodeField: 'Code (optional)',
-  ntfbCodeHint: 'Only if your submission form uses a code. Leave it empty if you are not sure.',
-  ntfbNameRequired: 'Type the category name.',
-  saveNtfb: 'Save',
-  createNtfb: 'Add category',
-  removeNtfb: 'Remove',
-  removeQuestion: 'Remove this category?',
-  removeConsequence:
-    'If any of our categories still report under it, it is archived instead. Past reports keep working either way.',
-  /** Archiving happens through Remove, where I21 decides; only the way back is a
-   *  plain field edit (`shared/src/report.ts`, `UpdateNtfbCategoryRequest`). */
-  reactivate: 'Put back in use',
-  reactivated: 'Back in use.',
-  ntfbSaved: 'Saved.',
-  nothingMapped: 'Nothing reports under this yet',
-  oneMapped: 'One of our categories reports under this',
-  manyMapped: 'of our categories report under this',
 } as const;

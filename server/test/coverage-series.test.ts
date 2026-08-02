@@ -152,7 +152,7 @@ describe('claim-all', () => {
     expect(result.partial).toBe(true);
     // S1.2's partial summary, in its exact shape.
     expect(result.summary).toBe(
-      'Claimed 2 of 3 Tuesday runs — 1 skipped (conflicts with your schedule).',
+      'Claimed 2 of 3 Tuesday runs. 1 skipped (conflicts with your schedule).',
     );
 
     const untouched = await db

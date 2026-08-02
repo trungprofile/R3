@@ -22,18 +22,29 @@ import {
   reportNetworkSuccess,
 } from '../../../api/index.ts';
 import type {
-  CategoryMapping,
-  CreateNtfbCategoryRequest,
-  NtfbCategory,
-  RemovalOutcome,
-  RemoveMasterResponse,
+  ExportRow,
   ReportEntry,
   ReviseEntryRequest,
-  SetMappingRequest,
-  UpdateNtfbCategoryRequest,
   WeeklyReport,
 } from '../../../api/shared.ts';
 import { exportFilename } from './report.ts';
+
+/**
+ * What `GET /report/export?format=json` answers with.
+ *
+ * Declared here rather than in `shared/src/report.ts` because this lane does not
+ * own that file. `ExportRow` and `EXPORT_COLUMNS` — the two things that actually
+ * define the worksheet — are already shared; this is the envelope around them, and
+ * it belongs beside the call that reads it until somebody moves it.
+ */
+export interface ExportSheet {
+  weekStart: string;
+  weekEnd: string;
+  /** `EXPORT_COLUMNS`, echoed by the server so the printed headings and the CSV
+   *  headings come from one array rather than from two that agree today. */
+  columns: string[];
+  rows: ExportRow[];
+}
 
 /** Omitting `week` asks for the current pantry-local week — the server resolves
  *  it, because the pantry's zone is what decides which week "now" is in and the
@@ -99,45 +110,29 @@ export function setReportable(id: string, reportable: boolean): Promise<unknown>
 }
 
 // ---------------------------------------------------------------------------
-// The AGFP→NTFB matching (S3.1 owns it — D11)
+// The printed worksheet (D16)
 // ---------------------------------------------------------------------------
 
-export function fetchNtfbCategories(signal: AbortSignal): Promise<NtfbCategory[]> {
-  return api.get<NtfbCategory[]>('/report/ntfb-categories', { signal });
-}
-
-export function createNtfbCategory(body: CreateNtfbCategoryRequest): Promise<NtfbCategory> {
-  return api.post<NtfbCategory>('/report/ntfb-categories', { body });
-}
-
-/** Rename, re-code, or put an archived one back in use (§3.3's reverse arrow).
- *  Archiving is not here: it goes through `removeNtfbCategory`, where I21 decides
- *  which of the two happened. */
-export function updateNtfbCategory(
-  id: string,
-  body: UpdateNtfbCategoryRequest,
-): Promise<NtfbCategory[]> {
-  return api.patch<NtfbCategory[]>(`/report/ntfb-categories/${encodeURIComponent(id)}`, { body });
-}
-
-/** I21, same as every other master record: archived if anything reports under it,
- *  destroyed only when nothing does. The caller does not choose; it is told. */
-export async function removeNtfbCategory(id: string): Promise<RemovalOutcome> {
-  const response = await api.delete<RemoveMasterResponse>(
-    `/report/ntfb-categories/${encodeURIComponent(id)}`,
-  );
-  return response.outcome;
-}
-
-export function fetchMappings(signal: AbortSignal): Promise<CategoryMapping[]> {
-  return api.get<CategoryMapping[]>('/report/mappings', { signal });
-}
-
-/** Point one AGFP category at a food bank category, or clear it with an explicit
- *  null. Returns the whole mapping list, so the editor never has to patch its own
- *  copy of it. */
-export function setMapping(categoryId: string, body: SetMappingRequest): Promise<CategoryMapping[]> {
-  return api.put<CategoryMapping[]>(`/report/mappings/${encodeURIComponent(categoryId)}`, { body });
+/**
+ * The same worksheet the CSV is built from, as JSON, for the print view.
+ *
+ * `?format=json` on the SAME route, answered by the SAME service call, and refused
+ * by the same conflict when a category carrying weight is unmapped (D12, A184).
+ * That sameness is the point and is not a convenience: A186 records that S3.1's
+ * export is server-built *precisely so it can refuse to emit a short one*, unlike
+ * S3.2's client-built metrics CSV. Re-shaping these rows in the browser would put a
+ * second, unrefusable path to the same file next to the refusing one, and the short
+ * report it could emit is invisible at the far end — the failure Success Metric 4
+ * exists to kill.
+ *
+ * This one CAN go through `api`: it is JSON, so a refusal arrives as an `ApiError`
+ * with the server's own sentence on it, exactly like every other call here.
+ */
+export function fetchExportRows(week: string, signal?: AbortSignal): Promise<ExportSheet> {
+  return api.get<ExportSheet>('/report/export', {
+    query: { week, format: 'json' },
+    ...(signal ? { signal } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------

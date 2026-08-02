@@ -167,7 +167,7 @@ describe('row rendering', () => {
 
     const [item] = (await listInbox({ id: driver.id })).items;
     expect(item?.title).toBe("You're on a run");
-    expect(item?.detail).toBe('Tue Aug 4, 2:00 PM — Tuesday North');
+    expect(item?.detail).toBe('Tue Aug 4, 2:00 PM, Tuesday North');
     // A time to read, formatted in the pantry's zone by the server.
     expect(item?.when).toMatch(/\d/);
     expect(item?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);

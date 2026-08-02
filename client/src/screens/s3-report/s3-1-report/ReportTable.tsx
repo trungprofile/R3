@@ -36,7 +36,10 @@ export function ReportTable({
 }: ReportTableProps) {
   return (
     <section className="s31-table" aria-label={COPY.tableLabel}>
-      <p className="s31-table__hint">{COPY.tableHint}</p>
+      {/* D21 cut the hint that stood here. Every AGFP row below is a real button
+          carrying `aria-expanded`, so both a mouse and a screen reader already
+          know it opens; a sentence saying "pick one to see the entries" was the
+          control describing itself. */}
 
       {/* Keyed on category AND storage: one food bank category reached under two
           storage requirements is two lines here, because it is two line items on
@@ -45,7 +48,7 @@ export function ReportTable({
       {report.lines.map((line) => (
         <Card
           key={`${line.ntfbCategoryId}:${line.storage ?? ''}`}
-          ariaLabel={`${reportLineTitle(line)} — ${rolledUpNames(line)}`}
+          ariaLabel={`${reportLineTitle(line)}, ${rolledUpNames(line)}`}
         >
           <div className="s31-line">
             <h3 className="s31-line__name">{reportLineTitle(line)}</h3>
