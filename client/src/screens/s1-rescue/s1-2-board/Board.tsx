@@ -9,6 +9,20 @@
 // check is communication, so a driver is not offered a button that would be
 // refused; the refusal on `POST /shifts/:id/claim` is the rule itself. Nothing
 // below decides who may claim what.
+//
+// TWO TABS SINCE D30. S1.4 My shifts lost its nav entry — a driver was carrying two
+// entries for one job — and it is mounted here as the second tab instead, so
+// "what needs a driver" and "what I am on, and when I am away" are one tap apart.
+// A coordinator who does not drive gets no tab row at all: one tab is noise.
+//
+// The tab is in the URL (`?tab=`), the pattern S1.8 established: a tab is then a
+// link someone can send and a reload lands where it left off. It moves with
+// `setQuery`, which replaces rather than pushes — a tab is not a place anyone should
+// have to press Back through. `board.ts` holds the values and the reasoning.
+//
+// Exactly one panel is mounted, which is the other half of `tabPanelProps`'
+// contract and also why the board's own state and its fetch live in `RunBoardPanel`
+// below rather than up here: on the My shifts tab there is no board to load.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -25,6 +39,7 @@ import {
   Segmented,
   SkeletonRows,
   StatusChip,
+  tabPanelProps,
 } from '../../../components/index.ts';
 import {
   useAsyncData,
@@ -38,9 +53,13 @@ import { atLeastTier, hasDuty, todayInZone } from '../../../app/index.ts';
 import { displayName } from '../../../api/index.ts';
 import { toApiError } from '../../../api/index.ts';
 import type { ClaimResult, ClaimScope, ShiftSummary } from '../../../api/shared.ts';
+import { MyShiftsScreen } from '../s1-4-my-shifts/index.ts';
 import { claimRun, fetchBoard } from './api.ts';
 import {
   BOARD_FILTERS,
+  BOARD_TABS,
+  BOARD_TAB_QUERY_KEY,
+  boardTabFromQuery,
   COPY,
   formatWeekRange,
   groupByDay,
@@ -54,8 +73,10 @@ import {
   weekdayName,
   withOptimisticClaim,
 } from './board.ts';
-import type { BoardFilter, BoardRow, BoardViewer } from './board.ts';
+import type { BoardFilter, BoardRow, BoardTab, BoardViewer } from './board.ts';
 import './board.css';
+
+const ID_PREFIX = 's12';
 
 const FILTER_LABELS: Record<BoardFilter, string> = {
   ALL: COPY.filterAll,
@@ -65,7 +86,57 @@ const FILTER_LABELS: Record<BoardFilter, string> = {
 
 const FILTER_OPTIONS = BOARD_FILTERS.map((value) => ({ value, label: FILTER_LABELS[value] }));
 
+/**
+ * The screen: a title, the tab row, and whichever panel the URL names (D30).
+ *
+ * Thin on purpose. Everything the board itself does lives in `RunBoardPanel`, so
+ * that a driver sitting on the My shifts tab is not also holding an open request for
+ * a week of runs they are not looking at.
+ */
 export function BoardScreen(_props: ScreenProps) {
+  const user = useCurrentUser();
+  const { query, setQuery } = useRouter();
+
+  // Duty is set membership — a Staff coordinator who does not drive has no runs of
+  // their own and no availability to declare, so there is no second tab for them and
+  // therefore no tab row (I2).
+  const canDrive = hasDuty(user, 'DRIVE');
+  const tab = boardTabFromQuery(query[BOARD_TAB_QUERY_KEY], canDrive);
+
+  // `setQuery`, never `go`: same path, no history entry (`app/router.tsx`).
+  const openTab = (next: BoardTab) => setQuery({ [BOARD_TAB_QUERY_KEY]: next });
+
+  return (
+    <div className="r3-board">
+      {/* S1.2's own header, verbatim, and the page's one `<h1>` — which is why the
+          My shifts panel drops its own when it is mounted here (D30). */}
+      <h1 className="r3-board__title r3-board__title--page">{COPY.header}</h1>
+
+      {canDrive ? (
+        <div className="r3-board__tabs">
+          <Segmented
+            mode="tabs"
+            idPrefix={ID_PREFIX}
+            label={COPY.tabsLabel}
+            options={BOARD_TABS}
+            value={tab}
+            onChange={openTab}
+          />
+        </div>
+      ) : null}
+
+      {/* `tabPanelProps` only where there is a tablist to be the panel OF. Without
+          the tab row, `role="tabpanel"` would point `aria-labelledby` at a tab
+          nobody rendered — the same failure `Segmented.tsx` warns about from the
+          other end. A coordinator who does not drive just gets the board. */}
+      <div {...(canDrive ? tabPanelProps(ID_PREFIX, tab) : {})}>
+        {tab === 'mine' ? <MyShiftsScreen embedded /> : <RunBoardPanel />}
+      </div>
+    </div>
+  );
+}
+
+function RunBoardPanel() {
   const user = useCurrentUser();
   const { timezone } = useSession();
   const { go } = useRouter();
@@ -187,48 +258,55 @@ export function BoardScreen(_props: ScreenProps) {
   }
 
   return (
-    <div className="r3-board">
+    <>
       <div className="r3-board__head">
-        <h1 className="r3-board__title">{COPY.header}</h1>
+        {/* The title sat here until D30 moved it up to the screen, above the tab
+            row, where a page heading belongs. What is left is the two controls,
+            still on their own line at EVERY width (A5) — the desktop rule that used
+            to lay this out as a row put the title, the week nav and the filter on
+            one line and squeezed "Pickup runs" onto two.
 
-        {/* Which week, then which runs within it. The two controls are stacked in
+            Which week, then which runs within it. The two controls are grouped in
             that order because the week is the wider cut: changing it changes what
-            All · Open · Mine is filtering. S3.1's week nav is the same three-target
-            row with the same words. */}
-        <div className="r3-board__week" role="group" aria-label={COPY.weekNavLabel}>
-          <Button
-            variant="secondary"
-            aria-label={COPY.previousWeek}
-            onClick={() => goToWeek(previousWeek(weekStart))}
-          >
-            <ChevronLeftIcon />
-          </Button>
-          <p className="r3-board__week-range">{formatWeekRange(weekStart, weekEnd)}</p>
-          <Button
-            variant="secondary"
-            aria-label={COPY.nextWeek}
-            onClick={() => goToWeek(nextWeek(weekStart))}
-          >
-            <ChevronRightIcon />
-          </Button>
-          {/* Absent while it would do nothing (§3 prefers hiding to disabling), so
-              its presence is itself the signal that you are away from this week. */}
-          {isCurrentWeek(weekStart, today) ? null : (
-            <Button variant="secondary" onClick={() => goToWeek(null)}>
-              {COPY.thisWeek}
+            All · Open · Mine is filtering. S3.1's week nav is the same
+            three-target row with the same words. */}
+        <div className="r3-board__controls">
+          <div className="r3-board__week" role="group" aria-label={COPY.weekNavLabel}>
+            <Button
+              variant="secondary"
+              aria-label={COPY.previousWeek}
+              onClick={() => goToWeek(previousWeek(weekStart))}
+            >
+              <ChevronLeftIcon />
             </Button>
-          )}
-        </div>
+            <p className="r3-board__week-range">{formatWeekRange(weekStart, weekEnd)}</p>
+            <Button
+              variant="secondary"
+              aria-label={COPY.nextWeek}
+              onClick={() => goToWeek(nextWeek(weekStart))}
+            >
+              <ChevronRightIcon />
+            </Button>
+            {/* Absent while it would do nothing (§3 prefers hiding to disabling),
+                so its presence is itself the signal that you are away from this
+                week. */}
+            {isCurrentWeek(weekStart, today) ? null : (
+              <Button variant="secondary" onClick={() => goToWeek(null)}>
+                {COPY.thisWeek}
+              </Button>
+            )}
+          </div>
 
-        <Segmented
-          label={COPY.filterLabel}
-          options={FILTER_OPTIONS}
-          value={filter}
-          onChange={(next) => {
-            setFilter(next);
-            setPartial(null);
-          }}
-        />
+          <Segmented
+            label={COPY.filterLabel}
+            options={FILTER_OPTIONS}
+            value={filter}
+            onChange={(next) => {
+              setFilter(next);
+              setPartial(null);
+            }}
+          />
+        </div>
       </div>
 
       {partial ? (
@@ -267,7 +345,7 @@ export function BoardScreen(_props: ScreenProps) {
       {showSkipped && partial ? (
         <SkippedRuns result={partial} today={today} onClose={() => setShowSkipped(false)} />
       ) : null}
-    </div>
+    </>
   );
 }
 

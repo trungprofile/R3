@@ -110,6 +110,14 @@ export interface ReportLine {
   storage: string | null;
   agfpCategories: { categoryId: string; categoryName: string; total: string }[];
   total: string;
+  /**
+   * True only on the synthetic **Trash** line (`D27`).
+   *
+   * Nothing was ever weighed into it: it is the sum of the per-receipt deductions off
+   * Bakery, Produce and Deli, so it has no `agfpCategories` and no drill-in. Every
+   * other line is `false`/absent.
+   */
+  computed?: boolean;
 }
 
 /**
@@ -134,10 +142,33 @@ export interface UnmappedCategory {
  * rather than only on S3.2.
  */
 export interface WeeklyReport {
-  /** `YYYY-MM-DD`, the Monday of the week, pantry-local. */
-  weekStart: string;
-  /** `YYYY-MM-DD`, the Sunday. Inclusive — a report is a closed week. */
-  weekEnd: string;
+  /**
+   * EVERY WEIGHT ON THIS PAYLOAD IS A WHOLE NUMBER OF POUNDS (`D28`, answering
+   * `A189`), still carried as a decimal string (`"744.00"`) so it adds exactly the
+   * way every other weight in this repo does.
+   *
+   * The rounding grain is the **receipt line** — one `(pickup date, donor, AGFP
+   * category)` — because that is the number a person types into Meal Connect, and
+   * `D28` says the receipt total is the sum of the rounded rows rather than the
+   * rounded sum. Every figure here is an aggregate of those same rounded lines, which
+   * is what keeps this screen and the printed receipt from disagreeing by a pound.
+   *
+   * **The window is a RANGE, not necessarily a week** (`D41`). It used to be
+   * `weekStart` / `weekEnd`, and the rename is the point: a reporter catching up on
+   * two weeks at once asked for a range, and a field called `weekEnd` holding a date
+   * eleven days after `weekStart` is a field that lies. The DEFAULT is still the
+   * Monday-to-Sunday week containing the pantry's today (`A178`), which is the same
+   * boundary S1.2's board and Admin metrics cut on, so nothing about the ordinary
+   * case changed.
+   *
+   * Nothing here depends on the window being seven days: `D28`'s rounding happens at
+   * the receipt line and `D27`'s deduction happens per receipt, and a receipt is
+   * keyed `(pickup date, donor)` either way. A longer range is simply more receipts.
+   */
+  /** `YYYY-MM-DD`, pantry-local, inclusive. */
+  from: string;
+  /** `YYYY-MM-DD`, pantry-local, inclusive — a report is a closed range. */
+  to: string;
   /** The mapped breakdown. While `unmapped` is non-empty, Σ`lines` is LESS than
    *  `reportedTotal` — that gap is exactly what `readyToExport: false` announces. */
   lines: ReportLine[];
@@ -157,18 +188,21 @@ export interface WeeklyReport {
   /** `intakeTotal − reportedTotal` — donations somebody turned the report toggle OFF
    *  for. Tracked in the pantry's own totals, never sent to NTFB (PRD §3). */
   unreportedTotal: string;
-  /** False while any `unmapped` row carries weight — S3.1's "incomplete week". */
+  /** False while any `unmapped` row carries weight — S3.1's "incomplete range". */
   readyToExport: boolean;
-  /** Runs in the week that never reached `COMPLETED`. A week can be exported with
+  /** Runs in the range that never reached `COMPLETED`. It can be exported with
    *  these outstanding; the screen says so rather than deciding for the Reporter. */
   openRuns: { shiftId: string; routeName: string; occurrenceDate: string; status: string }[];
   /**
    * Where this week is going, as Meal Connect labels it on its own receipts.
+   * Configuration, not data (`app_config`, migration 0013).
    *
-   * Printed above the export so a Reporter can confirm the account before typing —
-   * the export is a worksheet for a web form (see `ExportRow`), and the one thing a
-   * worksheet cannot check for them is whether they are logged in as the right
-   * agency. Configuration, not data (`app_config`, migration 0013).
+   * **Nothing reads this.** It used to print above the export so a Reporter could
+   * confirm the account before typing; `D25` removed that line from both the screen
+   * and the printed receipt, because the person entering the submission already knows
+   * their own agency code. The field is kept because the codes are real configuration
+   * and a future sheet may want them back, but do not assume from this shape that
+   * anything renders it today.
    */
   mealConnect: { agencyCode: string; foodBank: string; foodBankCode: string };
 }
@@ -223,73 +257,171 @@ export interface ReviseEntryRequest {
 // ---------------------------------------------------------------------------
 
 /**
- * One row of the Meal Connect worksheet.
+ * Where one note on a receipt came from (`D29`).
  *
- * **Meal Connect has no import.** A real submission (D13) turned out to be three web
- * screens a person types into: a receipt per `(pickup date, donor)`, then N line items
- * of `Category · Storage · Description · Pounds`, then a review list showing
- * `Number of Items` and `Total Pounds` per receipt, then Submit.
+ * It names the **channel**, not the writer's tier — the writer is `ReceiptNote.author`,
+ * and two of these are the same person. PRD cap 11's channels, plus the two intake
+ * tables:
  *
- * So this file is not a machine format and never was — it is the sheet a Reporter reads
- * while typing, and its shape follows from that:
- *
- *   - **One row per line item**, at the grain the form asks for: `day × donor ×
- *     ntfb_category × storage`. Storage is part of the key because it is part of the
- *     line item (`CategoryMapping.storage`).
- *   - **Sorted `day → donor → category`**, which is receipt order. The previous
- *     ordering was `day → category → donor`, so a Reporter filling one receipt had to
- *     hunt up and down the file for the rest of that store's lines.
- *   - **`receiptItems` and `receiptTotal` repeat on every row of a receipt.** They are
- *     what Meal Connect's review screen shows back, so they are the check that a
- *     receipt was typed completely. Repeated rather than emitted as subtotal rows,
- *     which would make the file non-rectangular and break every spreadsheet that
- *     opens it.
- *
- * Weights are NOT rounded to whole pounds. The sample receipt shows integers, but its
- * inputs were integers, and nothing observed says the form refuses a decimal — rounding
- * each row would also make Σ rows disagree with the week's total by a few pounds
- * (phase-3-state.md A189).
- *
- * `agfpCategory` stays in the file even though Meal Connect never asks for it: it is
- * how a Reporter checks a line against S3.1 and the pantry's own sheets, and Success
- * Metric 4 is about every number being traceable.
+ *   - `COORDINATOR` — `Shift.staff_note`, the coordinator→driver line (channel 1). No
+ *     author: nothing records who typed it, and inventing one from `updated_by` would
+ *     name whoever last touched any field on the shift.
+ *   - `DRIVER` — `Shift.note`, the driver's one whole-run remark (channel 3).
+ *   - `STOP` — `ShiftStop.note`, written at one store. Also the driver's, and kept
+ *     apart from `DRIVER` because "the back gate was locked" belongs to a store and
+ *     "the truck broke down" belongs to a run.
+ *   - `RECEIVER` — `WeightEntry.note`, written at the scale.
+ *   - `DONATION` — `UnscheduledDonation.note`, the walk-in's own remark.
  */
-export interface ExportRow {
-  day: string;
-  donor: string;
-  /** Empty when unknown — see `ReportEntry.donorCode`. Empty here is a real signal:
-   *  a walk-in label has no store for Meal Connect to attribute the food to. */
-  donorCode: string;
-  ntfbCategory: string;
-  storage: string;
-  agfpCategory: string;
-  weightLb: string;
-  /** How many rows this receipt has, repeated on each of them. */
-  receiptItems: string;
-  /** Σ of this receipt's rows, repeated on each of them. */
-  receiptTotal: string;
+export type ReceiptNoteRole = 'COORDINATOR' | 'DRIVER' | 'STOP' | 'RECEIVER' | 'DONATION';
+
+/**
+ * One remark attached to a receipt.
+ *
+ * This is the field that carries "the store wasn't open at the scheduled time" to the
+ * food bank. Nothing here is submitted automatically — Meal Connect's own free-text
+ * box is the reporter's to fill, so these are gathered and labelled and the reporter
+ * decides which ones belong on the submission.
+ */
+export interface ReceiptNote {
+  role: ReceiptNoteRole;
+  /** `null` for a `COORDINATOR` note, which stores no author. */
+  author: string | null;
+  text: string;
 }
 
-/** Named as Meal Connect's own screens name them, so a Reporter reads the sheet and
- *  the form in the same words. */
-export const EXPORT_COLUMNS = [
-  'Pickup Date',
-  'Donor',
-  'Donor Code',
-  'Category',
-  'Storage',
-  'AGFP Category',
-  'Pounds',
-  'Receipt Items',
-  'Receipt Total (lb)',
-] as const;
+/**
+ * One line item, exactly as Meal Connect's form asks for it.
+ *
+ * **One line per AGFP category — never merged.** Deli and Frz Non Meat both report as
+ * `Prepared Meal / Frozen` (migration 0016), and the sample receipt carries two
+ * separate `Prepared Meals` rows for precisely that reason. Merging them would file
+ * one number where the portal took two.
+ *
+ * **There is no Description.** The portal has the field; it is the reporter's own free
+ * text for NTFB and not ours to fill.
+ */
+export interface ReceiptLine {
+  ntfbCategory: string;
+  /** `''` when the mapping never named one — one of the form's four fields blank,
+   *  which does not block the export the way an unmapped category does. */
+  storage: string;
+  /** Whole pounds, no decimal part (`D28`). */
+  pounds: string;
+  /**
+   * The pantry's own category, for reconciling against the paper log.
+   *
+   * NOT typed into the portal, and the screen marks it as such — without it, two
+   * identical `Prepared Meal / Frozen` rows are unreadable now that Description is
+   * gone. Empty on the computed Trash line, which has no AGFP category.
+   */
+  agfpCategory: string;
+  /** True only on the synthetic Trash line (`D27`) — nothing was weighed into it. */
+  computed: boolean;
+}
+
+/**
+ * One Meal Connect receipt: everything the portal asks for about `(pickup date, donor)`.
+ *
+ * **Meal Connect has no import** (`D13`, and that finding still stands). A real
+ * submission turned out to be three web screens a person types into, so the export is
+ * not a machine format and never was — it is a printable mimic of the form, one card
+ * per store per day, read top to bottom while typing (`D29`, superseding `D13`'s
+ * rectangular column list).
+ *
+ * **The two checkboxes are computed, and they are the reason this type exists.** A
+ * skipped stop and a run nobody worked produced NO export row at all, so those pickups
+ * were invisible to the food bank — the "lost-sheet misreporting" failure, one level up
+ * from the unmapped category. Emitting them is the point.
+ */
+export interface Receipt {
+  /** `YYYY-MM-DD` — `report_day`, never `created_at` (`data-model.md §8`). */
+  pickupDate: string;
+  /**
+   * The store's own id, and `null` for a free-text walk-in label or the anonymous
+   * bucket, neither of which has a `donor` row.
+   *
+   * On the payload because `(pickupDate, donorId)` is the key of the check-off below
+   * (`D35`, migration 0018) — and because null is the one case that cannot be ticked,
+   * which the screen has to be able to see rather than discover from a refusal.
+   */
+  donorId: string | null;
+  donorName: string;
+  /** NTFB's own number for the store, shown on its picker as `H-E-B Food Stores (810)`.
+   *  Null for a store nobody has recorded one for, and always null for a free-text
+   *  walk-in label, which has no donor row to attribute the food to. */
+  donorCode: string | null;
+  /** Empty on a not-attempted receipt. */
+  lines: ReceiptLine[];
+  /** Meal Connect's `Number of Items` — how many line items, not how many crates. */
+  itemCount: number;
+  /** Meal Connect's `Total Pounds`: Σ of the ROUNDED line pounds (`D28`). */
+  totalPounds: string;
+  /** `Scheduled Pickup Not Attempted`. The stop was `SKIPPED`, or the run was never
+   *  worked at all — `MISSED`, which is derived and not stored (I7): the window
+   *  passed with the shift still `OPEN` (unclaimed) or `CLAIMED` (no-show). */
+  notAttempted: boolean;
+  /** `No Pounds`. The pickup happened and came to nothing. */
+  noPounds: boolean;
+  /** Every note attached to this pickup, labelled by channel. */
+  notes: ReceiptNote[];
+  /**
+   * Who filed this receipt into Meal Connect and when, or `null` for one nobody has
+   * filed yet (`D35`, migration 0018).
+   *
+   * **Persisted, not a UI flag.** The portal takes one submission at a time and has
+   * no import (`D13`), so a fifteen-store week is fifteen separate typing sessions.
+   * A local flag answers "which have I done" for one person until they reload, and
+   * answers nothing at all for the second reporter working the same range — where
+   * the failure is a receipt filed twice or not at all, neither of which is visible
+   * at the far end.
+   *
+   * Always `null` when `donorId` is null: the check-off is keyed on a real store,
+   * and a free-text walk-in label has no `donor` row to key on. That is the same
+   * store Meal Connect's own picker cannot be pointed at.
+   */
+  submitted: ReceiptSubmission | null;
+}
+
+/** One receipt's check-off (`D35`). Un-ticking DELETES the row, which is what makes
+ *  a mis-tick reversible rather than something to be corrected with a second fact. */
+export interface ReceiptSubmission {
+  /** ISO instant. Rendered pantry-local at the screen, like every other instant. */
+  submittedAt: string;
+  /** Who ticked it, by name (I26's provenance, the half that has a writer). */
+  submittedBy: string;
+}
+
+/**
+ * Tick or un-tick one receipt. The pair IS the receipt's key and the table's primary
+ * key, so there is no id to send and no id to guess.
+ */
+export interface ReceiptSubmissionRequest {
+  /** `YYYY-MM-DD`. */
+  pickupDate: string;
+  donorId: string;
+}
+
+/** The range's receipts, in the order they are typed: date, then store. */
+export interface ReportExport {
+  /** `YYYY-MM-DD`, inclusive, pantry-local — the same window `WeeklyReport` carries
+   *  and, since `D41`, not necessarily seven days. */
+  from: string;
+  to: string;
+  receipts: Receipt[];
+}
 
 /**
  * Refused rather than silently short. See `UnmappedCategory`.
  *
- * It used to end "Match it below", which was true while the mapping editor sat on
- * S3.1. `D17` moved it to Admin, so the sentence now says where to go instead of
- * pointing at a tab that is no longer there.
+ * It has now been rewritten twice for the same reason, which is worth knowing
+ * before it is rewritten a third time: this sentence names a PLACE, and the place
+ * keeps moving. It ended "Match it below" while the editor sat on S3.1; `D17`
+ * moved it to Admin's Category matching tab; `D40` merged that tab into
+ * Categories. A sentence that pointed at a tab which no longer exists would strand
+ * a Reporter who cannot fix the block themselves and has nowhere to be sent.
+ *
+ * It also no longer says "this week": the report takes a range now (`D41`).
  */
 export const EXPORT_BLOCKED_MESSAGE =
-  'Some food this week is not matched to a North Texas Food Bank category yet. An admin matches it under Admin, Category matching, and then the report is ready.';
+  'Some food in these dates is not matched to a North Texas Food Bank category yet. An admin matches it under Admin, on the Categories tab, and then the report is ready.';

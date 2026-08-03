@@ -22,21 +22,36 @@ import { badRequest, conflict, notFound } from '../middleware/error.js';
  */
 export type DonorRecord = Selectable<Donor> & { has_photo: boolean };
 
-export interface CreateDonorInput {
+/** D27 — the three rates a store may override, keyed the way `category.trash_rate_key`
+ *  spells them so the two cannot drift into different vocabularies. */
+interface TrashRateInput {
+  /** A decimal fraction, 0..1 — `'0.1'` is 10%. `null` clears the override and returns
+   *  the store to the pantry default in `app_config`. */
+  trashRateBakery?: string | null;
+  trashRateProduce?: string | null;
+  trashRateDeli?: string | null;
+}
+
+export interface CreateDonorInput extends TrashRateInput {
   name: string;
   address?: string | null;
   contact?: string | null;
   note?: string | null;
   /** D20 — an explicit map link. `null` means "derive one from the address". */
   mapUrl?: string | null;
+  /** NTFB's number for this store (migration 0013). This is its FIRST write path:
+   *  the column has been exported on the report since Phase 3 and could until now only
+   *  be populated with hand-written SQL. */
+  ntfbDonorCode?: string | null;
 }
 
-export interface UpdateDonorInput {
+export interface UpdateDonorInput extends TrashRateInput {
   name?: string;
   address?: string | null;
   contact?: string | null;
   note?: string | null;
   mapUrl?: string | null;
+  ntfbDonorCode?: string | null;
   /** `domain-modeling.md §3.3` ACTIVE ⇄ DEACTIVATED. */
   active?: boolean;
 }
@@ -65,6 +80,45 @@ function isForeignKeyViolation(err: unknown): boolean {
     'code' in err &&
     (err as { code?: unknown }).code === '23503'
   );
+}
+
+/** SQLSTATE 23505 — unique_violation. Here it can only be `uq_donor_ntfb_code`: no
+ *  other unique index on `donor` exists, and two stores are allowed to share a name. */
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === '23505'
+  );
+}
+
+/** What the admin sees when a rate is out of range. `ck_donor_trash_rates` refuses it
+ *  either way (`architecture.md §4.1` tier 1); this only decides what they read. */
+const TRASH_RATE_RANGE_MESSAGE =
+  'A trash rate has to be between 0 and 1 — 0.1 means 10%.';
+
+/**
+ * D27 — a per-store trash rate, or `null` for "use the pantry default".
+ *
+ * A string in and a string out: the column is `numeric(5,4)` and routing it through a
+ * JavaScript number would round-trip a decimal through binary floating point on the way
+ * to a column whose whole purpose is exact arithmetic. `Number()` is used to CHECK the
+ * value and never to carry it.
+ *
+ * Blank is `null`, matching `cleanText`: an emptied field on the admin form means the
+ * store went back to the default, not that its rate is zero. Those differ — zero
+ * deducts nothing, which is a real and different answer.
+ */
+function cleanRate(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) return null;
+  const text = value.trim();
+  if (text === '') return null;
+
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed)) throw badRequest(TRASH_RATE_RANGE_MESSAGE);
+  if (parsed < 0 || parsed > 1) throw badRequest(TRASH_RATE_RANGE_MESSAGE);
+  return text;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,22 +181,46 @@ export async function getDonor(donorId: string): Promise<DonorRecord | undefined
 
 export async function createDonor(input: CreateDonorInput): Promise<DonorRecord> {
   const name = cleanName(input.name);
-  return writeTransaction(async (tx) =>
-    tx
-      .insertInto('donor')
-      .values({
-        name,
-        address: cleanText(input.address),
-        contact: cleanText(input.contact),
-        note: cleanText(input.note),
-        map_url: cleanText(input.mapUrl),
-      })
-      .returningAll()
-      .executeTakeFirstOrThrow()
+  // Parsed BEFORE the transaction opens, for the same reason `decodePhoto` is: it is
+  // pure validation, and `writeTransaction` may run its callback more than once.
+  const rates = {
+    trash_rate_bakery: cleanRate(input.trashRateBakery),
+    trash_rate_produce: cleanRate(input.trashRateProduce),
+    trash_rate_deli: cleanRate(input.trashRateDeli),
+  };
+
+  return writeTransaction(async (tx) => {
+    try {
+      const row = await tx
+        .insertInto('donor')
+        .values({
+          name,
+          address: cleanText(input.address),
+          contact: cleanText(input.contact),
+          note: cleanText(input.note),
+          map_url: cleanText(input.mapUrl),
+          ntfb_donor_code: cleanText(input.ntfbDonorCode),
+          ...rates,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
       // A donor that was created a statement ago cannot have a photo. Stated
       // rather than re-queried.
-      .then((row) => ({ ...row, has_photo: false })),
-  );
+      return { ...row, has_photo: false };
+    } catch (err) {
+      throw asDonorCodeConflict(err);
+    }
+  });
+}
+
+/** `uq_donor_ntfb_code` (0013) as a sentence. Two stores sharing one NTFB number is a
+ *  data-entry mistake, and the admin is the one who can fix it — a 500 with a
+ *  correlation id is not. Anything else is rethrown untouched. */
+function asDonorCodeConflict(err: unknown): unknown {
+  if (isUniqueViolation(err)) {
+    return conflict('Another store already uses that food bank number.');
+  }
+  return err;
 }
 
 /**
@@ -164,6 +242,10 @@ export async function updateDonor(
     contact?: string | null;
     note?: string | null;
     map_url?: string | null;
+    ntfb_donor_code?: string | null;
+    trash_rate_bakery?: string | null;
+    trash_rate_produce?: string | null;
+    trash_rate_deli?: string | null;
     deactivated_at?: Date | null;
   } = {};
 
@@ -172,6 +254,20 @@ export async function updateDonor(
   if (patch.contact !== undefined) values.contact = cleanText(patch.contact);
   if (patch.note !== undefined) values.note = cleanText(patch.note);
   if (patch.mapUrl !== undefined) values.map_url = cleanText(patch.mapUrl);
+  if (patch.ntfbDonorCode !== undefined) {
+    values.ntfb_donor_code = cleanText(patch.ntfbDonorCode);
+  }
+  // D27 — absent means "leave it", explicit null means "back to the pantry default".
+  // `cleanRate` collapses blank to null, so an emptied form field clears the override.
+  if (patch.trashRateBakery !== undefined) {
+    values.trash_rate_bakery = cleanRate(patch.trashRateBakery);
+  }
+  if (patch.trashRateProduce !== undefined) {
+    values.trash_rate_produce = cleanRate(patch.trashRateProduce);
+  }
+  if (patch.trashRateDeli !== undefined) {
+    values.trash_rate_deli = cleanRate(patch.trashRateDeli);
+  }
 
   return writeTransaction(async (tx) => {
     const current = await tx
@@ -190,12 +286,17 @@ export async function updateDonor(
 
     if (Object.keys(values).length === 0) throw badRequest('Nothing to change.');
 
-    const row = await tx
-      .updateTable('donor')
-      .set(values)
-      .where('id', '=', donorId)
-      .returningAll()
-      .executeTakeFirstOrThrow();
+    let row;
+    try {
+      row = await tx
+        .updateTable('donor')
+        .set(values)
+        .where('id', '=', donorId)
+        .returningAll()
+        .executeTakeFirstOrThrow();
+    } catch (err) {
+      throw asDonorCodeConflict(err);
+    }
 
     // The photo is not among the editable fields, so this reads the flag rather
     // than assuming it. Same transaction, so it cannot see a half-applied state.

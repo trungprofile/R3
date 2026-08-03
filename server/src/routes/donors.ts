@@ -41,6 +41,15 @@ function toSummary(row: DonorRecord): DonorSummary {
     // here; this is only whether one exists.
     mapUrl: row.map_url,
     hasPhoto: row.has_photo,
+    // Both operational, like `address`. The NTFB number is what the reporter types
+    // into Meal Connect's donor picker, and the rates decide what the printed receipt
+    // deducts (D27) — neither is a person's data and neither goes near `pii.ts`.
+    ntfbDonorCode: row.ntfb_donor_code,
+    // Kysely hands back `numeric` as a string. Passed through as one: a `numeric(5,4)`
+    // that becomes a float here has already lost the exactness the column exists for.
+    trashRateBakery: row.trash_rate_bakery,
+    trashRateProduce: row.trash_rate_produce,
+    trashRateDeli: row.trash_rate_deli,
     // I21 — the flag travels with the record; a deactivated donor is preserved
     // everywhere it is referenced rather than vanishing.
     active: row.deactivated_at === null,
@@ -116,6 +125,12 @@ export const donorRoutes = [
         contact: optionalString(input, 'contact') ?? null,
         note: optionalString(input, 'note') ?? null,
         mapUrl: optionalString(input, 'mapUrl') ?? null,
+        ntfbDonorCode: optionalString(input, 'ntfbDonorCode') ?? null,
+        // D27. What counts as a rate is a domain rule and lives in the service
+        // (`architecture.md §4.1`); this only says the field is text or null.
+        trashRateBakery: optionalString(input, 'trashRateBakery') ?? null,
+        trashRateProduce: optionalString(input, 'trashRateProduce') ?? null,
+        trashRateDeli: optionalString(input, 'trashRateDeli') ?? null,
       });
       res.status(201).json(toSummary(created));
     },
@@ -134,6 +149,13 @@ export const donorRoutes = [
       const contact = optionalString(input, 'contact');
       const note = optionalString(input, 'note');
       const mapUrl = optionalString(input, 'mapUrl');
+      const ntfbDonorCode = optionalString(input, 'ntfbDonorCode');
+      // D27 — absent and `null` are different edits here ("leave it" vs "back to the
+      // pantry default"), so the spread below has to preserve the distinction rather
+      // than collapse it with `?? null` the way the POST does.
+      const trashRateBakery = optionalString(input, 'trashRateBakery');
+      const trashRateProduce = optionalString(input, 'trashRateProduce');
+      const trashRateDeli = optionalString(input, 'trashRateDeli');
       const active = optionalBoolean(input, 'active');
 
       const updated = await updateDonor(String(req.params['id']), {
@@ -142,6 +164,10 @@ export const donorRoutes = [
         ...(contact !== undefined ? { contact } : {}),
         ...(note !== undefined ? { note } : {}),
         ...(mapUrl !== undefined ? { mapUrl } : {}),
+        ...(ntfbDonorCode !== undefined ? { ntfbDonorCode } : {}),
+        ...(trashRateBakery !== undefined ? { trashRateBakery } : {}),
+        ...(trashRateProduce !== undefined ? { trashRateProduce } : {}),
+        ...(trashRateDeli !== undefined ? { trashRateDeli } : {}),
         ...(active !== undefined ? { active } : {}),
       });
       res.json(toSummary(updated));

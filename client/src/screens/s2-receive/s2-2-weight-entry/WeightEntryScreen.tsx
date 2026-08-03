@@ -12,7 +12,8 @@
 //
 // WHAT THIS SCREEN DOES NOT DECIDE:
 //   - `WEIGHED` — derived from a non-voided weight existing (I12), never set from
-//     here. "Mark stop weighed" navigates; it does not write.
+//     here. "Done" (`D37`; "Mark stop weighed" in `ui-ux-spec.md` S2.2) navigates;
+//     it does not write.
 //   - how a correction is stored — void-old + insert-new (I13). The receiver sees
 //     an overwrite, and that word never appears.
 //   - closing the run — Receive done is the one completion action (I11) and it is

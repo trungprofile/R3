@@ -11,7 +11,7 @@
 // is finished. Anything else on screen would compete with the one thing to read
 // before an irreversible tap.
 //
-// TWO RULES THIS FILE HOLDS:
+// THREE RULES THIS FILE HOLDS:
 //
 //   1. A skipped stop prints "skipped", never "0 lb". `total` is null there and
 //      the two facts are different (§3.2).
@@ -19,6 +19,19 @@
 //      screen says what is still outstanding. The server refuses it anyway
 //      (`RECEIVE_INCOMPLETE_MESSAGE`), but a button that fails is not an
 //      interaction (§3: "prefer hiding over disabling").
+//   3. `D37`: the same goes for a run that is already closed. It shows the
+//      summary and no action — a **Receive done** on a `COMPLETED` run is a
+//      button whose only outcome is "That run is already finished."
+//
+// `D37` also makes the confirm reversible. Reaching this screen used to be the end
+// of the road: the picker sends a fully-resolved run here rather than into its
+// weights, so the only way back to a number was to not have left. **Change a
+// weight** is that way back, and it is offered for exactly as long as the server
+// would accept the write. Submitting is still the only thing that is final (I11).
+//
+// Every state on the screen carries at least one control that leads somewhere. A
+// read-only screen with nothing tappable is a dead end, and §3 rules those out in
+// their own right — "read only" describes the data, not a reason to trap someone.
 
 import { useCallback, useState } from 'react';
 import { useAsyncData, useRouter, useToast } from '../../../app/index.ts';
@@ -36,11 +49,14 @@ import {
 } from '../../../components/index.ts';
 import { RECEIVE_DONE_CONFIRM, RECEIVE_INCOMPLETE_MESSAGE } from '../../../api/shared.ts';
 import type { ReceiveDoneLine, ReceiveDoneSummary } from '../../../api/shared.ts';
-import { confirmReceiveDone, fetchReceiveDone } from './api.ts';
+import { confirmReceiveDone, fetchOpenRun, fetchReceiveDone } from './api.ts';
+import type { OpenRunAnswer } from './api.ts';
 import {
   COPY,
-  canFinish,
+  canEditWeights,
   doneNotice,
+  doneStage,
+  firstStopId,
   lineStatus,
   messageFor,
   outstandingLines,
@@ -80,6 +96,15 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
   );
   const remote = useAsyncData<ReceiveDoneSummary>(load);
 
+  // Is the run still open for receiving? (`D37`) The summary cannot say — see
+  // `fetchOpenRun`. A failure here is not an error state: the screen falls back to
+  // what it always did, and the server is what decides.
+  const loadOpen = useCallback(
+    (signal: AbortSignal) => fetchOpenRun(shiftId, signal),
+    [shiftId],
+  );
+  const openRun = useAsyncData<OpenRunAnswer>(loadOpen);
+
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -91,14 +116,24 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
       // The toast is the light confirmation; S2.1b behind it no longer lists this
       // run, which is the standing signal (§3: a toast is never the only one).
       toast.success(doneNotice(result.purgedSuggestions));
-      go('receive-runs');
+      // Home, not the picker (`D37`). `ui-ux-spec.md` S2.2b says "returns to S2.1b";
+      // that predates Home existing (`D22`). A receiver who has just closed a run is
+      // as likely to be finished for the day as to be starting the next one, and the
+      // hub offers both without deciding for them — including the duties this person
+      // holds besides receiving, which the picker cannot reach.
+      go('home');
     } catch (error) {
       setAsking(false);
       toast.error(messageFor(error));
       // Someone else weighed the last stop, or closed the run from the other
       // tablet. Both are ordinary on a shared device and both are fixed by a
-      // re-read rather than by asking the receiver to do anything.
-      if (shouldReloadAfter(error)) remote.reload();
+      // re-read rather than by asking the receiver to do anything — and the run's
+      // open-ness is re-read with it, since "already finished" is one of the two
+      // refusals this catches (`D37`).
+      if (shouldReloadAfter(error)) {
+        remote.reload();
+        openRun.reload();
+      }
     } finally {
       setBusy(false);
     }
@@ -121,18 +156,34 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
   }
 
   const summary = remote.data;
-  const ready = canFinish(summary);
+  // `null` — "could not find out" — while the second read is in flight and after it
+  // failed. `doneStage` reads that as the old behaviour, never as "closed" (`D37`).
+  const stillOpen = openRun.data === null ? null : openRun.data.run !== null;
+  const stage = doneStage(summary, stillOpen);
   const outstanding = outstandingLines(summary);
+
+  /** The way back into the weights, or null when there is nowhere to go back to:
+   *  the run is closed, or it has no stops to open a sheet on. */
+  const openRunData = openRun.data?.run ?? null;
+  const editStopId =
+    canEditWeights(stillOpen) && openRunData ? firstStopId(openRunData) : null;
+
+  const lede =
+    stage === 'CLOSED' ? COPY.closed : stage === 'CONFIRM' ? COPY.ready : COPY.notReady;
 
   return (
     <div className="s22b">
       <header className="s22b-head">
         <h1 className="s22b-title">{runTitle(summary)}</h1>
-        <p className="s22b-lede">{ready ? COPY.ready : COPY.notReady}</p>
+        <p className="s22b-lede">{lede}</p>
       </header>
 
       {summary.lines.length === 0 ? (
-        <EmptyState title={COPY.noStops}>{COPY.noStopsHint}</EmptyState>
+        // A run with no stops closes vacuously (I12) — so once it has, "you can
+        // finish it whenever you like" is no longer true and must not be said.
+        <EmptyState title={COPY.noStops}>
+          {stage === 'CLOSED' ? COPY.closedHint : COPY.noStopsHint}
+        </EmptyState>
       ) : (
         <Card ariaLabel={COPY.linesLabel}>
           <StopLines lines={summary.lines} label={COPY.linesLabel} />
@@ -143,13 +194,39 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
         </Card>
       )}
 
-      {ready ? (
+      {stage === 'CLOSED' ? (
+        // Finished. The summary above is the whole screen; what used to be here was
+        // a button whose only possible outcome was a refusal (`D37`, I11). Not a
+        // dead end though — the way out is a control, not advice (§3).
+        <div className="s22b-actions">
+          <p className="s22b-closed" role="status">
+            {COPY.closedHint} {COPY.closedNext}
+          </p>
+          <Button variant="primary" onClick={() => go('receive-runs')}>
+            {COPY.backToRuns}
+          </Button>
+        </div>
+      ) : stage === 'CONFIRM' ? (
         <div className="s22b-actions">
           <p className="s22b-hint">{COPY.readyHint}</p>
           {/* §1.1: exactly one high-emphasis button on the screen. */}
           <Button variant="primary" onClick={() => setAsking(true)}>
             {COPY.receiveDone}
           </Button>
+          {/* `D37`: the confirm is reversible until it is submitted. The picker
+              sends a fully-resolved run straight here, so without this there is no
+              route back to a number the receiver wants to change. */}
+          {editStopId ? (
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => go('receive-stop', { shiftId, stopId: editStopId })}
+              >
+                {COPY.editWeights}
+              </Button>
+              <p className="s22b-hint">{COPY.editHint}</p>
+            </>
+          ) : null}
           <Button variant="secondary" onClick={() => go('receive-runs')}>
             {COPY.backToRuns}
           </Button>
@@ -167,6 +244,10 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
               <StopLines lines={outstanding} label={COPY.outstandingLabel} />
             </>
           ) : null}
+          {/* No **Change a weight** here on purpose: with a stop still unresolved
+              the receiver's next step is that stop, not an old number, and the
+              picker already routes a tap to the first unresolved one (S2.1b). A
+              second door onto a different stop would be a choice nobody asked for. */}
           <Button variant="primary" onClick={() => go('receive-runs')}>
             {COPY.backToRuns}
           </Button>

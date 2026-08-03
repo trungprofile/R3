@@ -13,8 +13,8 @@
 //
 //   A165  a weight is a decimal string end to end. A float round trip would be
 //         invisible until an NTFB report was off by a cent-scale rounding.
-//   I12   `WEIGHED` is derived. "Mark stop weighed" navigates; nothing on this
-//         screen writes a stop's state.
+//   I12   `WEIGHED` is derived. "Done" navigates; nothing on this screen writes
+//         a stop's state.
 //   I13   a correction is void + insert underneath, and the UI must never say so.
 //
 // Run: npx vitest run --root client
@@ -328,7 +328,7 @@ describe('what the stop has on it', () => {
 });
 
 // ---------------------------------------------------------------------------
-// I12 — the strip, and where "Mark stop weighed" goes
+// I12 — the strip, and where "Done" goes
 // ---------------------------------------------------------------------------
 
 describe('I12 — which states are resolved', () => {
@@ -386,7 +386,7 @@ describe('the next stop to weigh', () => {
   });
 });
 
-describe('"Mark stop weighed" only navigates (I12)', () => {
+describe('"Done" only navigates (I12)', () => {
   it('goes to the next stop that wants a weight', () => {
     const target = advanceTargetFor(strip('WEIGHED', 'COLLECTED'), 'stop-1');
     expect(target).toEqual({ kind: 'stop', stop: expect.objectContaining({ id: 'stop-2' }) });
@@ -527,8 +527,8 @@ describe('microcopy', () => {
 
   it('never claims this screen closes the run (I11)', () => {
     // Receive done is the one completion action, one screen along. Nothing here
-    // may imply the run is finished — including "Mark stop weighed", which
-    // resolves nothing (I12).
+    // may imply the run is finished — including "Done", which resolves nothing
+    // (I12).
     for (const sentence of sentences) {
       expect(sentence).not.toMatch(/\b(finish|complete|clos(e|ing))\s+(the\s+|this\s+)?run\b/i);
       expect(sentence).not.toMatch(/run is (over|done|finished|complete)/i);
@@ -537,5 +537,20 @@ describe('microcopy', () => {
 
   it('shows the unit on the sheet (§7)', () => {
     expect(COPY.unit).toBe('lb');
+  });
+
+  it('keeps the two stop actions to a verb, with the noun in the aria label (`D37`)', () => {
+    // `ui-ux-spec.md` S2.2 draws these as "Mark stop weighed" and "Skip stop".
+    // `D37` cut both to the verb: the stop's name is in the header and its total is
+    // directly above the buttons, so the labels were repeating what the screen had
+    // already said. A screen reader meets a button without that context, which is
+    // what the aria labels are for — and they must still name the stop.
+    expect(COPY.markWeighed).toBe('Done');
+    expect(COPY.skipStop).toBe('Skip');
+    expect(COPY.markWeighedAria.toLowerCase()).toContain('stop');
+    expect(COPY.skipStopAria.toLowerCase()).toContain('stop');
+    // The destructive confirm keeps the long form: §3 wants the button that cannot
+    // be taken back to name the action, not to echo the one that opened the modal.
+    expect(COPY.skipConfirm).toBe('Skip stop');
   });
 });

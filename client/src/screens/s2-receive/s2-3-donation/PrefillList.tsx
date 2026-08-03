@@ -5,9 +5,13 @@
 // one who can weigh it. A blank form at the top would ask them to re-enter what
 // is already recorded.
 //
-// The driver's donor and category are a PREFILL, not a commitment (D8) — tapping
-// a row loads it into the form where either can be corrected, which is what makes
-// the driver's pick useful rather than binding.
+// The driver's donor and note are a PREFILL, not a commitment — tapping a row
+// loads them into the form where they can be corrected, which is what makes the
+// driver's pick useful rather than binding.
+//
+// The CATEGORY is not among them (D24, superseding D8): the driver no longer picks
+// one, `draftFrom` sends `categoryId: null` unconditionally, and the receiver — who
+// has the food in front of them — chooses it here at confirm time.
 //
 // Discard is offered because a flag is not intake: a prefill nobody weighed is
 // deleted at receive-done anyway (I17), and letting the receiver say "no food

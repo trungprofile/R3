@@ -26,6 +26,7 @@ import {
   emptyMasterValues,
   fieldKind,
   fullName,
+  hintForField,
   inactiveLabel,
   isNoOp,
   isValid,
@@ -33,7 +34,11 @@ import {
   nullableValue,
   PANELS,
   panelFromQuery,
+  RETIRED_PANELS,
+  percentError,
+  percentFromRate,
   photoChange,
+  rateFromPercent,
   removalText,
   sameDuties,
   statusChoices,
@@ -45,7 +50,10 @@ import {
   validateMaster,
   type AccountForm,
 } from './logic.ts';
-import { MASTER_CONFIGS } from './masters.ts';
+import { CATEGORY_CONFIG, DONOR_CONFIG, MASTER_CONFIGS, TRUCK_CONFIG } from './masters.ts';
+// D40 — the matching's words stayed in its own module and are read from there,
+// which is what this test is holding the merge to.
+import { COPY as MAPPING_COPY } from './mapping/mapping.ts';
 import { scaledSize } from './photo.ts';
 
 function user(overrides: Partial<ShapedUser> = {}): ShapedUser {
@@ -80,18 +88,18 @@ function editForm(existing: ShapedUser, overrides: Partial<AccountForm> = {}): A
 // ---------------------------------------------------------------------------
 
 describe('the admin shell', () => {
-  it('has the four sub-screens S1.8 names, plus the two that joined them', () => {
+  it('has the four sub-screens S1.8 names, plus the one that joined them', () => {
     // S1.8's own four, in S1.8's own order, are still contiguous and still in it.
     // Metrics (D18) leads because it is the read an admin opens without a record
-    // in mind; category matching (D12) trails Categories because that is what it
-    // is about.
+    // in mind. Category matching (D17) trailed Categories for one round and D40
+    // merged it INTO Categories, because sitting beside it still meant an admin
+    // configured a category on one tab and said where it reports on another.
     expect(PANELS.map((panel) => panel.value)).toEqual([
       'metrics',
       'accounts',
       'donors',
       'trucks',
       'categories',
-      'mapping',
     ]);
     expect(PANELS.map((panel) => panel.label)).toEqual([
       'Metrics',
@@ -99,8 +107,17 @@ describe('the admin shell', () => {
       'Donors',
       'Trucks',
       'Categories',
-      'Category matching',
     ]);
+  });
+
+  it('keeps `?tab=mapping` resolving, to the tab that absorbed it (D40)', () => {
+    // The same courtesy D18 gave `/metrics`. Landing on the default would be
+    // silently wrong: the admin asked for the matching and would get Metrics.
+    expect(panelFromQuery('mapping')).toBe('categories');
+    expect(RETIRED_PANELS['mapping']).toBe('categories');
+    // An unknown tab is still the default rather than an error.
+    expect(panelFromQuery('nonsense')).toBe(DEFAULT_PANEL);
+    expect(panelFromQuery(undefined)).toBe(DEFAULT_PANEL);
   });
 
   it('opens on Metrics when the URL names no tab (D18)', () => {
@@ -546,16 +563,65 @@ describe('master records', () => {
       'contact',
       'note',
       'photo',
+      // D27 gave the store form the food bank's own number for the store, which
+      // until this round had NO write path anywhere in the app, and the three
+      // trash rates the printed receipt deducts by.
+      'ntfbDonorCode',
+      'trashRateBakery',
+      'trashRateProduce',
+      'trashRateDeli',
     ]);
   });
 
-  it('treats a field with no kind as text, so the three old configs are unchanged', () => {
+  it('treats a field with no kind as text, so every other field is unchanged', () => {
+    // Two fields in the whole app declare a kind: the donor photo (D20) and the
+    // category's food bank target (D40). Everything else is text, and stays text
+    // by omission rather than by being spelled out config by config.
     for (const config of MASTER_CONFIGS) {
       for (const field of config.fields) {
         if (field.key === 'photo') expect(fieldKind(field)).toBe('image');
+        else if (field.key === 'ntfbCategoryId') expect(fieldKind(field)).toBe('choice');
         else expect(fieldKind(field), field.key).toBe('text');
       }
     }
+  });
+
+  it('puts the food bank target and its storage on the category editor (D40)', () => {
+    // The merge, asserted where it is cheapest to break: an admin adding a
+    // category used to fill in a name, save, change tab, find the same category
+    // again and only then say where it reports. Two of those steps existed
+    // because the controls were on two tabs.
+    expect(CATEGORY_CONFIG.fields.map((field) => field.key)).toEqual([
+      'name',
+      'ntfbCategoryId',
+      'storage',
+    ]);
+
+    // The target's options come from what the panel LOADED, not from a constant:
+    // an admin can archive a food bank category in the section directly below the
+    // form, and a live category pointed at an archived bucket would be the next
+    // blocked export built by hand (D12).
+    const target = CATEGORY_CONFIG.fields.find((field) => field.key === 'ntfbCategoryId')!;
+    const options = target.options!({
+      ntfbCategories: [
+        { id: 'n1', name: 'Produce', code: '14', active: true, mappedCount: 1 },
+        { id: 'n2', name: 'Retired', code: null, active: false, mappedCount: 0 },
+      ],
+    });
+    expect(options.map((option) => option.value)).toEqual(['n1', '']);
+    expect(options[0]!.label).toBe('Produce (14)');
+    // "Leave it unmatched" is an OPTION, not the absence of one: it is a real
+    // answer, and a control that expressed it as "nothing selected" could not tell
+    // an admin who meant it from one who has not got to it yet.
+    expect(options[1]!.label).toBe(MAPPING_COPY.leaveUnmatched);
+  });
+
+  it('loads the food bank list only where a field needs it', () => {
+    // Categories is the one config with a choice field. Donors and trucks fetch
+    // nothing extra, so a tab switch is not a request for an empty object.
+    expect(CATEGORY_CONFIG.loadContext).toBeTypeOf('function');
+    expect(DONOR_CONFIG.loadContext).toBeUndefined();
+    expect(TRUCK_CONFIG.loadContext).toBeUndefined();
   });
 
   it('gives donors the only image field, and does not make it required', () => {
@@ -565,6 +631,113 @@ describe('master records', () => {
     );
     expect(image).toHaveLength(1);
     expect(image[0]?.required).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Trash rates — a percentage on screen, a decimal fraction on the wire (D27)
+//
+// The one screen in R3 where a number silently changes what the food bank is
+// told. Three things have to hold, and the first is the one that would go wrong
+// quietly: BLANK IS NOT ZERO. Blank means "use the pantry default"; 0 means this
+// store genuinely wastes nothing. A blank that saved as 0 would stop a store's
+// produce ever being deducted and nothing on any screen would say so.
+// ---------------------------------------------------------------------------
+
+describe('a store`s trash rate', () => {
+  it('shows the wire`s fraction as the percentage a person recognises', () => {
+    expect(percentFromRate('0.1000')).toBe('10');
+    expect(percentFromRate('0.0500')).toBe('5');
+    expect(percentFromRate('0.1500')).toBe('15');
+    expect(percentFromRate('1.0000')).toBe('100');
+    expect(percentFromRate('0.1234')).toBe('12.34');
+  });
+
+  it('sends the percentage as the decimal fraction numeric(5,4) holds', () => {
+    expect(rateFromPercent('10')).toBe('0.1000');
+    expect(rateFromPercent('5')).toBe('0.0500');
+    expect(rateFromPercent('15')).toBe('0.1500');
+    expect(rateFromPercent('100')).toBe('1.0000');
+    expect(rateFromPercent('12.5')).toBe('0.1250');
+    expect(rateFromPercent('0.5')).toBe('0.0050');
+  });
+
+  it('never divides in a float', () => {
+    // `10 / 100` is not reliably `0.1`, and `numeric(5,4)` is exact. Both
+    // directions are string surgery: the decimal point moves, nothing is
+    // computed. The proof is that every value round-trips unchanged.
+    for (const percent of ['0', '5', '10', '12.5', '15', '33.33', '100']) {
+      expect(percentFromRate(rateFromPercent(percent)), percent).toBe(percent);
+    }
+  });
+
+  it('keeps blank and zero apart, in both directions', () => {
+    // The distinction the nullable column exists for. `null` is "use the pantry
+    // default"; `0.0000` is "this store wastes nothing".
+    expect(percentFromRate(null)).toBe('');
+    expect(percentFromRate('0.0000')).toBe('0');
+    expect(rateFromPercent('')).toBeNull();
+    expect(rateFromPercent('   ')).toBeNull();
+    expect(rateFromPercent('0')).toBe('0.0000');
+  });
+
+  it('round-trips a blank as a blank and a zero as a zero', () => {
+    expect(rateFromPercent(percentFromRate(null))).toBeNull();
+    expect(rateFromPercent(percentFromRate('0.0000'))).toBe('0.0000');
+    expect(percentFromRate(rateFromPercent('0') ?? '')).toBe('0');
+  });
+
+  it('leaves a figure it cannot read alone rather than guessing one', () => {
+    // Turning a typo into `null` would file it as "use the default" and say
+    // nothing; sending it on gets the server's own refusal instead.
+    expect(percentFromRate('nonsense')).toBe('nonsense');
+    expect(rateFromPercent('ten')).toBe('ten');
+  });
+
+  it('says what is wrong before the round trip, and allows a blank', () => {
+    // Communication only: `ck_donor_trash_rates` is the rule and refuses the same
+    // values again.
+    expect(percentError('')).toBeNull();
+    expect(percentError('10')).toBeNull();
+    expect(percentError('0')).toBeNull();
+    expect(percentError('100')).toBeNull();
+    expect(percentError('101')).toBe(COPY.rates.outOfRange);
+    expect(percentError('ten')).toBe(COPY.rates.badNumber);
+    expect(percentError('-5')).toBe(COPY.rates.badNumber);
+    expect(percentError('10.123')).toBe(COPY.rates.badNumber);
+  });
+
+  it('refuses to save a rate the server would refuse', () => {
+    const donor = MASTER_CONFIGS.find((config) => config.entity === 'donor')!;
+    const values = { name: 'Sam’s Club', trashRateProduce: '150' };
+    expect(validateMaster(donor.fields, values)['trashRateProduce']).toBe(
+      COPY.rates.outOfRange,
+    );
+    expect(isValid(validateMaster(donor.fields, { name: 'Sam’s Club' }))).toBe(true);
+  });
+
+  it('shows a blank field what it will actually use', () => {
+    // A blank control decides something, and an admin cannot see what from a
+    // control that is showing nothing.
+    const donor = MASTER_CONFIGS.find((config) => config.entity === 'donor')!;
+    const bakery = donor.fields.find((field) => field.key === 'trashRateBakery')!;
+    const produce = donor.fields.find((field) => field.key === 'trashRateProduce')!;
+
+    expect(hintForField(bakery, '')).toContain('10%');
+    expect(hintForField(produce, '')).toContain('5%');
+    // An explicit 0 reads as the decision it is, never as an empty field.
+    expect(hintForField(bakery, '0')).toBe(COPY.rates.explicitZero);
+    // A rate the admin typed needs no hint: the number is right there.
+    expect(hintForField(bakery, '10')).toBeUndefined();
+  });
+
+  it('says what the rate does once, over the group rather than on each field', () => {
+    // Three fields, one sentence: repeating it would be exactly the D21 cut.
+    const donor = MASTER_CONFIGS.find((config) => config.entity === 'donor')!;
+    const rates = donor.fields.filter((field) => field.key.startsWith('trashRate'));
+    expect(rates).toHaveLength(3);
+    expect(rates.filter((field) => field.section !== undefined)).toHaveLength(1);
+    expect(rates[0]?.section?.body.toLowerCase()).toContain('trash');
   });
 });
 
@@ -642,7 +815,17 @@ describe('the copy', () => {
       config.emptyTitle,
       config.emptyBody,
       config.loadingLabel,
-      ...config.fields.flatMap((field) => [field.label, field.hint ?? '']),
+      ...config.fields.flatMap((field) => [
+        field.label,
+        field.hint ?? '',
+        field.section?.title ?? '',
+        field.section?.body ?? '',
+        // A hint composed from data is where a forbidden word arrives without
+        // anyone typing it into `COPY` (D27's "Blank uses the pantry default,
+        // 10%." is built, not written).
+        hintForField(field, '') ?? '',
+        hintForField(field, '0') ?? '',
+      ]),
     ]),
     ...(['user', 'donor', 'truck', 'category'] as const).flatMap((entity) => [
       removalText(entity, 'X', 'DELETED'),

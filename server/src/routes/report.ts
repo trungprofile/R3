@@ -26,21 +26,22 @@
 
 import type {
   CategoryMapping,
-  ExportRow,
   NtfbCategory,
   ReportEntry,
+  ReportExport,
   WeeklyReport,
 } from '../../../shared/src/report.js';
-import { EXPORT_COLUMNS } from '../../../shared/src/report.js';
 import type { Tier } from '../../../shared/src/index.js';
 import {
+  clearReceiptSubmitted,
   createNtfbCategory,
-  currentWeek,
-  exportRows,
+  exportReceipts,
   listMappings,
   listNtfbCategories,
+  markReceiptSubmitted,
   removeNtfbCategory,
   reportEntries,
+  resolveRange,
   reviseReportedWeight,
   setMapping,
   updateNtfbCategory,
@@ -62,49 +63,43 @@ const REPORTER = { tier: 'VOLUNTEER', anyDuty: ['REPORT'] } as const;
  *  (I2/§4.3): Admin outranks Staff and Volunteer, so this is `>=`, not equality. */
 const MAPPING_ADMIN = { tier: 'ADMIN' } as const;
 
-/** The anchor date; absent means the current pantry-local week. */
-async function anchorOf(req: { query: Record<string, unknown> }): Promise<string> {
-  const week = req.query['week'];
-  if (typeof week === 'string' && week !== '') return week;
-  return (await currentWeek()).weekStart;
-}
-
-/** RFC 4180 enough for a spreadsheet: quote everything, double inner quotes. A donor
- *  name with a comma in it is ordinary, and an unquoted one silently shifts a column. */
-function csvCell(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
+function queryString(query: Record<string, unknown>, key: string): string | undefined {
+  const value = query[key];
+  return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 /**
- * One worksheet row as cells, in `EXPORT_COLUMNS` order (D13).
+ * The window the report is cut on (D41).
  *
- * Both output formats go through this, so the CSV and the printed sheet cannot lay
- * the same row out differently. `NTFB Code` is absent on purpose: Meal Connect picks
- * a category by name from a dropdown, and the `MEAT48675888`-style ids on a receipt
- * are its own per-line identifiers, issued on submission.
+ * `from`/`to` when they are given, otherwise the Monday-to-Sunday week containing the
+ * pantry's today (A178) — the same boundary S1.2's board and, since D39, Admin metrics
+ * use, so two screens open side by side cannot disagree about what "this week" is.
+ *
+ * `week` is still accepted and still resolves to that anchor's whole week. Nothing in
+ * the app sends it any more; a bookmark saved before D41 does, and answering it is the
+ * same courtesy D18 gave `/metrics` and D40 gives `?tab=mapping`. The service owns the
+ * resolution, including the refusal of a backwards range — a route parses and shapes.
  */
-function exportCells(row: ExportRow): string[] {
-  return [
-    row.day,
-    row.donor,
-    row.donorCode,
-    row.ntfbCategory,
-    row.storage,
-    row.agfpCategory,
-    row.weightLb,
-    row.receiptItems,
-    row.receiptTotal,
-  ];
+async function rangeOf(req: { query: Record<string, unknown> }): Promise<{
+  from: string;
+  to: string;
+}> {
+  return resolveRange({
+    from: queryString(req.query, 'from'),
+    to: queryString(req.query, 'to'),
+    week: queryString(req.query, 'week'),
+  });
 }
 
 export const reportRoutes = [
-  /** The week. S3.1's whole first screen. */
+  /** The range. S3.1's whole first screen, defaulting to this week (D41). */
   defineRoute({
     method: 'get',
     path: '/report',
     access: REPORTER,
     handler: async (req, res) => {
-      const payload: WeeklyReport = await weeklyReport(await anchorOf(req));
+      const { from, to } = await rangeOf(req);
+      const payload: WeeklyReport = await weeklyReport(from, to);
       res.json(payload);
     },
   }),
@@ -116,9 +111,10 @@ export const reportRoutes = [
     path: '/report/entries',
     access: REPORTER,
     handler: async (req, res) => {
-      const categoryId = req.query['categoryId'];
-      const payload: ReportEntry[] = await reportEntries(await anchorOf(req), {
-        ...(typeof categoryId === 'string' && categoryId !== '' ? { categoryId } : {}),
+      const { from, to } = await rangeOf(req);
+      const categoryId = queryString(req.query, 'categoryId');
+      const payload: ReportEntry[] = await reportEntries(from, to, {
+        ...(categoryId !== undefined ? { categoryId } : {}),
       });
       res.json(payload);
     },
@@ -136,6 +132,10 @@ export const reportRoutes = [
     handler: async (req, res) => {
       const input = body(req);
       const note = optionalString(input, 'note');
+      // The range the Reporter is looking at rides on the query string, so the
+      // entries that come back are the panel they are standing in front of rather
+      // than a window the server picked (D41).
+      const range = await rangeOf(req);
       const payload: ReportEntry[] = await reviseReportedWeight(
         actorOf(req),
         String(req.params['id']),
@@ -143,6 +143,7 @@ export const reportRoutes = [
           weight: requiredString(input, 'weight'),
           ...(note !== undefined ? { note } : {}),
         },
+        range,
       );
       res.json(payload);
     },
@@ -182,46 +183,70 @@ export const reportRoutes = [
 
   /**
    * Export. Refuses while any category carrying weight this week is unmapped — a short
-   * file that looks complete is worse than no file, because the shortfall is invisible
-   * at the far end (`services/report.ts`).
+   * submission that looks complete is worse than none, because the shortfall is
+   * invisible at the far end (`services/report.ts`).
    *
-   * CSV, and now shaped by a real Meal Connect submission rather than by a guess: the
-   * far end has no import, so this is the worksheet a Reporter reads while typing
-   * receipts into a web form (D13, `ExportRow`).
+   * ONE PATH, ONE FORMAT, ONE REFUSAL (D29, superseding D13 and D16). The far end is a
+   * web form with no import, so there was never a machine to hand a file to: the export
+   * is a printable mimic of the portal's own receipt, one card per `(pickup date,
+   * donor)`, and this route serves it as JSON for S3.1 to render.
    *
-   * TWO FORMATS, ONE ROUTE, ONE REFUSAL (D16). `?format=json` answers with the same
-   * rows for S3.1's print view. It is a query parameter on this route rather than a
-   * route of its own, and that is the whole design: `exportRows()` is called once,
-   * above the branch, so the unmapped-category conflict is thrown before either
-   * format exists. A second endpoint would be a second place for the refusal to be
-   * forgotten — and A186 records that this export is server-built *precisely* so it
-   * can refuse to emit a short one.
+   * The CSV is gone with its `content-disposition` and its column list. D16 kept both
+   * formats below a single service call so the refusal could not be forgotten by one of
+   * them; deleting the second format is the stronger version of the same argument, and
+   * A186's point — that this export is server-built *precisely* so it can refuse to
+   * emit a short one — is now enforced by there being nothing else to emit.
    */
   defineRoute({
     method: 'get',
     path: '/report/export',
     access: REPORTER,
     handler: async (req, res) => {
-      // Before the branch, deliberately: whichever format was asked for, an unmapped
-      // category carrying weight refuses here and nothing is emitted.
-      const { weekStart, weekEnd, rows } = await exportRows(await anchorOf(req));
+      const { from, to } = await rangeOf(req);
+      const payload: ReportExport = await exportReceipts(from, to);
+      res.json(payload);
+    },
+  }),
 
-      if (req.query['format'] === 'json') {
-        res.json({ weekStart, weekEnd, columns: [...EXPORT_COLUMNS], rows });
-        return;
-      }
+  // --- the Meal Connect check-off (D35, migration 0018) ---------------------
+  //
+  // `anyDuty: ['REPORT']` like the rest of the report, and NOT a tier: filing a
+  // receipt into the portal is the reporter's job, and D17's line holds — an Admin
+  // without the duty is not a Reporter (I2, set membership). A route that declared
+  // nothing would be REJECTED rather than open (§4.3 default-deny), which is why the
+  // declaration is here on both halves and not only on the write.
+  //
+  // ONE PATH, TWO METHODS. The pair `(pickupDate, donorId)` IS the receipt's key and
+  // the table's primary key, so POST creates the fact and DELETE removes it, and
+  // neither needs an id the client would have to have been given first. The un-tick is
+  // a real DELETE, which is what makes a mis-tick reversible.
 
-      const lines = [
-        EXPORT_COLUMNS.map(csvCell).join(','),
-        ...rows.map((row) => exportCells(row).map(csvCell).join(',')),
-      ];
-
-      res.setHeader('content-type', 'text/csv; charset=utf-8');
-      res.setHeader(
-        'content-disposition',
-        `attachment; filename="agfp-ntfb-${weekStart}-to-${weekEnd}.csv"`,
+  defineRoute({
+    method: 'post',
+    path: '/report/submissions',
+    access: REPORTER,
+    handler: async (req, res) => {
+      const input = body(req);
+      await markReceiptSubmitted(
+        actorOf(req),
+        requiredString(input, 'pickupDate'),
+        requiredString(input, 'donorId'),
       );
-      res.send(`${lines.join('\r\n')}\r\n`);
+      res.status(204).end();
+    },
+  }),
+
+  defineRoute({
+    method: 'delete',
+    path: '/report/submissions',
+    access: REPORTER,
+    handler: async (req, res) => {
+      const input = body(req);
+      await clearReceiptSubmitted(
+        requiredString(input, 'pickupDate'),
+        requiredString(input, 'donorId'),
+      );
+      res.status(204).end();
     },
   }),
 

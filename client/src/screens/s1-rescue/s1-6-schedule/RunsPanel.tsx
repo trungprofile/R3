@@ -171,7 +171,13 @@ function RunsList({
     <>
       {groups.map((group) => (
         <section className="s16-day" key={group.date}>
-          <h3 className="s16-day__heading">{group.heading}</h3>
+          {/* Two spans, not one string: the date half is held on one line by
+              `.s16-day__date`, so "Aug 3" cannot be split across a wrap. The
+              heading itself still breaks at the comma where it has to. */}
+          <h3 className="s16-day__heading">
+            {group.headingParts.lead},{' '}
+            <span className="s16-day__date">{group.headingParts.date}</span>
+          </h3>
           <List label={group.heading}>
             {group.runs.map((run) => (
               <ListItem key={run.id}>

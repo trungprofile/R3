@@ -104,10 +104,11 @@
   font-weight: 700;
 }
 
-/* 1024px is the desktop breakpoint `tokens/index.ts` fixes; a custom property
- * cannot be used in a media query. The control stops stretching once there is
- * width to spare — a full-bleed filter row reads as a toolbar, not a choice. */
-@media (min-width: 1024px) {
+/* 1200px is the desktop breakpoint `tokens/index.ts` fixes (D36); a custom property
+ * cannot be used in a media query, so the number is copied and must move with it.
+ * The control stops stretching once there is width to spare — a full-bleed filter
+ * row reads as a toolbar, not a choice. */
+@media (min-width: 1200px) {
   .r3-segmented,
   .r3-segmented__item {
     flex: 0 0 auto;
@@ -299,11 +300,16 @@ textarea.r3-field__control {
 
 /* --- Numeric keypad (§3) — >=64px keys, the only numeric input ------------ */
 
+/* 22rem gave a key ~112px wide against a 64px-tall row: a landscape target on a
+ * screen that also has to hold the category tiles and the running total. Narrowed
+ * so a key is closer to square (~75px) and the block takes a third less width.
+ * The FLOOR does not move — §3 fixes keypad keys at >=64px and `--key-min` is that
+ * number, so this is the width shrinking, never the target. */
 .r3-keypad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-2);
-  max-width: 22rem;
+  max-width: 15rem;
 }
 
 .r3-keypad__key {
@@ -312,7 +318,9 @@ textarea.r3-field__control {
   border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--text);
-  font-size: var(--font-numeric);
+  /* One step down from --font-numeric: the digit no longer has 112px to fill, and
+   * a 32px glyph in a 75px key reads as cramped rather than confident. */
+  font-size: var(--font-h2);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
@@ -342,16 +350,15 @@ textarea.r3-field__control {
   color: var(--text-on-dark);
 }
 
+/* The AGFP logo on a light plate (D32). The plate is not decoration: the mark is
+ * dark type on transparent and this bar is --structural-dark, so without it the
+ * pantry's name is invisible on its own top bar. Never shrinks — the bell, the
+ * name and Log out give way first, and the name already ellipsises. */
 .r3-topbar__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex: 0 0 auto;
   font-weight: 700;
-}
-
-/* §2 lists "the heart" among the orange accent's uses. */
-.r3-topbar__heart {
-  color: var(--brand-orange);
+  letter-spacing: 0.02em;
+  color: var(--text-on-dark);
 }
 
 .r3-topbar__spacer {
@@ -453,6 +460,47 @@ textarea.r3-field__control {
   padding: var(--space-4) var(--space-2);
   background: var(--surface);
   border-right: 1px solid var(--border);
+}
+
+/* The pantry's mark, on the light ground it was drawn for (D32). A rule under it
+ * rather than a plate around it: the mark carries its own white, so a border would
+ * box a box. */
+.r3-sidenav__brand {
+  padding: 0 var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Full-bleed inside the brand block: the mark is the target, so the hit area is the
+ * mark rather than a smaller rectangle inside it (§3). */
+.r3-sidenav__brandbutton {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.r3-sidenav__brandbutton:focus-visible {
+  outline: 2px solid var(--brand-orange);
+  outline-offset: 3px;
+  border-radius: var(--radius-control);
+}
+
+/* Width-driven in rem, height following the 300x83 intrinsic ratio — the same
+ * shape as the sign-in wordmark, so both marks grow together at 200% zoom (§1.3). */
+.r3-sidenav__logo {
+  display: block;
+  width: 100%;
+  max-width: 11rem;
+  height: auto;
+}
+
+/* D30 flattened the list, so there is one run and this separator never applies.
+ * Kept because the component still takes runs — see `Nav.tsx`. */
+.r3-sidenav__group + .r3-sidenav__group {
+  margin-top: var(--space-4);
 }
 
 .r3-sidenav__item {

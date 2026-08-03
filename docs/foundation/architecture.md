@@ -67,11 +67,19 @@ The last two together shape §4.2: a trusted population justifies a weak credent
 
 | Tier | Invariants |
 | :---- | :---- |
-| **1** | I1, I2, I3 (uniqueness + format), I4, I7, I8, I16, I19, I21, I22, I26, I28; plus `ck_shift_owner`, `ck_ud_source_exclusive`, `uq_shift_occurrence`, `uq_notif_shift_event` |
+| **1** | I1, I2, I3 (uniqueness + format), I4, I7, I8, I16 (all three clauses, including I16(c) as `ck_ud_confirmed_category`), I19, I21, I22, I26, I28; plus `ck_shift_owner`, `ck_ud_source_exclusive`, `uq_shift_occurrence`, `uq_notif_shift_event`, `ck_config_trash_rates`, `ck_donor_trash_rates`, `uq_category_trash_key` |
 | **2** | I9 (cancel-guard), I10 (terminal states), claim/start atomicity, weight-void idempotency |
 | **3** | I3 (immutability — no update path), I5, I6, I11–I15, I17, I20, I23–I25, I27, I29, I30 |
 
 Tier-2 predicates live in `Data Model §9` and are not restated here.
+
+**The trash deduction is not an invariant and is deliberately absent.** It is a **read-only derivation** (`domain-modeling.md §5.4`) — it writes nothing, so no tier guards it. The risk it carries is not a race but a **disagreement**: the weekly report on screen and the printed receipt are two views of the same pounds, and a food bank submission that does not match the screen it was read off is the failure this system exists to end. That risk is handled structurally rather than by testing for it — **both views roll up from one function** (`computeRange(from, to)` in `services/report.ts`, `computeWeek` before `D41` widened its window), which is the only place rounding or deduction happens, so drift is unrepresentable rather than merely unlikely. Same instinct as §1's native enums, applied to a derivation. The remaining guards are the conservation equality in §5.4 and a regression test that the two views still agree.
+
+**Filing a receipt is tier 1, and the key is the whole of it (`D35`).** `meal_connect_submission`'s composite primary key `(pickup_date, donor_id)` means two reporters ticking the same store cannot produce two rows — the service ticks with `ON CONFLICT DO NOTHING` and the first writer stands. This is a place where the constraint is not a backstop behind a service check but **the only check there is**, which is why it is stated here: nothing in `services/` re-derives "already filed", it simply lets the key answer. Both writes go through `writeTransaction` like every other write, and both routes declare `anyDuty: ['REPORT']` — a duty, not a tier, exactly like the rest of the report, because filing with the food bank is a job someone is given rather than a rank they hold.
+
+**Neither submission route is window-gated.** `D9`'s receiver edit window governs *correcting intake*; this records what a person did at another organisation's web form, and a fortnight filed three weeks late is precisely the case the check-off exists for.
+
+Metrics (S3.2) is the deliberate exception: it reads **gross** and shares none of this path.
 
 **I18 is absent from the table by design.** "WeightEntry and UnscheduledDonation are peer records, neither referencing the other" is enforced by the *absence* of an FK — no tier can express it, because there is no write to guard. It holds as long as nobody adds the column, which is a review concern, not a runtime one.
 

@@ -1,0 +1,73 @@
+/* Home — the hub (D22).
+ *
+ * Layout only. Every colour, size and step is a token (`ui-ux-spec.md §2`).
+ *
+ * One column on a phone, two from the tablet band up, so the cards stay large
+ * rather than growing to fill a desktop: a card the width of a monitor is a target
+ * nobody was aiming at. `auto-fit` with a floor does that without a media query and
+ * without knowing the breakpoints.
+ */
+
+.r3-home {
+  max-width: 56rem;
+}
+
+.r3-home__greeting {
+  margin: 0 0 var(--space-5);
+  font-size: var(--font-h1);
+}
+
+.r3-home__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  /* §1: 8px is the floor between adjacent targets, and every card is one. */
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.r3-home__card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  height: 100%;
+  min-height: var(--space-7);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-paper);
+  color: var(--text);
+  font-size: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.r3-home__card:hover {
+  border-color: var(--brand-orange);
+}
+
+/* Orange is fill-or-accent, never text (§2). The glyph is the accent here. */
+.r3-home__card-icon {
+  flex: 0 0 auto;
+  display: flex;
+  color: var(--brand-orange);
+}
+
+.r3-home__card-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.r3-home__card-title {
+  font-size: var(--font-h3);
+  font-weight: 700;
+}
+
+.r3-home__card-sub {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}

@@ -644,6 +644,13 @@ export async function assignDriver(
 
     // "Shift assigned / defaulted to you → the owning driver" (PRD §4 matrix).
     const timezone = await readTimezone(tx);
+    // D33 — who did it, not just that it happened. Read inside the same transaction
+    // as the write it describes, so the name cannot belong to a row that rolled back.
+    //
+    // Omitted when Staff assigns a run to themselves: a coordinator who also drives
+    // would otherwise be told their own name put them on it, and `renderPush`'s
+    // nameless fallback is the right sentence for that case.
+    const who = actor.id === input.driverId ? undefined : await readActorName(tx, actor.id);
     await enqueueNotifications(tx, [
       {
         event: 'SHIFT_ASSIGNED',
@@ -652,6 +659,7 @@ export async function assignDriver(
         payload: {
           route: shift.routeName,
           when: formatRange({ startsAt: shift.startsAt, endsAt: shift.endsAt }, timezone),
+          ...(who !== undefined ? { who } : {}),
         },
       },
     ]);
@@ -778,6 +786,28 @@ async function readTimezone(reader: Reader): Promise<string> {
     .select('timezone')
     .executeTakeFirstOrThrow();
   return config.timezone;
+}
+
+/**
+ * D33 — the display name for a notification's `who`.
+ *
+ * The same read `availability.ts` does for `UNAVAILABILITY_DECLARED`: first and last
+ * from `app_user`, joined. `undefined` rather than an empty string when the row is
+ * gone or the name is blank, because `renderPush` treats a missing `who` as "say it
+ * without a name" and an empty one would otherwise render a leading space.
+ *
+ * Not `pii.ts`: a name is what `shapeUser()` lets out, and `who` is already the
+ * shape every other notification carries a person in.
+ */
+async function readActorName(reader: Reader, userId: string): Promise<string | undefined> {
+  const person = await reader
+    .selectFrom('app_user')
+    .select(['first_name', 'last_name'])
+    .where('id', '=', userId)
+    .executeTakeFirst();
+  if (!person) return undefined;
+  const name = `${person.first_name} ${person.last_name}`.trim();
+  return name === '' ? undefined : name;
 }
 
 /**

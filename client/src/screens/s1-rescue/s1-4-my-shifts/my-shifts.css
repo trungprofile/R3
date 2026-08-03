@@ -74,8 +74,7 @@
   margin-top: 0;
 }
 
-.s14-kind,
-.s14-times {
+.s14-kind {
   border: 0;
   margin: var(--space-4) 0 0 0;
   padding: 0;
@@ -87,8 +86,8 @@
   margin-top: var(--space-2);
 }
 
-.s14-choice,
-.s14-time {
+.s14-choice {
+  flex: 1 1 0;
   min-height: var(--target-min);
   padding: var(--space-2) var(--space-3);
   font: inherit;
@@ -100,22 +99,10 @@
   cursor: pointer;
 }
 
-.s14-choice {
-  flex: 1 1 0;
-}
-
-.s14-choice--active,
-.s14-time--active {
+.s14-choice--active {
   border-color: var(--brand-orange);
   box-shadow: inset 0 -4px 0 0 var(--brand-orange);
   font-weight: 600;
-}
-
-.s14-times__grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
 }
 
 /* --- Day picker ----------------------------------------------------------- */

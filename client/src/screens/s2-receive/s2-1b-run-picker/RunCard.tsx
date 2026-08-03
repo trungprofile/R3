@@ -16,8 +16,11 @@ import type { RunCardView } from './run-picker.ts';
 
 /** The stop strip: "Sam's ✓weighed · Kroger ●pending" (S2.1b). The glyph is
  *  decoration — the state WORD carries the meaning, so colour and shape are never
- *  the only signal (§1: big, clear, calm). */
-function StopDots({ stops }: { stops: RunCardView['stops'] }) {
+ *  the only signal (§1: big, clear, calm).
+ *
+ *  Exported for `RunTile` (`D38`): a run says the same thing about its stops in
+ *  either treatment, and two copies of it would eventually say two things. */
+export function StopDots({ stops }: { stops: RunCardView['stops'] }) {
   return (
     <span className="s21b-stops">
       {stops.map((stop) => (

@@ -1,0 +1,53 @@
+{"event":"push_dispatch_unconfigured","missing":"VAPID environment"}
+
+QA world built — America/Chicago, today is 2026-08-02
+
+  Signing in
+    admin        adagrace   dev-password
+    coordinator  samokafor   dev-password   (STAFF, REPORT only)
+    driver       karendiaz   4321
+    driver       luispark   4321   (also RECEIVE)
+    no duties    ninatorres   4321   (A112 read-only)
+    receive only priyashah   4321   (refused on /report)
+    deactivated  omarreyes   (owns a recurring run, cannot sign in)
+    Lane B       rosalin / tombell   4321
+
+  Weeks
+    closed        2026-07-20 .. 2026-07-26   every run COMPLETED
+    in progress   2026-07-27 .. 2026-08-02   mixed states
+    ahead         2026-08-03 ..                             open + Lane B fixtures
+
+  Rows the report union is most likely to get wrong
+    voided weight        999.00 on 2026-07-21, must not appear anywhere
+    driver-skipped stop  Eastgate Foods on 2026-07-23
+    reassigned stop      one stop moved from the Wed run to the spare run
+    walk-in, reported    60.00 Lakeview Deli
+    walk-in, NOT reported 15.75 Neighbour drop-off
+    deactivated owner    recurring run on 2026-08-11
+
+  THE NUMBERS TO CHECK EVERYTHING ELSE AGAINST
+  S3.1's week total, S3.2's period total and the worksheet's Receipt Total must all
+  agree with these. Three sources agreeing is evidence; one reporting success is not.
+
+    closed week 2026-07-20
+      reported    445.75 lb     weights only, no walk-ins
+      intake      445.75 lb
+      unreported  0.00 lb
+
+    current week 2026-07-27   (incomplete: runs still open)
+      reported    305.25 lb     weights + the reportable walk-in
+      intake      321.00 lb
+      unreported  15.75 lb
+
+  Lane B fixtures (do not touch from a browser)
+    double-claim run   46c9853b-9a45-4bea-bf55-cb2f5d3a34b7
+    same-stop weights  ccb5b0d3-ec2f-43d0-90be-2c0ff23c50c0
+    reassign source    0389edb2-c249-458a-880d-a51c0d9f548e
+    reassign target    556cfc12-ab76-42f5-8645-33e853415f45
+
+  receiver_edit_window_days restored to 7. The closed week's window is now
+  shut, which is the state D9 needs: the receiver is refused, the Reporter is not.
+
+  ntfb_category is still EMPTY, on purpose (D12). S3.1 will refuse to export until an
+  admin enters mapping under Admin, Category matching. That refusal is the test.
+

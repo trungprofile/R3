@@ -30,7 +30,6 @@ import {
   pickerOptions,
   sortNtfbCategories,
   storageGapNote,
-  weightWithUnit,
 } from './mapping.ts';
 
 // ---------------------------------------------------------------------------
@@ -194,11 +193,21 @@ describe('the matching editor', () => {
     expect(mappingSavedText('Produce', 'Protein')).toContain('Protein');
   });
 
-  it('shows a blocking weight the way every other weight is shown', () => {
-    // Display only. Nothing here adds weights up, so A165's integer-cent
-    // arithmetic did not follow the editor across.
-    expect(weightWithUnit('1222.35')).toBe('1222.35 lb');
-    expect(weightWithUnit('293.00')).toBe('293 lb');
+  it('keeps the blocking-weight ORDERING after D40 took the weight helpers', () => {
+    // `formatWeight` / `weightWithUnit` went with the row that drew them: nothing
+    // in this folder has had a weight on screen since D17 moved the editor to
+    // Admin, and D40 folded the row into the category's own editor. The RULE they
+    // supported did not go — a category holding a report up still sorts first, and
+    // that is what a caller with a blocked report would come here for.
+    const rows = mappingRows(
+      [
+        mapping({ categoryId: 'c1', categoryName: 'Zucchini' }),
+        mapping({ categoryId: 'c2', categoryName: 'Apples', ntfbCategoryId: null, ntfbCategoryName: null }),
+      ],
+      [{ categoryId: 'c1', categoryName: 'Zucchini', total: '1222.35' }],
+    );
+    expect(rows.map((row) => row.categoryId)).toEqual(['c1', 'c2']);
+    expect(rows[0]!.blockingWeight).toBe('1222.35');
   });
 });
 
@@ -218,7 +227,6 @@ describe('microcopy', () => {
     ntfbRemovalText('Protein', 'DELETED'),
     ntfbRemovalText('Protein', 'DEACTIVATED'),
     storageGapNote(mappingRows([mapping({ storage: null })], [])[0]!) ?? '',
-    weightWithUnit('1222.35'),
   ];
 
   it('says something everywhere', () => {
@@ -239,12 +247,36 @@ describe('microcopy', () => {
     for (const sentence of sentences) expect(sentence).not.toContain('—');
   });
 
-  it('points at the panel beside it, not at another screen', () => {
-    // This sentence used to read "An admin adds ours under Admin → Categories",
-    // written from the Report screen. Both halves are in Admin now, so a
-    // cross-screen pointer would be sending somebody to where they are (D17).
-    expect(COPY.mappingEmptyBody).toContain('Categories');
-    expect(COPY.mappingEmptyBody).not.toContain('Admin');
+  it('cut the sentences that described a list this module no longer draws (D40)', () => {
+    // "Our categories, and where each one reports" was a list and a full-screen
+    // picker here; it is a field on the category's own editor now (`masters.ts`),
+    // so the words that introduced it have nothing left to introduce. What must
+    // NOT have gone with them is anything a RULE still returns.
+    const keys = Object.keys(COPY);
+    for (const gone of [
+      'mappingHeading',
+      'mappingIntro',
+      'mappingLabel',
+      'mappingEmptyTitle',
+      'mappingEmptyBody',
+      'pickerLabel',
+      'pickerCurrent',
+      'blockingTail',
+      'unit',
+    ]) {
+      expect(keys, gone).not.toContain(gone);
+    }
+    expect(COPY.notMatched.length).toBeGreaterThan(0);
+    expect(COPY.leaveUnmatched.length).toBeGreaterThan(0);
+    expect(COPY.storageMissing.length).toBeGreaterThan(0);
+  });
+
+  it('spells storage the way the PANTRY spells it (D26)', () => {
+    // Where the pantry's list and the sample receipt differ, the pantry's wording
+    // wins: `Refrigerated`, not the receipt's `Refrigeration`. This hint is what an
+    // admin copies from, so it has to match what they will type.
+    expect(COPY.storageHint).toContain('Refrigerated');
+    expect(COPY.storageHint).not.toContain('Refrigeration');
   });
 
   it('keeps the remap warning, which nothing else says', () => {

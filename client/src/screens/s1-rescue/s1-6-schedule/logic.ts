@@ -196,14 +196,41 @@ export function formatDayLabel(iso: string, today: string): string {
   return `${weekday.slice(0, 3)}, ${formatShortDate(iso, today)}`;
 }
 
+/**
+ * A day heading, in its two halves.
+ *
+ * The heading is one sentence but two ideas — WHICH day ("Today", "Tomorrow", the
+ * weekday) and its DATE — and only the second must never break. `Tomorrow, Aug 3`
+ * was wrapping between "Aug" and "3", which reads as two different dates for the
+ * moment it takes to find the second line. So the date is kept as its own part and
+ * `RunsPanel` renders it in a span the stylesheet holds on one line; the heading may
+ * still break at the comma, which is a break that says the same thing either way.
+ *
+ * The composed string stays the primary form because it is also the list's
+ * accessible name and each row's `aria-label` — a screen reader wants the sentence,
+ * not the markup.
+ */
+export interface DayHeadingParts {
+  /** "Today", "Tomorrow", or the weekday. May wrap freely. */
+  lead: string;
+  /** "Aug 3", or "Aug 3, 2027" out of year. Never wraps inside itself. */
+  date: string;
+}
+
 /** A day heading over a group of runs. "Today" and "Tomorrow" replace the weekday
  *  where they apply — §1.4 is recognition over recall. */
+export function dayHeadingParts(iso: string, today: string): DayHeadingParts {
+  const date = formatShortDate(iso, today);
+  if (iso === today) return { lead: 'Today', date };
+  if (iso === addDaysIso(today, 1)) return { lead: 'Tomorrow', date };
+  return { lead: WEEKDAY_NAMES[isoWeekdayOf(iso) - 1] ?? '', date };
+}
+
+/** The same heading as one string — what a screen reader is read, and what the
+ *  list is labelled with. Composed from the parts so the two cannot drift. */
 export function dayHeading(iso: string, today: string): string {
-  const short = formatShortDate(iso, today);
-  if (iso === today) return `Today, ${short}`;
-  if (iso === addDaysIso(today, 1)) return `Tomorrow, ${short}`;
-  const weekday = WEEKDAY_NAMES[isoWeekdayOf(iso) - 1] ?? '';
-  return `${weekday}, ${short}`;
+  const { lead, date } = dayHeadingParts(iso, today);
+  return `${lead}, ${date}`;
 }
 
 export function formatMonthLabel(year: number, month: number): string {
@@ -976,7 +1003,10 @@ export function schedulableRoutes(routes: readonly RouteDetail[]): RouteDetail[]
 export interface RunGroup {
   /** `YYYY-MM-DD`, pantry-local. */
   date: string;
+  /** The whole heading, for the list's accessible name and each row's label. */
   heading: string;
+  /** The same heading split, so the date half can be held on one line. */
+  headingParts: DayHeadingParts;
   runs: ShiftSummary[];
 }
 
@@ -996,6 +1026,7 @@ export function groupRunsByDay(runs: readonly ShiftSummary[], today: string): Ru
     .map(([date, group]) => ({
       date,
       heading: dayHeading(date, today),
+      headingParts: dayHeadingParts(date, today),
       runs: group.sort(
         (a, b) => a.startsAt.localeCompare(b.startsAt) || a.routeName.localeCompare(b.routeName),
       ),

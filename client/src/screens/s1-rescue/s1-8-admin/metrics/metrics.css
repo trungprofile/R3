@@ -82,16 +82,33 @@
   margin-bottom: var(--space-5);
 }
 
+/* Two date fields and, when it would change something, the way back to this week
+ * (D39). A row rather than a column now: the segmented control this replaced was a
+ * stack of one label over three buttons, and two fields side by side read as the
+ * range they are. §1.2's 8px minimum between adjacent targets applies. */
 .s32-period__group {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.s32-period__field {
+  flex: 0 1 11rem;
+  margin: 0;
 }
 
 .s32-period__label {
   font-size: var(--font-label);
   color: var(--text-muted);
   margin: 0;
+}
+
+.s32-period__error {
+  font-size: var(--font-label);
+  color: var(--danger);
+  margin: 0;
+  flex: 1 1 100%;
 }
 
 /* §1.2: 8px minimum between adjacent targets. */

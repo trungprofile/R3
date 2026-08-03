@@ -101,6 +101,66 @@ export function canFinish(summary: ReceiveDoneSummary): boolean {
   return summary.readyForReceiveDone;
 }
 
+// ---------------------------------------------------------------------------
+// Which of the three screens this is (`D37`)
+// ---------------------------------------------------------------------------
+
+/**
+ * What the receiver is looking at.
+ *
+ *   `BLOCKED`  a stop is still unresolved. The action is absent, not disabled, and
+ *              the screen says what is outstanding.
+ *   `CONFIRM`  every stop resolved and the run still open: the summary, the one
+ *              button that closes it, and the way BACK into the weights.
+ *   `CLOSED`   the run is finished. A read-only summary — offering **Receive done**
+ *              here was offering a refusal, since I11 makes `COMPLETED` terminal.
+ *
+ * `stillOpen` is `fetchOpenRun()`'s answer, and `null` means the screen could not
+ * find out (the read failed, or has not landed). It deliberately falls back to the
+ * old behaviour rather than to `CLOSED`: guessing "finished" would hide the button
+ * on a run that genuinely needs closing, and I11 leaves no other way to close one.
+ * Guessing the other way costs a refusal the server words for us.
+ *
+ * `readyForReceiveDone` is still the server's own reading of the completion gate and
+ * is still not recomputed here (see `canFinish`).
+ */
+export type DoneStage = 'BLOCKED' | 'CONFIRM' | 'CLOSED';
+
+export function doneStage(summary: ReceiveDoneSummary, stillOpen: boolean | null): DoneStage {
+  if (stillOpen === false) return 'CLOSED';
+  return canFinish(summary) ? 'CONFIRM' : 'BLOCKED';
+}
+
+/**
+ * Whether to offer the way back into the weights.
+ *
+ * Until the receiver submits, the confirm is not a one-way door: they may go back
+ * and change a number (`D37`). After it, they may not — `services/receive.ts`
+ * refuses every receiver write on a run that is not `IN_PROGRESS`, so an Edit on a
+ * closed run would lead somewhere that says no. That guard is the rule; this is the
+ * same question asked politely, one screen earlier.
+ */
+export function canEditWeights(stillOpen: boolean | null): boolean {
+  return stillOpen !== false;
+}
+
+/**
+ * Which stop "Edit weights" opens: the first one on the run, in route order.
+ *
+ * The first rather than the last, because the receiver going back to change a
+ * number is looking for a store, and the run's own order is the one they have in
+ * their head from weighing it. The stop strip on S2.2 is how they get to any other.
+ *
+ * `null` for a run with no stops — there is no sheet to open, and I12 lets such a
+ * run close vacuously anyway.
+ */
+export function firstStopId(run: {
+  stops: readonly { id: string; position: number }[];
+}): string | null {
+  const ordered = [...run.stops].sort((a, b) => a.position - b.position);
+  return ordered[0]?.id ?? null;
+}
+
 /** "Karen's Tue AM run", or just the route when nobody owns it. */
 export function runTitle(summary: {
   routeName: string;
@@ -191,6 +251,11 @@ export const COPY = {
   receiveDone: 'Receive done',
   confirmQuestion: 'Finish this run?',
   backToRuns: 'Back to the runs',
+  /** `D37`: the confirm is not a one-way door until it is submitted. Named for
+   *  what it opens — the weights — rather than "Back", which would read as the
+   *  browser's button and say nothing about what is on the other side. */
+  editWeights: 'Change a weight',
+  editHint: 'Nothing is final until you tap Receive done.',
   closedToast: 'Run finished.',
   oneExtraDropped: 'One flagged extra pickup was dropped. Nobody weighed it.',
   manyExtrasDropped: 'flagged extra pickups were dropped. Nobody weighed them.',
@@ -198,6 +263,15 @@ export const COPY = {
   // --- not ready yet ------------------------------------------------------
   notReady: 'This run is not finished yet',
   outstandingLabel: 'Still to do',
+
+  // --- already closed (`D37`) ----------------------------------------------
+  //
+  // No action, and none implied. A correction from here on is the Reporter's
+  // (PRD cap 15, D14) — naming that is honest and is not a promise this screen
+  // can keep, so the copy says where the numbers went rather than what to do.
+  closed: 'This run is finished',
+  closedHint: 'These are the weights the report will use.',
+  closedNext: 'Ask whoever files the report if one of them needs correcting.',
 
   // --- nothing to show ----------------------------------------------------
   noStops: 'This run has no stops.',

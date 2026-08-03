@@ -14,6 +14,10 @@
   max-width: 46rem;
 }
 
+/* A column at EVERY width (A5). It used to become a row at 1024px, which put the
+ * title, the week nav and the All · Open · Mine filter on one line and wrapped
+ * "Pickup runs" onto two — S1.2 fixes that header text, so the header is what has
+ * to have the line to itself. */
 .r3-board__head {
   display: flex;
   flex-direction: column;
@@ -23,6 +27,30 @@
 
 .r3-board__title {
   margin: 0;
+}
+
+/* The page heading now sits above the tab row rather than inside the head (D30),
+ * so it carries its own space to the row under it. */
+.r3-board__title--page {
+  margin-bottom: var(--space-4);
+}
+
+/* D30's two tabs are `components/Segmented.tsx` in `mode="tabs"` (§3) — their
+ * styling lives with the component. Only the gap to the panel below is this
+ * screen's business. */
+.r3-board__tabs {
+  margin-bottom: var(--space-4);
+}
+
+/* The two controls, on the line under the title. They share a row where there is
+ * width for one and stack where there is not, which is the wrap the head used to
+ * be doing at the cost of the title. */
+.r3-board__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 /* The All · Open · Mine filter is `components/Segmented.tsx` (§3) — its styling
@@ -38,6 +66,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+  /* Takes the whole controls line where there is not room for both, and shares it
+   * where there is. The basis is the width the three targets need before "This
+   * week" joins them. */
+  flex: 1 1 20rem;
 }
 
 .r3-board__week-range {
@@ -163,15 +195,11 @@
 
 /* --- Desktop ("usable", not canonical) ----------------------------------- */
 
-/* 1024px is the desktop breakpoint `tokens/index.ts` fixes; a custom property
- * cannot be used in a media query. */
-@media (min-width: 1024px) {
-  .r3-board__head {
-    flex-direction: row;
-    align-items: baseline;
-    justify-content: space-between;
-  }
-
+/* 1200px is the desktop breakpoint `tokens/index.ts` fixes (D36 raised it from
+ * 1024 so a landscape iPad gets the bottom bar, not a squeezed sidebar); a custom
+ * property cannot be used in a media query, so the number is repeated here and
+ * must be changed with the token. */
+@media (min-width: 1200px) {
   /* Room for a mouse pointer: the chip and the button sit side by side where the
    * width exists, rather than stacking as they do on a phone. */
   .r3-board__side {

@@ -105,6 +105,16 @@
   margin: var(--space-5) 0 var(--space-2) 0;
 }
 
+/* "Tomorrow, Aug 3" was wrapping between "Aug" and "3", which reads as two dates
+ * until the eye finds the second line. Only the DATE half is held together — the
+ * heading may still break at the comma, and the longest thing this makes
+ * unbreakable is an out-of-year "Aug 12, 2027" at 22px, which is well inside a
+ * 375px phone. Pinning the whole heading would push a "Wednesday, Aug 12, 2027"
+ * off the side, which is worse than the wrap it fixes. */
+.s16-day__date {
+  white-space: nowrap;
+}
+
 .s16-run__owner {
   color: var(--text);
 }

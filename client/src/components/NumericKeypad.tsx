@@ -71,7 +71,11 @@ export function NumericKeypad({
     <div className="r3-keypad" role="group" aria-label={ariaLabel}>
       {DIGIT_ROWS.flat().map((digit) => key(digit, digit))}
       {allowDecimal ? (
-        key('Decimal point', '.')
+        // The key reads "." and is NAMED "Decimal point". `key()` already puts the
+        // name on every button as `aria-label`, so passing the glyph as the child is
+        // the whole change — a screen reader announcing "full stop" or nothing at all
+        // is not a label a volunteer can act on (§3: never icon-only).
+        key('Decimal point', '.', '.')
       ) : (
         <span className="r3-keypad__key r3-keypad__key--blank" aria-hidden="true" />
       )}

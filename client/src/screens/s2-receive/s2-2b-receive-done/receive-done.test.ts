@@ -22,8 +22,11 @@ import type { ReceiveDoneLine, ReceiveDoneSummary } from '../../../api/shared.ts
 import {
   COPY,
   FORBIDDEN_IN_COPY,
+  canEditWeights,
   canFinish,
   doneNotice,
+  doneStage,
+  firstStopId,
   formatWeight,
   isResolved,
   lineStatus,
@@ -176,6 +179,75 @@ describe('the gate', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Which screen this is, and whether the weights are still the receiver's (`D37`)
+// ---------------------------------------------------------------------------
+
+describe('doneStage', () => {
+  it('shows the summary and no action once the run is closed', () => {
+    // I11 makes COMPLETED terminal. Offering **Receive done** on a closed run was
+    // offering a refusal — the server answers it with "That run is already
+    // finished." and nothing else happens.
+    expect(doneStage(summary({ readyForReceiveDone: true }), false)).toBe('CLOSED');
+  });
+
+  it('closes the screen down even though the gate still reads ready', () => {
+    // `readyForReceiveDone` stays true after the run closes: it is I12's gate, and
+    // a closed run's stops are all still resolved. Which is exactly why "closed"
+    // cannot be read off the summary, and why it is asked separately.
+    const stillReady = summary({ readyForReceiveDone: true });
+    expect(canFinish(stillReady)).toBe(true);
+    expect(doneStage(stillReady, false)).toBe('CLOSED');
+  });
+
+  it('offers the closing tap on an open, fully-resolved run', () => {
+    expect(doneStage(summary({ readyForReceiveDone: true }), true)).toBe('CONFIRM');
+  });
+
+  it('says what is outstanding on an open run that is not ready', () => {
+    expect(doneStage(summary({ readyForReceiveDone: false }), true)).toBe('BLOCKED');
+  });
+
+  it('behaves as it always did when it cannot find out', () => {
+    // The second read is a courtesy and may fail or still be in flight. Guessing
+    // "finished" would hide the only button that can close a run (I11); guessing
+    // the other way costs at worst a refusal the server words for us.
+    expect(doneStage(summary({ readyForReceiveDone: true }), null)).toBe('CONFIRM');
+    expect(doneStage(summary({ readyForReceiveDone: false }), null)).toBe('BLOCKED');
+  });
+});
+
+describe('the way back into the weights', () => {
+  it('is open until the run is closed, and not after', () => {
+    // `services/receive.ts` refuses every receiver write on a run that is not
+    // IN_PROGRESS. This asks the same question one screen earlier; it does not
+    // answer it — the server does, again, on the write that matters.
+    expect(canEditWeights(true)).toBe(true);
+    expect(canEditWeights(false)).toBe(false);
+  });
+
+  it('stays open when the screen could not find out', () => {
+    expect(canEditWeights(null)).toBe(true);
+  });
+
+  it('opens the run"s first stop in route order', () => {
+    expect(
+      firstStopId({
+        stops: [
+          { id: 'c', position: 2 },
+          { id: 'a', position: 0 },
+          { id: 'b', position: 1 },
+        ],
+      }),
+    ).toBe('a');
+  });
+
+  it('has nowhere to go on a run with no stops', () => {
+    // Such a run closes vacuously (I12) and has no sheet to open.
+    expect(firstStopId({ stops: [] })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Titles and the closing notice
 // ---------------------------------------------------------------------------
 
@@ -257,5 +329,14 @@ describe('microcopy', () => {
       expect(sentence.toLowerCase()).not.toContain('undo');
       expect(sentence.toLowerCase()).not.toContain('reopen');
     }
+  });
+
+  it('promises a change of mind only BEFORE the run is closed (`D37`)', () => {
+    // The reversible half is the confirm step: until Receive done is tapped, the
+    // weights are still the receiver's. The closed half must promise nothing —
+    // a correction from there is the Reporter's (D14), not this screen's.
+    expect(COPY.editHint).toContain(COPY.receiveDone);
+    expect(COPY.closedHint.toLowerCase()).not.toContain('change');
+    expect(COPY.closedNext.toLowerCase()).not.toContain('you can');
   });
 });

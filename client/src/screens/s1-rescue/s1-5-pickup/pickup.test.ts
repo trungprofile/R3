@@ -12,8 +12,10 @@
 // break silently:
 //
 //   I27  the gate is {COLLECTED, SKIPPED, REASSIGNED} — three states. A run with
-//        a stop reassigned off it must still offer "Heading back".
-//   D1   a Phase-1 run stays IN_PROGRESS forever, including after the milestone.
+//        a stop reassigned off it must still offer the finish action.
+//   D23  the button says "Complete this run" and the shift stays IN_PROGRESS.
+//        I11 (locked) makes receive-done the only completion and I12 needs every
+//        stop WEIGHED, so the label is a word about the driver, not a transition.
 //
 // Run: npx vitest run --root client
 
@@ -21,7 +23,6 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../api/index.ts';
 import { DONATION_ON_ROUTE_MESSAGE, SHIFTSTOP_DISPOSITIONS } from '../../../api/shared.ts';
 import type {
-  CategorySummary,
   DonationSummary,
   DonorSummary,
   RunDetail,
@@ -29,7 +30,6 @@ import type {
   TruckSummary,
 } from '../../../api/shared.ts';
 import {
-  AD_HOC_ANON_CHOICE,
   AD_HOC_LABEL_CHOICE,
   COPY,
   EMPTY_AD_HOC_DRAFT,
@@ -40,6 +40,7 @@ import {
   adHocReady,
   adHocRequest,
   adHocStoreFor,
+  adHocStoreProblem,
   canHeadBack,
   canMoveDown,
   canMoveUp,
@@ -64,11 +65,11 @@ import {
   reorderPayload,
   reviewLines,
   runIsStillInProgress,
-  selectableCategories,
   selectableDonors,
   selectableTrucks,
   shouldReloadAfter,
   stopStatusLabel,
+  stopStatusTone,
   stopToggleLabel,
   stopsOnThisRun,
   timeOfDay,
@@ -139,10 +140,10 @@ function truck(over: Partial<TruckSummary> = {}): TruckSummary {
 }
 
 // ---------------------------------------------------------------------------
-// I27 — the "Heading back" gate
+// I27 — the gate on the finish action
 // ---------------------------------------------------------------------------
 
-describe('I27 gate — "Heading back" appears when no stop is PENDING', () => {
+describe('I27 gate — the finish action appears when no stop is PENDING', () => {
   it('is closed while a stop is still to do', () => {
     expect(canHeadBack(stops('COLLECTED', 'PENDING'))).toBe(false);
   });
@@ -195,19 +196,21 @@ describe('I27 gate — "Heading back" appears when no stop is PENDING', () => {
 });
 
 // ---------------------------------------------------------------------------
-// D1 — a Phase-1 run never reaches COMPLETED
+// D23 — the label moved, the state machine did not
 // ---------------------------------------------------------------------------
 
-describe('D1 — the run stays IN_PROGRESS, before and after the milestone', () => {
+describe('D23 — "Complete this run" completes the driver, not the shift', () => {
   const resolved = run({
     stops: stops('COLLECTED', 'SKIPPED'),
     pickupCompletedAt: '2026-07-28T21:32:00.000Z',
   });
 
-  it('is still in progress after every stop is resolved and the milestone is set', () => {
-    // I27 sets a timestamp and deliberately does not touch `status`. The
-    // receiver's receive-done is the only completion action (I11) and it ships in
-    // Phase 2, so this is the correct end state for Phase 1, not a gap.
+  it('leaves the shift IN_PROGRESS after the milestone is set', () => {
+    // THE LOAD-BEARING ONE. D23 renamed the button and nothing else: I27 sets a
+    // timestamp and deliberately does not touch `status`, I11 (locked) makes the
+    // receiver's receive-done the only completion action, and I12 will not let a
+    // shift reach COMPLETED until every stop is WEIGHED — which needs a scale the
+    // driver does not have. So a "completed" run is still in progress.
     expect(resolved.status).toBe('IN_PROGRESS');
     expect(runIsStillInProgress(resolved)).toBe(true);
   });
@@ -216,18 +219,35 @@ describe('D1 — the run stays IN_PROGRESS, before and after the milestone', () 
     expect(phaseFor(resolved, OWNER)).toEqual({ kind: 'active' });
   });
 
-  it('offers no action that closes the run', () => {
-    const actions = actionsFor(resolved, OWNER);
-    expect(actions).toContain('heading-back');
-    for (const action of actions) {
-      expect(action).not.toMatch(/complete|finish|close|receive|done/i);
+  it('exposes no action at all once the run is completed', () => {
+    // D23: the screen becomes a read-only summary. No stop actions, no note
+    // edit, and no flag — which is why `COPY.summaryNoFlag` exists to say so.
+    expect(actionsFor(resolved, OWNER)).toEqual([]);
+  });
+
+  it('offers the completion action only while the run is still open to work', () => {
+    const working = run({ stops: stops('COLLECTED', 'SKIPPED') });
+    expect(actionsFor(working, OWNER)).toContain('complete-run');
+    expect(actionsFor(working, OWNER)).toContain('run-note');
+    // And the read-only run offers neither, so there is no second way to write a
+    // note the summary says is locked.
+    expect(actionsFor(resolved, OWNER)).not.toContain('complete-run');
+    expect(actionsFor(resolved, OWNER)).not.toContain('run-note');
+  });
+
+  it('names no action that writes Shift.status', () => {
+    // `complete-run` is the ONE action whose name says completion, and it posts
+    // `pickup_completed_at` and nothing else. Nothing in this list closes,
+    // finishes or receives anything (I11, D7).
+    for (const action of actionsFor(run({ stops: stops('COLLECTED') }), OWNER)) {
+      expect(action).not.toMatch(/finish|close|receive|done|weigh/i);
     }
   });
 
-  it('keeps the heading-back action available for a second confirm', () => {
-    // `completePickup` is idempotent — a second confirm keeps the first timestamp
-    // and carries only the note (A89), so nothing is hidden after the first tap.
-    expect(headingBackState(resolved).offered).toBe(true);
+  it('reports the milestone and its clock time for the summary', () => {
+    const state = headingBackState(resolved);
+    expect(state.confirmed).toBe(true);
+    expect(state.confirmedAt).not.toBe('');
   });
 });
 
@@ -282,12 +302,12 @@ describe('phaseFor', () => {
     const pending = actionsFor(run({ stops: stops('PENDING', 'COLLECTED') }), OWNER);
     expect(pending).toContain('collect');
     expect(pending).toContain('skip');
-    expect(pending).not.toContain('heading-back');
+    expect(pending).not.toContain('complete-run');
 
     const finished = actionsFor(run({ stops: stops('COLLECTED', 'SKIPPED') }), OWNER);
     expect(finished).not.toContain('collect');
     expect(finished).not.toContain('skip');
-    expect(finished).toContain('heading-back');
+    expect(finished).toContain('complete-run');
   });
 
   it('offers no reordering when one stop is left on the run', () => {
@@ -352,9 +372,27 @@ describe('the stop list', () => {
     expect(SHIFTSTOP_DISPOSITIONS).not.toContain('WEIGHED');
   });
 
-  it('lists every stop on the review screen, moved ones included', () => {
+  it('lists every stop on the summary, moved ones included', () => {
     const lines = reviewLines(stops('COLLECTED', 'REASSIGNED'));
-    expect(lines.map((line) => line.status)).toEqual([COPY.statusPickedUp, COPY.statusMoved]);
+    // The raw disposition travels, so the one component that renders it owns both
+    // the word and the tone and the two cannot drift apart.
+    expect(lines.map((line) => line.disposition)).toEqual(['COLLECTED', 'REASSIGNED']);
+  });
+
+  it('gives a stop still to do the most visual weight (A5)', () => {
+    // "What is left" is the only question a driver asks this list, so PENDING is
+    // the loudest chip and the two settled states are muted.
+    expect(stopStatusTone('PENDING')).toBe('todo');
+    expect(stopStatusTone('COLLECTED')).toBe('done');
+    expect(stopStatusTone('SKIPPED')).toBe('skipped');
+    expect(stopStatusTone('REASSIGNED')).toBe('moved');
+  });
+
+  it('keeps a word on every tone, so colour is never the only signal (§2, §3)', () => {
+    for (const disposition of SHIFTSTOP_DISPOSITIONS) {
+      expect(stopStatusTone(disposition).length).toBeGreaterThan(0);
+      expect(stopStatusLabel(disposition).length).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -459,16 +497,13 @@ function donor(over: Partial<DonorSummary> = {}): DonorSummary {
     note: null,
     mapUrl: null,
     hasPhoto: false,
-    active: true,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    ...over,
-  };
-}
-
-function category(over: Partial<CategorySummary> = {}): CategorySummary {
-  return {
-    id: 'cat-1',
-    name: 'Bakery',
+    // Nothing on this screen reads any of these — a driver's picker wants a name
+    // and an address. They are here because `DonorSummary` is one shape shared
+    // with S1.8 and the receipt (D26, D27).
+    ntfbDonorCode: null,
+    trashRateBakery: null,
+    trashRateProduce: null,
+    trashRateDeli: null,
     active: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...over,
@@ -498,16 +533,25 @@ function donation(over: Partial<DonationSummary> = {}): DonationSummary {
 }
 
 describe('the flag is offered on an in-progress run and nowhere else', () => {
-  it('is available while stops are pending and still available afterwards', () => {
+  it('is available at any point of the drive, until the run is completed', () => {
     // The server's only state test is `status === 'IN_PROGRESS'` — a driver can be
-    // handed something extra at any point of the drive, including on the way home.
+    // handed something extra at any point of the drive, including with every stop
+    // already checked off.
     expect(actionsFor(run({ stops: stops('PENDING') }), OWNER)).toContain('flag-ad-hoc');
+    expect(actionsFor(run({ stops: stops('COLLECTED') }), OWNER)).toContain('flag-ad-hoc');
+  });
+
+  it('goes with every other action once the run is completed (D23)', () => {
+    // The cost of the read-only summary, and the reason `COPY.summaryNoFlag`
+    // exists: after this the driver has to phone the pantry. The server would
+    // still accept the flag — `status` is untouched (I27) — so this is the
+    // screen's choice, said out loud rather than discovered.
     expect(
       actionsFor(
         run({ stops: stops('COLLECTED'), pickupCompletedAt: '2026-07-28T21:32:00.000Z' }),
         OWNER,
       ),
-    ).toContain('flag-ad-hoc');
+    ).not.toContain('flag-ad-hoc');
   });
 
   it('is not offered before the run starts, or on another driver run', () => {
@@ -535,24 +579,24 @@ describe('the store picker (I29, communication only)', () => {
     expect(selectableDonors([donor({ id: 'donor-1' })], moved)).toEqual([]);
   });
 
-  it('hides a deactivated donor (I21) and an archived category (§3.3)', () => {
+  it('hides a deactivated donor (I21)', () => {
     expect(selectableDonors([donor({ active: false })], [])).toEqual([]);
-    expect(selectableCategories([category({ active: false }), category({ id: 'c2' })])).toHaveLength(
-      1,
-    );
   });
 
   it('offers every donor on a run with no stops', () => {
     expect(selectableDonors([donor()], [])).toHaveLength(1);
   });
 
-  it('maps the three source shapes to and from a radio value', () => {
+  it('maps the two source shapes to and from a radio value, and "nothing yet"', () => {
+    // D24 removed the third — the anonymous row. `ck_ud_i16b_source` allows one
+    // only when it is not reportable, and a driver's flag is reportable by
+    // default (I15), so there is no longer a way to record a pickup from nowhere.
     expect(adHocChoiceOf({ kind: 'master', donorId: 'donor-9' })).toBe('donor-9');
     expect(adHocChoiceOf({ kind: 'label', donorLabel: 'x' })).toBe(AD_HOC_LABEL_CHOICE);
-    expect(adHocChoiceOf({ kind: 'anon' })).toBe(AD_HOC_ANON_CHOICE);
+    // Nothing chosen matches no radio in the group, which is how the form opens.
+    expect(adHocChoiceOf(null)).toBe('');
 
     expect(adHocStoreFor('donor-9', '')).toEqual({ kind: 'master', donorId: 'donor-9' });
-    expect(adHocStoreFor(AD_HOC_ANON_CHOICE, 'typed')).toEqual({ kind: 'anon' });
     // Switching away and back keeps what was typed.
     expect(adHocStoreFor(AD_HOC_LABEL_CHOICE, 'typed')).toEqual({
       kind: 'label',
@@ -561,25 +605,24 @@ describe('the store picker (I29, communication only)', () => {
   });
 });
 
-describe('what the flag sends (D8, I14)', () => {
-  it('sends a category and never a weight', () => {
-    const request = adHocRequest({
-      store: { kind: 'master', donorId: 'donor-9' },
-      categoryId: 'cat-1',
-      note: '',
-    });
-    expect(request).toEqual({ donorId: 'donor-9', categoryId: 'cat-1' });
-    // D8: `ui-ux-spec.md:193` calls this "just a donor picker … and an optional
-    // note", but the locked doc makes Category required with no SUGGESTED
-    // exemption — and grants one to `weight` in the very next row. So: a category,
-    // and no weight, because the driver has no scale.
+describe('what the flag sends (D24, I14)', () => {
+  it('sends a store, and never a category or a weight', () => {
+    const request = adHocRequest({ store: { kind: 'master', donorId: 'donor-9' }, note: '' });
+    expect(request).toEqual({ donorId: 'donor-9' });
+    // D24 supersedes D8. `domain-modeling.md §2.3` was amended under explicit
+    // human authorization so Category is required on CONFIRMED only: the driver
+    // cannot know it at a loading dock and the receiver picks it at S2.3. Weight
+    // was never here either, because the driver has no scale. Which leaves the
+    // control `ui-ux-spec.md:193` described all along — just a donor picker.
+    expect(Object.keys(request!)).not.toContain('categoryId');
     expect(Object.keys(request!)).not.toContain('weight');
   });
 
-  it('refuses to build a request without a category', () => {
-    const draft = { store: { kind: 'anon' } as const, categoryId: null, note: '' };
-    expect(adHocRequest(draft)).toBeNull();
-    expect(adHocReady(draft)).toBe(false);
+  it('refuses to build a request with no store at all', () => {
+    // There is no anonymous option to fall back on any more (D24), so an
+    // untouched form has no answer rather than a default one.
+    expect(adHocRequest(EMPTY_AD_HOC_DRAFT)).toBeNull();
+    expect(adHocReady(EMPTY_AD_HOC_DRAFT)).toBe(false);
   });
 
   it('never sends donorId and donorLabel together', () => {
@@ -589,60 +632,63 @@ describe('what the flag sends (D8, I14)', () => {
     for (const store of [
       { kind: 'master', donorId: 'donor-9' } as const,
       { kind: 'label', donorLabel: 'The bakery on 5th' } as const,
-      { kind: 'anon' } as const,
     ]) {
-      const request = adHocRequest({ store, categoryId: 'cat-1', note: '' })!;
+      const request = adHocRequest({ store, note: '' })!;
       const named = [request.donorId, request.donorLabel].filter((v) => v != null);
-      expect(named.length).toBeLessThanOrEqual(1);
+      expect(named.length).toBe(1);
     }
   });
 
-  it('treats "no name for it" as a complete answer and a blank typed name as not', () => {
-    // Anonymous is a legitimate third source (`donor_id` and `donor_label` both
-    // null → ANON). An empty "Somewhere else" box is just an unfinished form.
-    expect(adHocReady({ store: { kind: 'anon' }, categoryId: 'cat-1', note: '' })).toBe(true);
+  it('requires a typed name under "Other", and says so where the box is', () => {
+    // The honest consequence of D24: with the anonymous row gone, a blank "Other"
+    // is an unfinished form and there is no third answer that would complete it.
+    const blank = { store: { kind: 'label', donorLabel: '   ' } as const, note: '' };
+    expect(adHocReady(blank)).toBe(false);
+    expect(adHocStoreProblem(blank)).toBe(COPY.flagOtherStoreRequired);
+
+    const typed = { store: { kind: 'label', donorLabel: 'The bakery on 5th' } as const, note: '' };
+    expect(adHocReady(typed)).toBe(true);
+    expect(adHocStoreProblem(typed)).toBeNull();
+  });
+
+  it('says nothing about a store that has simply not been picked yet (D21)', () => {
+    // An empty radio group already shows that. Only "Other" with an empty box has
+    // something a driver could not work out from the control.
+    expect(adHocStoreProblem(EMPTY_AD_HOC_DRAFT)).toBeNull();
     expect(
-      adHocReady({ store: { kind: 'label', donorLabel: '   ' }, categoryId: 'cat-1', note: '' }),
-    ).toBe(false);
+      adHocStoreProblem({ store: { kind: 'master', donorId: 'donor-9' }, note: '' }),
+    ).toBeNull();
   });
 
   it('trims the typed name and the note, and drops an empty note entirely', () => {
     expect(
       adHocRequest({
         store: { kind: 'label', donorLabel: '  The bakery on 5th ' },
-        categoryId: 'cat-1',
         note: '  two trays  ',
       }),
-    ).toEqual({ donorLabel: 'The bakery on 5th', categoryId: 'cat-1', note: 'two trays' });
+    ).toEqual({ donorLabel: 'The bakery on 5th', note: 'two trays' });
 
     expect(
-      Object.keys(adHocRequest({ store: { kind: 'anon' }, categoryId: 'cat-1', note: '   ' })!),
-    ).toEqual(['categoryId']);
-  });
-
-  it('starts empty and unsendable', () => {
-    expect(adHocReady(EMPTY_AD_HOC_DRAFT)).toBe(false);
+      Object.keys(adHocRequest({ store: { kind: 'master', donorId: 'donor-9' }, note: '   ' })!),
+    ).toEqual(['donorId']);
   });
 });
 
 describe('what a flagged pickup looks like afterwards', () => {
-  it('reads as a store and a kind of food, never as a stop', () => {
+  it('reads as a store, never as a stop', () => {
     // I14: a driver-add writes no ShiftStop. It has no position, no disposition
     // and nothing to check off, so it must not be rendered as a row of the list.
     const line = flaggedLine(donation());
     expect(line).toContain('The bakery on 5th');
-    expect(line).toContain('Bakery');
     for (const disposition of SHIFTSTOP_DISPOSITIONS) {
       expect(line).not.toContain(stopStatusLabel(disposition));
     }
   });
 
-  it('uses the server "unattributed" display for an anonymous pickup', () => {
-    expect(
-      flaggedLine(
-        donation({ source: 'ANON', donorId: null, donorDisplay: 'Unattributed donation' }),
-      ),
-    ).toContain('Unattributed');
+  it('names no category, because the driver did not pick one (D24)', () => {
+    // The row is SUGGESTED and its category is still null until the receiver
+    // confirms it. A line naming one would be inventing an answer.
+    expect(flaggedLine(donation({ categoryName: 'Bakery' }))).not.toContain('Bakery');
   });
 
   it('tells the I29 refusal apart from every other failure', () => {
@@ -872,24 +918,48 @@ describe('microcopy', () => {
     }
   });
 
-  it('never says the run is over', () => {
-    // `pickup_completed_at` is a handoff signal, not a completion (I27), and a
-    // Phase-1 run stays IN_PROGRESS forever (D1). The one sentence about a
-    // finished run is the COMPLETED branch, which Phase 1 cannot reach.
-    const handoff = [
-      COPY.headingBack,
-      COPY.headingBackToast,
-      COPY.reviewTitle,
-      COPY.reviewAgain,
-      COPY.reviewIntro,
-      COPY.confirmHeadingBack,
-      COPY.confirmedTitle,
-      COPY.runNoteHint,
+  it('completes the driver\'s run and never the shift (D23)', () => {
+    // D23 is a deliberate choice, taken as asked: the human wanted "Complete this
+    // run" even though `pickup_completed_at` completes nothing. So the word is
+    // allowed here, and the boundary moved rather than disappearing. What no
+    // sentence may claim is that the FOOD is finished with — I11 (locked) makes
+    // the receiver's receive-done the only completion and I12 holds COMPLETED
+    // behind every stop being WEIGHED, neither of which a driver can do.
+    expect(COPY.completeRun).toBe('Complete this run');
+
+    const completion = [
+      COPY.completeRun,
+      COPY.completeQuestion,
+      COPY.completeConsequence,
+      COPY.completeConfirm,
+      COPY.completeToast,
+      COPY.completedTitle,
+      COPY.completedNoteLabel,
+      COPY.summaryNoFlag,
     ];
-    for (const sentence of handoff) {
-      expect(sentence).not.toMatch(/\b(run|it) is (over|done|finished|complete)/i);
-      expect(sentence).not.toMatch(/\b(finish|complete|clos(e|ing))\s+(the\s+|your\s+)?run\b/i);
+    for (const sentence of completion) {
+      expect(sentence).not.toMatch(/weighed|reported|logged with the food bank/i);
+      expect(sentence).not.toMatch(/\b(shift|pickup) is (over|done|finished|complete)/i);
     }
+
+    // And the copy still says whose job the rest is, in the one place a driver
+    // reads before confirming.
+    expect(COPY.completeConsequence.toLowerCase()).toContain('pantry');
+  });
+
+  it('says out loud what the read-only summary takes away (D23)', () => {
+    // The cost of "no actions": the flag goes with everything else. A driver who
+    // remembers an extra pickup has to be told to use a phone, not left hunting
+    // for a button that is gone.
+    expect(COPY.summaryNoFlag.toLowerCase()).toContain('phone');
+    expect(COPY.summaryNoFlag.toLowerCase()).toContain('pantry');
+  });
+
+  it('keeps a way off the read-only summary (D23)', () => {
+    // S1.5 is `fullScreen: true`: no nav, no top bar. "Nothing tappable" is a rule
+    // about the RUN, and a later reader tidying this screen must not take the exit
+    // with it — a driver re-opening a finished run would be left with browser Back.
+    expect(COPY.summaryLeave.trim()).not.toBe('');
   });
 
   it('never promises the pantry was told', () => {
@@ -924,6 +994,12 @@ describe('microcopy', () => {
     expect(COPY).not.toHaveProperty('flagAdHocHint');
     expect(COPY).not.toHaveProperty('flagNoteHint');
     expect(COPY).not.toHaveProperty('flaggedListHint');
+    // D25 and the D24 sweep: an intro that restated the screen's own title, a
+    // "last chance" line over a note field the confirm already explains, and a
+    // hint under "Other" that only said what "Other" says.
+    expect(COPY).not.toHaveProperty('flagIntro');
+    expect(COPY).not.toHaveProperty('runNoteHint');
+    expect(COPY).not.toHaveProperty('flagOtherStoreHint');
 
     // Kept: a consequence, and a fact about where data went.
     expect(COPY.skipConsequence.length).toBeGreaterThan(0);
@@ -937,9 +1013,31 @@ describe('microcopy', () => {
     for (const sentence of sentences) {
       expect(sentence).not.toMatch(/\blbs?\b|\bpounds?\b|\bweigh (it|this) (in|now)\b/i);
     }
-    // And the copy says whose job it is instead.
-    expect(COPY.flagIntro.toLowerCase()).toContain('pantry');
-    expect(COPY.flagIntro.toLowerCase()).toContain('weigh');
+    // And the copy says whose job it is instead. D21 deleted the intro paragraph
+    // that used to carry this; the success toast says it at the moment it matters.
+    expect(COPY.flagSuccess.toLowerCase()).toContain('pantry');
+    expect(COPY.flagSuccess.toLowerCase()).toContain('weigh');
+  });
+
+  it('never asks the driver for a category either (D24)', () => {
+    // The picker is gone, and so is every sentence that framed one. The receiver
+    // picks the category at S2.3, where it is required.
+    expect(COPY).not.toHaveProperty('flagCategoryLabel');
+    expect(COPY).not.toHaveProperty('flagCategoryHint');
+    expect(COPY).not.toHaveProperty('flagNoCategories');
+    expect(COPY).not.toHaveProperty('flagNoCategoriesNext');
+    for (const sentence of sentences) {
+      expect(sentence).not.toMatch(/what kind of food/i);
+    }
+  });
+
+  it('offers no way to record a pickup from nowhere (D24)', () => {
+    // `ck_ud_i16b_source` permits an unattributed row only when it is not
+    // reportable, and a driver's flag is reportable by default (I15).
+    expect(COPY).not.toHaveProperty('flagNoStore');
+    expect(COPY.flagOtherStore).toBe('Other');
+    // Which makes the typed name mandatory, and the form says so where the box is.
+    expect(COPY.flagOtherStoreRequired.length).toBeGreaterThan(0);
   });
 
   it('says the flagged pickup is not a stop', () => {

@@ -39,7 +39,7 @@ import {
   KEYPAD_MAX_DIGITS,
   acceptKeypadValue,
   canSaveWeight,
-  entriesTotal,
+  drillTotals,
   entryDescription,
   entrySource,
   formatWeight,
@@ -51,14 +51,19 @@ import {
   reportableSavedText,
   weightError,
   weightWithUnit,
+  type DateRange,
 } from './report.ts';
 
 export interface DrillInProps {
-  /** The week being reported. Null means "the current pantry-local week", which
-   *  the server resolves — see `api.ts`. */
-  week: string | null;
+  /** The window being reported (D41). The entries under a category are scoped to
+   *  the same two dates the totals above them were computed over. */
+  range: DateRange;
   categoryId: string;
   categoryName: string;
+  /** What the line above reports for this category — NET of the trash deduction
+   *  since D27. Passed down so the panel can show the arithmetic rather than a
+   *  subtotal that silently disagrees with the number a few lines up. */
+  categoryTotal: string;
   /** Told when a write lands, so the week's totals above re-read. A revised
    *  weight moves `reportedTotal`; a flipped switch moves weight between
    *  `reportedTotal` and `unreportedTotal`, and both must change together. */
@@ -66,12 +71,19 @@ export interface DrillInProps {
   onClose: () => void;
 }
 
-export function DrillIn({ week, categoryId, categoryName, onChanged, onClose }: DrillInProps) {
+export function DrillIn({
+  range,
+  categoryId,
+  categoryName,
+  categoryTotal,
+  onChanged,
+  onClose,
+}: DrillInProps) {
   const toast = useToast();
 
   const load = useCallback(
-    (signal: AbortSignal) => fetchEntries(week, categoryId, signal),
-    [week, categoryId],
+    (signal: AbortSignal) => fetchEntries(range, categoryId, signal),
+    [range, categoryId],
   );
   const remote = useAsyncData<ReportEntry[]>(load);
 
@@ -114,11 +126,18 @@ export function DrillIn({ week, categoryId, categoryName, onChanged, onClose }: 
     setFailure(null);
     try {
       const trimmedNote = note.trim();
-      const list = await reviseWeight(entry.id, {
-        // The digits typed, never reparsed (A165).
-        weight: normalizeWeight(draft),
-        ...(trimmedNote === '' ? {} : { note: trimmedNote }),
-      });
+      const list = await reviseWeight(
+        entry.id,
+        {
+          // The digits typed, never reparsed (A165).
+          weight: normalizeWeight(draft),
+          ...(trimmedNote === '' ? {} : { note: trimmedNote }),
+        },
+        // The panel comes back scoped to the range on screen and to this category
+        // (D41). It used to come back as the whole week across every category, and
+        // render under this one's heading.
+        range,
+      );
       setRevised(list);
       closeEdit();
       toast.success(COPY.editSaved);
@@ -267,13 +286,14 @@ export function DrillIn({ week, categoryId, categoryName, onChanged, onClose }: 
 
           {/* The check a Reporter came here to make: what the rows add up to,
               against the line above. Exact (integer cents) or absent — never a
-              float, and never a total that is quietly short. */}
-          {entriesTotal(entries) !== null ? (
-            <p className="s31-drill__total">
-              <span>{COPY.drillTotalLabel}</span>
-              <span className="r3-numeric">{weightWithUnit(entriesTotal(entries) ?? '')}</span>
-            </p>
-          ) : null}
+              float, and never a total that is quietly short.
+
+              For a category the pantry deducts trash from (D27), the line above is
+              NET and these rows are what was weighed, so the two would differ by
+              the deduction with nothing saying why. Those three numbers are shown
+              in full instead. The nine categories with no rate keep the single
+              subtotal they always had. */}
+          <Totals entries={entries} categoryTotal={categoryTotal} />
         </>
       )}
 
@@ -281,5 +301,57 @@ export function DrillIn({ week, categoryId, categoryName, onChanged, onClose }: 
         {COPY.close}
       </Button>
     </div>
+  );
+}
+
+/**
+ * What the entries add up to, and, where the food bank line is net of a trash
+ * deduction, the two other numbers that make it add up (D27).
+ *
+ * The deduction is DERIVED BY SUBTRACTION in `drillTotals`, never recomputed from
+ * a rate: the rate lives on the store and is applied per receipt with a rounding
+ * order that is load-bearing (`domain-modeling.md §5.4`), so a second
+ * implementation here would be free to disagree with the very number it is
+ * explaining. Subtraction cannot.
+ */
+function Totals({
+  entries,
+  categoryTotal,
+}: {
+  entries: readonly ReportEntry[];
+  categoryTotal: string;
+}) {
+  const totals = drillTotals(entries, categoryTotal);
+
+  if (totals.deduction !== null) {
+    const { gross, deducted, net } = totals.deduction;
+    return (
+      <div className="s31-drill__totals">
+        <p className="s31-drill__line">
+          <span>{COPY.drillGrossLabel}</span>
+          <span className="r3-numeric">{weightWithUnit(gross)}</span>
+        </p>
+        <p className="s31-drill__line">
+          <span>{COPY.drillDeductLabel}</span>
+          {/* The minus is a mark on a number, not prose: it is what makes the
+              three lines read as a subtraction rather than as three unrelated
+              figures. */}
+          <span className="r3-numeric">{`− ${weightWithUnit(deducted)}`}</span>
+        </p>
+        <p className="s31-drill__total">
+          <span>{COPY.drillNetLabel}</span>
+          <span className="r3-numeric">{weightWithUnit(net)}</span>
+        </p>
+        <p className="s31-drill__note">{COPY.drillDeductNote}</p>
+      </div>
+    );
+  }
+
+  if (totals.shown === null) return null;
+  return (
+    <p className="s31-drill__total">
+      <span>{COPY.drillTotalLabel}</span>
+      <span className="r3-numeric">{weightWithUnit(totals.shown)}</span>
+    </p>
   );
 }

@@ -31,7 +31,30 @@
 
 ### 2.1 Entity catalog
 
-`User`, `Donor`, `Route`, `RouteStop`, `Shift`, `ShiftStop`, `Truck`, `AvailabilityBlock`, `RecurrencePattern`, `WeightEntry`, `UnscheduledDonation`, `Category`, `Notification`, plus `Duty` (fixed enum surfaced as an M:N). `Tier` is a single-valued enum attribute on `User`, not an entity.
+`User`, `Donor`, `Route`, `RouteStop`, `Shift`, `ShiftStop`, `Truck`, `AvailabilityBlock`, `RecurrencePattern`, `WeightEntry`, `UnscheduledDonation`, `Category`, `Notification`, `MealConnectSubmission`, plus `Duty` (fixed enum surfaced as an M:N). `Tier` is a single-valued enum attribute on `User`, not an entity.
+
+> **Addition of `MealConnectSubmission`, 2026-08-02, under explicit human authorization (`D35`).**
+> Recorded in the style of the `I27` amendment of 2026-07-28 and the `D24` amendment below. This
+> doc is locked; only a human may authorize a change, and this one was authorized on the date
+> shown.
+>
+> The entity records **that a receipt was filed at Meal Connect** — North Texas Food Bank's own web
+> form, which has no import (`D13`) and takes one submission at a time. It is not a weight, not a
+> correction, and it changes no total: removing every row would leave every figure R3 reports
+> exactly as it was. It exists because a reporter working through a fortnight of receipts needs to
+> know which are already in, and because a *second* reporter needs to see the same answer.
+>
+> Identity is **`(pickup date, Donor)`** — the same grain as the receipt itself (`D29`), which is
+> the whole reason a composite key rather than a surrogate one: the key IS the claim, so "has this
+> store been filed for this day" has exactly one answer and two people cannot both be right.
+> Attributes are who filed it and when. There is no state machine; the row exists or it does not,
+> and deleting it is how a mistaken tick is taken back.
+>
+> **A receipt with no `Donor` cannot be filed.** A walk-in attributed to a free-text label
+> (`I16` clause b) has no donor row to key on. This is not a gap being deferred: Meal Connect's own
+> donor picker cannot be pointed at a store that is not one of theirs either, so a receipt R3
+> cannot key is also a receipt the portal cannot accept. The screen says so rather than offering a
+> control that would fail.
 
 ### 2.2 Cardinalities
 
@@ -56,6 +79,8 @@ Read as **left : right** (instances of left per one right ; instances of right p
 | `Shift` — context of — `UnscheduledDonation` | 0..1 : 0..N | Set if it arrived on a run; null for walk-in. |
 | `Donor` — attributed — `UnscheduledDonation` | 0..1 : 0..N | Optional; may instead be free-text label or null. |
 | `Category` — buckets — `UnscheduledDonation` | 1 : 0..N |  |
+| `Donor` — filed in — `MealConnectSubmission` | 1 : 0..N | One row per `(pickup date, Donor)`; a walk-in with only a free-text label has none (`D35`). |
+| `User` — files — `MealConnectSubmission` | 1 : 0..N | Who told the food bank, not who weighed it. |
 
 **Provenance (attribute references, not first-class relationships):** `WeightEntry`, `UnscheduledDonation`, and `Shift` each reference a `User` as `created_by` and `updated_by` (last-writer only).
 
@@ -78,17 +103,42 @@ Read as **left : right** (instances of left per one right ; instances of right p
 | :---- | :---- |
 | `Shift` | 0..1. Set when it arrived on a run; null for a true walk-in. |
 | `Donor` | FK to master `Donor`, **or** free-text label, **or** null (anonymous). Free-text never auto-creates a master Donor. |
-| `Category` | required |
+| `Category` | null while `SUGGESTED`; required once `CONFIRMED`. *(Amended by `D24`, 2026-08-02 — see the note below.)* |
 | `weight` | null while `SUGGESTED`; required once `CONFIRMED`. |
 | `reportable` | default ON. Receiver-editable in window, then Reporter only. |
 | `status` | `SUGGESTED → CONFIRMED`. A `SUGGESTED` row only ever comes from a driver-add. |
 | `note` | optional. |
+
+> **Amendment to `Category`, 2026-08-02, under explicit human authorization (`D24`).** This field
+> read **`required`** from the beginning, with no `SUGGESTED` exemption. It now matches `weight`:
+> null while `SUGGESTED`, required once `CONFIRMED`.
+>
+> **Why it was wrong.** A `SUGGESTED` row is created by a driver flagging an ad-hoc pickup from
+> the roadside. A driver cannot know which category the food belongs in, and sorting it is not
+> their job — the receiver does that when they weigh it. Requiring the category at creation
+> forced the driver to guess, and a guess stored in a column the food bank eventually reads is
+> worse than an honest null.
+>
+> **What it repairs.** `ui-ux-spec.md §S1.5` always said the driver's control was "just a donor
+> picker … no weight entry". `D8` had to overrule that sentence, on authority order alone, purely
+> because this line said `required`. With the amendment the UI spec's original sentence is true
+> again: **the lower-authority doc was right all along**, and the conflict is resolved in its
+> favour rather than against it. `D8` is superseded.
+>
+> **Blast radius: none in reporting.** Report and metrics union `CONFIRMED` rows only, which
+> still carry a category. Enforced as tier 1 — `ck_ud_confirmed_category` (migration 0015),
+> stated as I16(c).
+>
+> Recorded in the style of the `I27` amendment of 2026-07-28. This doc is locked; only a human
+> may authorize a change to it, and one did.
 
 **On-route donor guard.** If an `UnscheduledDonation` has a non-null `Shift`, its `Donor` must **not** already be a `ShiftStop` of that Shift. More food from a scheduled stop is additional `WeightEntry` rows (the grain already allows many per `(Shift, Donor, Category)`), not an unscheduled donation. Keeps planned/unplanned structurally disjoint (I29).
 
 **WeightEntry and UnscheduledDonation are peers, not nested.** Both are weight records sharing a *grain* (donor-or-label, category, weight, day, reportable). An `UnscheduledDonation` is itself a weight record — it does **not** contain or reference a `WeightEntry`, and an unscheduled donation is still weighed and bucketed into a `Category` exactly like a scheduled one. Report and metrics **union** the two entities; they never nest. The shared shape is realized as a reporting view, not a shared entity (→ reporting doc).
 
 **Notes — four channels (PRD cap 11).** `Shift.note` = one run-level note, driver-authored (remarks about the whole run). `Shift.staff_note` = coordinator→driver, staff-authored, shown on the driver's shift detail — distinct field, distinct author, not a reuse of `Shift.note`. `ShiftStop.note` = driver→receiver, one per stop (this store visit specifically), driver-authored, surfaced to the receiver at weight entry. `Donor.note` = admin's permanent per-store note, receiver/driver-visible, not tied to any one shift. Plus per-row `note` on both `WeightEntry` and `UnscheduledDonation` (receipt-level remarks, distinct from all four above).
+
+**Donor and Category carry the trash-deduction settings (`D27`, 2026-08-02).** `Donor` has three optional rates — bakery, produce, deli — where **null means "use the pantry-wide default", which is not the same as zero**: a store that genuinely wastes nothing is an explicit `0`, and clearing the field must not be mistaken for it. `Category` carries a `trash_rate_key` naming which of the three rates applies to it, or none. The key is an attribute rather than a match on the category's *name* because the soft-delete rule above allows an admin to rename a category freely, and a name match would stop deducting the moment they did, silently and in a number that leaves the building. The arithmetic itself is §5.4.
 
 **Availability — whole-person, time-only.** No route scope. Eligibility is a pure time-overlap test.
 
@@ -212,7 +262,7 @@ One shared entity advanced by **two actors in sequence**: the driver during the 
 - **I13** WeightEntry is keyed (Shift, Donor, Category), has no ShiftStop FK, and is append-only. Weight rows are immutable; corrections are void-old + insert-new. Voided rows are retained but excluded from every sum/derivation; totals are SUM(non-voided)-on-read, never stored.
 - **I14** Planned intake → WeightEntry. Unplanned intake → UnscheduledDonation. A driver-add never creates a ShiftStop row.
 - **I15** scheduled ⇒ reportable (one-way): every WeightEntry is reportable and needs no flag. Only UnscheduledDonation carries a reportable flag (default ON); unscheduled does NOT imply reportable (store-call = ON, walk-in = OFF).
-- **I16** Two clauses, deliberately separate: (a) CONFIRMED ⇒ weight non-null, unconditionally — metrics union every CONFIRMED row regardless of `reportable`, so a weightless one would corrupt the total; (b) CONFIRMED ∧ reportable=true ⇒ source (Donor FK or donor_label) non-null — NTFB needs an attributable store, an unreported walk-in does not.
+- **I16** Three clauses, deliberately separate: (a) CONFIRMED ⇒ weight non-null, unconditionally — metrics union every CONFIRMED row regardless of `reportable`, so a weightless one would corrupt the total; (b) CONFIRMED ∧ reportable=true ⇒ source (Donor FK or donor_label) non-null — NTFB needs an attributable store, an unreported walk-in does not; (c) CONFIRMED ⇒ Category non-null — *(added under human authorization 2026-08-02, `D24`; see §2.3)*. A `SUGGESTED` row may carry none, because the driver who flagged it cannot know the category and the receiver picks it at confirm time.
 - **I17** A SUGGESTED UnscheduledDonation originates only from a driver-add; unconfirmed SUGGESTED rows are deleted at that shift's receive-done (inline, in that transaction) or, for shifts never received against, by the daily sweep once the edit window has expired.
 - **I18** WeightEntry and UnscheduledDonation are peer weight records; neither references the other. Report/metrics union them, never nest.
 
@@ -372,6 +422,72 @@ bulk-terminate staff-only: CANCELLED (terminal) on instances in [from, to]; patt
 ```
 
 (See invariants I23–I25.)
+
+### 5.4 Trash deduction
+
+*Added 2026-08-02 under human authorization, alongside the `D27` decision. The rule is the
+pantry's own, taken off their paper Retail Rescue Log and reconciled against a completed sheet.*
+
+A share of the bakery, produce and deli weight from any store is spoiled and never reaches a
+client. NTFB wants that share reported as its own **Trash** category rather than left inside the
+food categories. The pantry has always done this arithmetic by hand at the bottom of the paper
+sheet; this is the same calculation.
+
+**Grain: one receipt, meaning one `(pickup date, donor)` pair.** Not a week, and not a line item.
+
+```
+for S in { BAKERY, PRODUCE, DELI }:                  # from Category.trash_rate_key
+    gross_S  = round(Σ reportable weight for this (day, donor, S))
+    rate_S   = donor.trash_rate_S ?? app_config.trash_rate_S
+    deduct_S = round(gross_S × rate_S)
+    net_S    = gross_S − deduct_S
+
+trash = deduct_BAKERY + deduct_PRODUCE + deduct_DELI      # reported as NTFB "Trash", storage Dry
+```
+
+**The rounding order is load-bearing and must not be "simplified".** Round the gross first, then
+compute and round the deduction, then subtract. Doing it in any other order leaves a column that
+does not close, and the pantry checks these against a paper sheet by eye. Worked example from a
+real sheet (Sam's, produce overridden to 10%): bakery 827 → −83 → 744; produce 3691 → −369 →
+3322; deli 53 → −8 → 45; trash = 460.
+
+**`gross_S` is the sum of the ROUNDED per-category lines, not a rounding of the raw sum.** These
+differ only when more than one Category shares a rate key, which `uq_category_trash_key` allows
+solely for an archived category still carrying weight beside its active replacement. The
+per-category rounding is correct in that case, because each Category is its own line on the
+receipt and the deduction has to reconcile against the lines actually printed, not against a
+figure that appears nowhere.
+
+**Which categories are deducted is data** — `Category.trash_rate_key` — never a match on the
+literal name `Bakery`. I21 lets an admin rename a category, and a name match would silently stop
+deducting the moment they did.
+
+**Deli only.** `Frz Non Meat` reports in full even though it shares the *Prepared Meal* NTFB
+bucket with Deli. The key is on the AGFP category, which expresses that directly.
+
+**Conservation — the property that makes this safe to change:**
+
+```
+net_BAKERY + net_PRODUCE + net_DELI + trash  ==  gross_BAKERY + gross_PRODUCE + gross_DELI
+```
+
+The deduction **moves** weight between categories and never changes the reported total, because
+Trash is itself a reported NTFB category. Any implementation that breaks this equality is wrong,
+and it is asserted directly as a test rather than assumed.
+
+**Metrics are exempt.** S3.2 reports **gross** intake. The deduction is a food-bank reporting
+convention, not a claim about how much food the pantry moved, and conflating the two would
+understate the pantry's own work by roughly a tenth. This split is deliberate.
+
+**No Trash category ⇒ no deduction.** If the NTFB `Trash` category is missing or archived, the
+deduction is skipped entirely and everything reports gross. Deducting with nowhere to put the
+result would **delete** pounds rather than move them, which is the one outcome worse than not
+deducting at all. Conservation then holds trivially.
+
+**One implementation, not one per reader.** The weekly report and the printed receipt are two
+views of the same pounds, and a submission that does not match the screen it was read off is the
+failure this system exists to end. Both roll up from a single function, so a disagreement between
+them is unrepresentable rather than merely tested for (`architecture.md §4.1`).
 
 ---
 

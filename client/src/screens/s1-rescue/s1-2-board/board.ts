@@ -40,6 +40,12 @@ export const COPY = {
   /** S1.2, verbatim: header "Pickup runs". */
   header: 'Pickup runs',
 
+  /** D30's tab row. "Board" is the word the nav and the notification copy already
+   *  use ("Tap to see it on the board."), so the tab is not new vocabulary. */
+  tabsLabel: 'The board and my own runs',
+  tabBoard: 'Board',
+  tabMine: 'My shifts',
+
   /** The segmented control — S1.2: "a simple segmented control: All · Open · Mine". */
   filterLabel: 'Which runs',
   filterAll: 'All',
@@ -103,6 +109,55 @@ export const COPY = {
     return claimRefusedMessage(eligibility);
   },
 } as const;
+
+// ---------------------------------------------------------------------------
+// The tabs (D30)
+//
+// S1.4 My shifts had exactly one way in — its nav entry — and D30 takes that entry
+// away rather than let a driver carry two nav items for one job. So the board grows
+// the second half: the run board a driver opens to find work, and their own runs and
+// time away, one tap apart instead of in two places. Its own route survives
+// (`app/routes.ts`), because a bookmark and the Home card both still point at it.
+//
+// SAME PATTERN AS S1.8, deliberately: the tab lives in the URL under `?tab=`, so
+// "your runs are under My shifts" is a link someone can send and a reload lands
+// where it left off. `logic.ts` in `s1-8-admin/` is where that reasoning was first
+// written down; this is the second screen to need it and not a second answer to it.
+// ---------------------------------------------------------------------------
+
+export type BoardTab = 'board' | 'mine';
+
+export const BOARD_TABS: readonly { value: BoardTab; label: string }[] = [
+  { value: 'board', label: COPY.tabBoard },
+  { value: 'mine', label: COPY.tabMine },
+];
+
+/** What `/board` shows when the URL names no tab: the run board. It is what a
+ *  driver opens without a specific record in mind — the same reading D18 made for
+ *  S1.8's Metrics. */
+export const DEFAULT_BOARD_TAB: BoardTab = 'board';
+
+/** The query key the tab lives under. Matches S1.8's `PANEL_QUERY_KEY` so the two
+ *  screens spell one idea one way. */
+export const BOARD_TAB_QUERY_KEY = 'tab';
+
+/**
+ * Which tab a URL asks for.
+ *
+ * An unknown or absent value is the default rather than an error: a stale bookmark
+ * should land somewhere useful, not on a 404 (S1.8's rule, unchanged).
+ *
+ * `canDrive` collapses it. A staff coordinator who does not drive is offered no tab
+ * row at all — one tab is noise — so a `?tab=mine` link forwarded to them resolves
+ * to the board rather than to a panel with nothing in it. Duty is set membership,
+ * never implied by a tier (I2), and the server refuses S1.4's own routes again; this
+ * is communication (`architecture.md §4.5`).
+ */
+export function boardTabFromQuery(value: string | undefined, canDrive: boolean): BoardTab {
+  if (!canDrive) return DEFAULT_BOARD_TAB;
+  const known = BOARD_TABS.find((tab) => tab.value === value);
+  return known ? known.value : DEFAULT_BOARD_TAB;
+}
 
 // ---------------------------------------------------------------------------
 // Calendar slots

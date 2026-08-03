@@ -31,10 +31,10 @@ import {
   mapLinkFor,
   photoAlt,
   photoUrlFor,
-  stopStatusLabel,
   stopToggleLabel,
   type StopPlace,
 } from './logic.ts';
+import { StopStatusChip } from './StopStatusChip.tsx';
 
 export interface StopCardProps {
   stop: RunStopSummary;
@@ -123,7 +123,12 @@ export function StopCard({
           {number}
         </span>
         <span className="r3-stop__name">{stop.donorName}</span>
-        <span className="r3-stop__status">{stopStatusLabel(stop.disposition)}</span>
+        {/* §3's status pill, not grey text: "what is left" is the question this
+            list answers, and a to-do stop has to win the row at a glance. The
+            word is inside the chip, so colour is never the only signal (§2). */}
+        <span className="r3-stop__status">
+          <StopStatusChip disposition={stop.disposition} />
+        </span>
         <ChevronRightIcon className="r3-stop__chevron" size="1.25em" />
       </button>
 

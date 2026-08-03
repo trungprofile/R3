@@ -26,6 +26,11 @@
 // feeds the food-bank report (A165).
 
 import { toApiError } from '../../../../api/index.ts';
+// D39 — the week boundary is IMPORTED, never re-derived. S3.1 cuts its report on
+// it (A178), S1.2's board defaults to it, and now so does this screen; three
+// copies of "which Monday" is three chances for two screens to disagree about
+// what "this week" means while an admin has both open.
+import { weekEndOf, weekStartOf } from '../../../../app/week.ts';
 import type {
   CoverageFailure,
   CoverageMetrics,
@@ -80,13 +85,27 @@ export function weightAsNumber(value: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// The period, shared by both tabs
+// The period, shared by both tabs (D39 — which ANSWERS A179)
 //
-// A179: the metrics default to the last 28 days, which is what BOTH endpoints
-// return when no dates are named. Four whole weeks lines up with a weekly report
-// cycle and makes the previous-period comparison a like-for-like four weeks rather
-// than a ragged month. The presets are therefore whole numbers of weeks, so that
-// comparison stays like-for-like whichever one is chosen.
+// A179 recorded the 28-day default as a GUESS the docs never settled: four whole
+// weeks, chosen so the previous-period comparison would be like-for-like rather
+// than a ragged month, with three presets (1 / 4 / 12 weeks) behind a segmented
+// control. **D39 answers it.** The default is now THIS WEEK — the same
+// Monday-to-Sunday week S3.1 reports on (A178) and S1.2's board opens on — and the
+// presets are gone in favour of two date fields, because an admin who wants four
+// weeks can now say so exactly and an admin who wants three days no longer cannot.
+//
+// `services/metrics.ts` moved its own 28-day fallback at the same time, so the
+// first paint here matches what the server would have chosen on its own. If the
+// two ever drift, the screen shows one window and labels it with another.
+//
+// WHAT SURVIVED, and it is the load-bearing half: a period is still held and
+// stepped as a LENGTH, not as a "last N". `periodFor` takes a number of days, and
+// Earlier/Later move by the window's OWN length so consecutive views are adjacent
+// and non-overlapping — the same relationship `previousIntake` is measured
+// against, one screen up. A seven-day window therefore compares against the seven
+// days before it, which is exactly the like-for-like property A179 wanted; what is
+// lost is the four-week default's smoothing, and that is the trade.
 //
 // Every date here is a `YYYY-MM-DD` PANTRY-LOCAL calendar slot, the same frame
 // `occurrenceDate` is stated in — never an instant. The screen gets today from
@@ -98,30 +117,6 @@ export interface Period {
   from: string;
   to: string;
 }
-
-/** Segmented values are strings, so the preset id is the day count as text. */
-export type PeriodPresetId = '7' | '28' | '84';
-
-export interface PeriodPreset {
-  value: PeriodPresetId;
-  label: string;
-  days: number;
-}
-
-/**
- * How long a period is — a LENGTH, not a "last N", because the Earlier/Later
- * buttons move the window while the length stays put. Labelling these "Last 4
- * weeks" would go quietly false the moment someone stepped back a month.
- */
-export const PERIOD_PRESETS: readonly PeriodPreset[] = [
-  { value: '7', label: '1 week', days: 7 },
-  { value: '28', label: '4 weeks', days: 28 },
-  { value: '84', label: '12 weeks', days: 84 },
-];
-
-/** A179 — and the same 28 days `services/metrics.ts` falls back to, so the first
- *  paint matches what the server would have chosen on its own. */
-export const DEFAULT_PERIOD_DAYS = 28;
 
 const MONTHS = [
   'January',
@@ -172,15 +167,58 @@ export function periodFor(today: string, days: number, stepsBack: number = 0): P
   return { from: addDays(to, -(days - 1)), to };
 }
 
-/** Later than today is a period with no data in it, so the button is not offered. */
-export function canGoLater(stepsBack: number): boolean {
-  return stepsBack > 0;
+/**
+ * What the screen opens on: THIS WEEK, Monday to Sunday (D39, answering A179).
+ *
+ * The same boundary S3.1's report is cut on and S1.2's board defaults to, from
+ * the same `app/week.ts` helper, so an admin with the report open in one tab and
+ * the metrics in another cannot be shown two different weeks under one word.
+ */
+export function defaultPeriod(today: string): Period {
+  const from = weekStartOf(today);
+  return { from, to: weekEndOf(from) };
 }
 
-/** The preset whose length matches, or null for a period that came from somewhere
- *  else. Only ever null defensively — the screen's own state is a preset. */
-export function presetForDays(days: number): PeriodPreset | null {
-  return PERIOD_PRESETS.find((preset) => preset.days === days) ?? null;
+/** How many days a window covers, inclusive. This is what Earlier/Later step by
+ *  (D39): the window's OWN length, so consecutive views are adjacent and
+ *  non-overlapping, which is the relationship `previousIntake` measures against. */
+export function periodLength(period: Period): number {
+  const from = parseCalendarDate(period.from).getTime();
+  const to = parseCalendarDate(period.to).getTime();
+  if (Number.isNaN(from) || Number.isNaN(to)) return 1;
+  return Math.round((to - from) / 86_400_000) + 1;
+}
+
+/** The window moved whole lengths of itself. Negative steps go later. */
+export function stepPeriod(period: Period, steps: number): Period {
+  const days = periodLength(period) * steps;
+  return { from: addDays(period.from, days), to: addDays(period.to, days) };
+}
+
+/** Later than today is a period with no data in it, so the button is not offered.
+ *  Read off the window itself now that there is no step counter to consult. */
+export function canGoLater(period: Period, today: string): boolean {
+  return period.to < today;
+}
+
+/** Whether the two fields describe a window the server will take. Communication
+ *  only — `services/metrics.ts` parses both dates itself — and it exists so an
+ *  admin sees the typo beside the fields rather than in an empty table. */
+export function periodError(period: Period): string | null {
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (!iso.test(period.from) || !iso.test(period.to)) return COPY.period.incomplete;
+  return period.from > period.to ? COPY.period.backwards : null;
+}
+
+export function isValidPeriod(period: Period): boolean {
+  return periodError(period) === null;
+}
+
+/** True when the window IS the current Monday-to-Sunday week, which is what lets
+ *  the screen offer "This week" only when it would change something. */
+export function isThisWeek(period: Period, today: string): boolean {
+  const current = defaultPeriod(today);
+  return period.from === current.from && period.to === current.to;
 }
 
 /**
@@ -633,13 +671,21 @@ export const COPY = {
   tabsLabel: 'Intake and missed runs',
 
   period: {
-    label: 'How long a period',
-    heading: 'Period',
+    /** D39 — the segmented row of "1 week / 4 weeks / 12 weeks" is gone and so is
+     *  the sentence that labelled it. Two date fields say what they are. */
+    label: 'Which dates',
+    heading: 'Dates',
+    from: 'From',
+    to: 'To',
+    thisWeek: 'This week',
+    incomplete: 'Fill in both dates.',
+    backwards: 'The first date has to be on or before the second.',
     earlier: 'Earlier',
     later: 'Later',
-    /** Named for a screen reader, which hears the button out of its row. */
-    earlierAria: 'Show the period before this one',
-    laterAria: 'Show the period after this one',
+    /** Named for a screen reader, which hears the button out of its row. Both
+     *  step by the window's own length, which is why neither names a number. */
+    earlierAria: 'Show the dates before these',
+    laterAria: 'Show the dates after these',
   },
 
   intake: {
@@ -649,7 +695,7 @@ export const COPY = {
     lede: 'Every pound R3 recorded, and how much of it goes to the food bank. The two are different numbers.',
     loading: 'Loading intake',
     emptyTitle: 'Nothing was recorded in this period.',
-    emptyBody: 'Try a longer period, or step back to one where runs had been weighed.',
+    emptyBody: 'Try a wider range of dates, or step back to one where runs had been weighed.',
 
     colStore: 'Store',
     colIntake: 'Total rescued',
@@ -716,7 +762,7 @@ export const COPY = {
     emptyTitle: 'No missed runs in this period.',
     emptyBody: 'Every run was taken and started. A run staff cancelled is not counted here.',
     emptyFilteredTitle: 'No missed runs match these filters.',
-    emptyFilteredBody: 'Widen the filters, or step back to an earlier period.',
+    emptyFilteredBody: 'Widen the filters, or step back to earlier dates.',
 
     export: 'Download these runs',
   },

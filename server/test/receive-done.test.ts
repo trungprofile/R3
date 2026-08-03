@@ -162,7 +162,6 @@ describe('the I17 purge', () => {
     const offRoute = await makeDonor('Corner Market');
     await flagAdHoc({ id: ownerId }, shift.id, {
       donorId: offRoute.id,
-      categoryId: category.id,
       note: 'two crates',
     });
 
@@ -181,13 +180,12 @@ describe('the I17 purge', () => {
   it('leaves CONFIRMED donations alone — those are intake, not a prefill', async () => {
     const { shift, stops, ownerId, actor, category } = await run(1);
     const offRoute = await makeDonor('Corner Market');
-    const flagged = await flagAdHoc({ id: ownerId }, shift.id, {
-      donorId: offRoute.id,
-      categoryId: category.id,
-    });
+    const flagged = await flagAdHoc({ id: ownerId }, shift.id, { donorId: offRoute.id });
     await db
       .updateTable('unscheduled_donation')
-      .set({ status: 'CONFIRMED', weight: '40' })
+      // `category_id` travels with the status: `ck_ud_confirmed_category` (D24)
+      // refuses a CONFIRMED row without one, which is the point of the constraint.
+      .set({ status: 'CONFIRMED', weight: '40', category_id: category.id })
       .where('id', '=', flagged.id)
       .execute();
 

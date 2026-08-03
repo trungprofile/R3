@@ -4,31 +4,35 @@
 // are both rules rather than taste:
 //
 //   1. §1.1 allows exactly ONE high-emphasis button per screen. The run screen
-//      already spends its primary on the focused stop, or on "Heading back" once
-//      no stop is pending. A form with a weak submit is worse than a form on its
-//      own screen, so this takes the screen the way `ReviewStep` does.
+//      already spends its primary on the focused stop, or on "Complete this run"
+//      once no stop is pending. A form with a weak submit is worse than a form on
+//      its own screen, so this takes the screen.
 //   2. The thing being recorded is NOT a stop (I14). Keeping it off the stop list
 //      structurally is easier to keep true than remembering not to render it there.
 //
-// WHAT IS NOT ON THIS SCREEN: a weight. The driver has no scale, so the row is
-// stored with `weight` null and the receiver supplies it at S2.3 (I16a requires a
-// weight only once the row is CONFIRMED).
+// WHAT IS NOT ON THIS SCREEN, and why:
 //
-// WHAT IS, despite S1.5's prose: a category. `ui-ux-spec.md:193` calls this "just a
-// donor picker … and an optional note", but `domain-modeling.md §2.3` (locked)
-// makes Category required on UnscheduledDonation with no SUGGESTED exemption, and
-// `data-model.md §7.2` stores `category_id NOT NULL`. The locked doc wins
-// (`CLAUDE.md` authority order); build-plan D8 records it and the escalation.
+//   - A weight. The driver has no scale, so the row is stored with `weight` null
+//     and the receiver supplies it at S2.3 (I16a requires a weight only once the
+//     row is CONFIRMED).
+//   - A category, since D24. It used to be here because `domain-modeling.md §2.3`
+//     required one on every UnscheduledDonation; that was amended under explicit
+//     human authorization so `category_id` is required on CONFIRMED only, and the
+//     receiver now picks it where the food is in front of them. Which incidentally
+//     makes `ui-ux-spec.md:193` — "just a donor picker … and an optional note" —
+//     true again after D8 had to overrule it.
+//   - An anonymous store. `ck_ud_i16b_source` allows an unattributed row only when
+//     it is not reportable, and a driver's flag is reportable by default (I15). So
+//     "Other" requires a typed name.
 //
-// Both pickers are columns of big visible options, never dropdowns (§1.5).
+// The picker is a column of big visible options, never a dropdown (§1.5).
 
 import { useState } from 'react';
 import { useAsyncData, useToast } from '../../../app/index.ts';
 import { Button, EmptyState, ErrorBlock, SkeletonRows, TextInput } from '../../../components/index.ts';
 import type { DonationSummary, RunDetail } from '../../../api/shared.ts';
-import { fetchCategories, fetchDonors, flagAdHocPickup } from './api.ts';
+import { fetchDonors, flagAdHocPickup } from './api.ts';
 import {
-  AD_HOC_ANON_CHOICE,
   AD_HOC_LABEL_CHOICE,
   COPY,
   EMPTY_AD_HOC_DRAFT,
@@ -36,9 +40,9 @@ import {
   adHocReady,
   adHocRequest,
   adHocStoreFor,
+  adHocStoreProblem,
   isOnRouteRefusal,
   messageFor,
-  selectableCategories,
   selectableDonors,
 } from './logic.ts';
 
@@ -82,11 +86,10 @@ function Choice({
 export function AdHocStep({ run, onFlagged, onClose }: AdHocStepProps) {
   const toast = useToast();
   const donors = useAsyncData(fetchDonors);
-  const categories = useAsyncData(fetchCategories);
 
   const [draft, setDraft] = useState(EMPTY_AD_HOC_DRAFT);
-  // Kept beside the draft so switching away from "Somewhere else" and back does
-  // not wipe what was typed.
+  // Kept beside the draft so switching away from "Other" and back does not wipe
+  // what was typed.
   const [typedLabel, setTypedLabel] = useState('');
   const [busy, setBusy] = useState(false);
   // I29's refusal belongs next to the picker that caused it, not in a toast that
@@ -94,8 +97,8 @@ export function AdHocStep({ run, onFlagged, onClose }: AdHocStepProps) {
   const [refusal, setRefusal] = useState<string | null>(null);
 
   const storeList = donors.data ? selectableDonors(donors.data, run.stops) : [];
-  const categoryList = categories.data ? selectableCategories(categories.data) : [];
   const choice = adHocChoiceOf(draft.store);
+  const storeProblem = adHocStoreProblem(draft);
 
   const pickStore = (value: string) => {
     setRefusal(null);
@@ -130,8 +133,8 @@ export function AdHocStep({ run, onFlagged, onClose }: AdHocStepProps) {
     }
   };
 
-  const loadError = donors.error ?? categories.error;
-  const loading = !donors.data && !categories.data && (donors.showLoading || categories.showLoading);
+  const loadError = donors.error;
+  const loading = !donors.data && donors.showLoading;
 
   return (
     <>
@@ -140,17 +143,7 @@ export function AdHocStep({ run, onFlagged, onClose }: AdHocStepProps) {
         <p className="r3-pickup__meta">{run.routeName}</p>
       </header>
 
-      <p className="r3-pickup__hint">{COPY.flagIntro}</p>
-
-      {loadError ? (
-        <ErrorBlock
-          error={loadError}
-          onRetry={() => {
-            donors.reload();
-            categories.reload();
-          }}
-        />
-      ) : null}
+      {loadError ? <ErrorBlock error={loadError} onRetry={donors.reload} /> : null}
       {!loadError && loading ? <SkeletonRows rows={3} /> : null}
 
       {/* --- Which store? -------------------------------------------------- */}
@@ -171,16 +164,13 @@ export function AdHocStep({ run, onFlagged, onClose }: AdHocStepProps) {
             onPick={() => pickStore(donor.id)}
           />
         ))}
+        {/* No hint (D21): "Other" beside a list of named stores says what it is,
+            and the only thing a driver could not work out — that it needs a name
+            typed in — is said by `storeProblem` at the box itself. */}
         <Choice
           chosen={choice === AD_HOC_LABEL_CHOICE}
           label={COPY.flagOtherStore}
-          hint={COPY.flagOtherStoreHint}
           onPick={() => pickStore(AD_HOC_LABEL_CHOICE)}
-        />
-        <Choice
-          chosen={choice === AD_HOC_ANON_CHOICE}
-          label={COPY.flagNoStore}
-          onPick={() => pickStore(AD_HOC_ANON_CHOICE)}
         />
       </div>
 
@@ -191,6 +181,11 @@ export function AdHocStep({ run, onFlagged, onClose }: AdHocStepProps) {
             value={typedLabel}
             onChange={typeLabel}
             disabled={busy}
+            // A hint rather than an error: nothing has gone wrong yet, and the
+            // driver has only just opened the box. It says the one thing the
+            // label cannot, which is why the submit below is dead (D21, D24), and
+            // it disappears the moment they type.
+            {...(storeProblem === null ? {} : { hint: storeProblem })}
           />
         </div>
       ) : null}
@@ -199,27 +194,6 @@ export function AdHocStep({ run, onFlagged, onClose }: AdHocStepProps) {
         <p className="r3-adhoc__refusal" role="alert">
           {refusal}
         </p>
-      ) : null}
-
-      {/* --- What kind of food? (D8) --------------------------------------- */}
-      <h2>{COPY.flagCategoryLabel}</h2>
-      <p className="r3-pickup__hint">{COPY.flagCategoryHint}</p>
-
-      {categories.data && categoryList.length === 0 ? (
-        <EmptyState title={COPY.flagNoCategories}>{COPY.flagNoCategoriesNext}</EmptyState>
-      ) : null}
-
-      {categoryList.length > 0 ? (
-        <div className="r3-truck-list" role="radiogroup" aria-label={COPY.flagCategoryLabel}>
-          {categoryList.map((category) => (
-            <Choice
-              key={category.id}
-              chosen={draft.categoryId === category.id}
-              label={category.name}
-              onPick={() => setDraft((current) => ({ ...current, categoryId: category.id }))}
-            />
-          ))}
-        </div>
       ) : null}
 
       <div className="r3-adhoc__note">

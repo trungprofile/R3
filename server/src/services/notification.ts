@@ -377,7 +377,13 @@ export function renderPush(notification: PendingNotification): PushMessage {
 
   switch (notification.event) {
     case 'SHIFT_ASSIGNED':
-      title = "You're on a run";
+      // D33 — the title names WHO put the driver on the run, because "you're on a
+      // run" left the one question a driver actually has unanswered. Same shape as
+      // UNAVAILABILITY_DECLARED below: `who` is optional on the payload, so the
+      // nameless form is the fallback rather than a second branch of copy. A run
+      // that defaults to a driver, or an older row enqueued before D33, still says
+      // something useful (§7, restated above).
+      title = who != null && who !== '' ? `${who} put you on a run` : "You're on a run";
       body = detail;
       break;
     case 'SHIFT_REMINDER':

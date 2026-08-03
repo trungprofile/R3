@@ -51,7 +51,6 @@ describe('the driver flag (S1.5, I14/I17)', () => {
 
     const donation = await flagAdHoc(driver, shift.id, {
       donorId: offRoute.id,
-      categoryId: category.id,
       note: 'two crates by the door',
     });
 
@@ -64,7 +63,7 @@ describe('the driver flag (S1.5, I14/I17)', () => {
 
   it('never writes a ShiftStop — the planned route stays pristine (I14)', async () => {
     const { shift, driver, category, offRoute, stops } = await scene();
-    await flagAdHoc(driver, shift.id, { donorId: offRoute.id, categoryId: category.id });
+    await flagAdHoc(driver, shift.id, { donorId: offRoute.id });
 
     const after = await db
       .selectFrom('shift_stop')
@@ -80,7 +79,6 @@ describe('the driver flag (S1.5, I14/I17)', () => {
     const { shift, driver, category, offRoute } = await scene();
     const donation = await flagAdHoc(driver, shift.id, {
       donorId: offRoute.id,
-      categoryId: category.id,
     });
     expect(donation.receivedDate).toBe('2026-08-04');
   });
@@ -89,7 +87,7 @@ describe('the driver flag (S1.5, I14/I17)', () => {
     const { shift, driver, category, donors } = await scene();
 
     await expect(
-      flagAdHoc(driver, shift.id, { donorId: donors[0]!.id, categoryId: category.id }),
+      flagAdHoc(driver, shift.id, { donorId: donors[0]!.id }),
     ).rejects.toThrow(/already a stop/i);
   });
 
@@ -97,7 +95,6 @@ describe('the driver flag (S1.5, I14/I17)', () => {
     const { shift, driver, category } = await scene();
     const donation = await flagAdHoc(driver, shift.id, {
       donorLabel: "Ruby's Bakery",
-      categoryId: category.id,
     });
 
     expect(donation.source).toBe('LABEL');
@@ -115,7 +112,6 @@ describe('the driver flag (S1.5, I14/I17)', () => {
       flagAdHoc(driver, shift.id, {
         donorId: offRoute.id,
         donorLabel: 'Also this',
-        categoryId: category.id,
       }),
     ).rejects.toThrow(/not both/i);
   });
@@ -123,7 +119,7 @@ describe('the driver flag (S1.5, I14/I17)', () => {
   it('is the driver own run only', async () => {
     const { shift, receiver, category, offRoute } = await scene();
     await expect(
-      flagAdHoc(receiver, shift.id, { donorId: offRoute.id, categoryId: category.id }),
+      flagAdHoc(receiver, shift.id, { donorId: offRoute.id }),
     ).rejects.toThrow(/not yours/i);
   });
 });
@@ -185,10 +181,12 @@ describe('confirming a prefill (SUGGESTED → CONFIRMED)', () => {
     const { shift, driver, receiver, category, offRoute } = await scene();
     const flagged = await flagAdHoc(driver, shift.id, {
       donorId: offRoute.id,
-      categoryId: category.id,
     });
 
-    const confirmed = await confirmDonation(receiver, flagged.id, { weight: '120' });
+    const confirmed = await confirmDonation(receiver, flagged.id, {
+      weight: '120',
+      categoryId: category.id,
+    });
 
     expect(confirmed.status).toBe('CONFIRMED');
     expect(confirmed.weight).toBe('120.00');
@@ -199,12 +197,12 @@ describe('confirming a prefill (SUGGESTED → CONFIRMED)', () => {
     const { shift, driver, receiver, category } = await scene();
     const flagged = await flagAdHoc(driver, shift.id, {
       donorLabel: 'the place on 5th',
-      categoryId: category.id,
     });
     const real = await makeDonor('Fifth Street Grocery');
 
     const confirmed = await confirmDonation(receiver, flagged.id, {
       weight: '30',
+      categoryId: category.id,
       donorId: real.id,
       donorLabel: null,
     });
@@ -217,12 +215,12 @@ describe('confirming a prefill (SUGGESTED → CONFIRMED)', () => {
     const { shift, driver, receiver, category, donors } = await scene();
     const flagged = await flagAdHoc(driver, shift.id, {
       donorLabel: 'unknown',
-      categoryId: category.id,
     });
 
     await expect(
       confirmDonation(receiver, flagged.id, {
         weight: '30',
+        categoryId: category.id,
         donorId: donors[0]!.id,
         donorLabel: null,
       }),
@@ -233,13 +231,12 @@ describe('confirming a prefill (SUGGESTED → CONFIRMED)', () => {
     const { shift, driver, receiver, category, offRoute } = await scene();
     const flagged = await flagAdHoc(driver, shift.id, {
       donorId: offRoute.id,
-      categoryId: category.id,
     });
 
-    await confirmDonation(receiver, flagged.id, { weight: '10' });
-    await expect(confirmDonation(receiver, flagged.id, { weight: '99' })).rejects.toThrow(
-      /already recorded/i,
-    );
+    await confirmDonation(receiver, flagged.id, { weight: '10', categoryId: category.id });
+    await expect(
+      confirmDonation(receiver, flagged.id, { weight: '99', categoryId: category.id }),
+    ).rejects.toThrow(/already recorded/i);
   });
 });
 
@@ -297,7 +294,6 @@ describe('the SUGGESTED lifecycle (I17)', () => {
     const { shift, driver, receiver, category, offRoute } = await scene();
     const flagged = await flagAdHoc(driver, shift.id, {
       donorId: offRoute.id,
-      categoryId: category.id,
     });
 
     await discardSuggestion(receiver, flagged.id);
@@ -317,7 +313,7 @@ describe('the SUGGESTED lifecycle (I17)', () => {
 
   it('sweeps prefills whose shift window has expired, and only those', async () => {
     const { shift, driver, category, offRoute } = await scene();
-    await flagAdHoc(driver, shift.id, { donorId: offRoute.id, categoryId: category.id });
+    await flagAdHoc(driver, shift.id, { donorId: offRoute.id });
 
     // Not yet due: the default window is 7 days from the shift start.
     expect(await purgeExpiredSuggestions()).toBe(0);
@@ -336,9 +332,8 @@ describe('the SUGGESTED lifecycle (I17)', () => {
     const { shift, driver, receiver, category, offRoute } = await scene();
     const flagged = await flagAdHoc(driver, shift.id, {
       donorId: offRoute.id,
-      categoryId: category.id,
     });
-    await confirmDonation(receiver, flagged.id, { weight: '10' });
+    await confirmDonation(receiver, flagged.id, { weight: '10', categoryId: category.id });
 
     await db
       .updateTable('shift')
@@ -355,7 +350,6 @@ describe('the receiver edit window (§3.1)', () => {
     const { shift, driver, receiver, category, offRoute } = await scene();
     const flagged = await flagAdHoc(driver, shift.id, {
       donorId: offRoute.id,
-      categoryId: category.id,
     });
 
     await db

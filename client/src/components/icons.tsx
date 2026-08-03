@@ -28,11 +28,25 @@ function svgProps(size: string, className?: string) {
   };
 }
 
-/** The AGFP heart — the one decorative brand mark, in `--brand-orange` (§2). */
+/** The AGFP heart, in `--brand-orange` (§2). D32 replaced both of its call sites —
+ *  the top bar takes the real pantry logo now, and Home takes a house — so this has
+ *  no caller today. Kept exported: it is the brand's own shape, not dead weight. */
 export function HeartIcon({ size = '1.5em', className }: IconProps) {
   return (
     <svg {...svgProps(size, className)} fill="currentColor" stroke="none">
       <path d="M12 20.5 4.2 13a4.7 4.7 0 0 1 0-6.7 4.7 4.7 0 0 1 6.6 0l1.2 1.2 1.2-1.2a4.7 4.7 0 0 1 6.6 0 4.7 4.7 0 0 1 0 6.7Z" />
+    </svg>
+  );
+}
+
+/** Home — the hub (D22). A house rather than the heart, so the brand mark means
+ *  the pantry and this one means a destination (D32). */
+export function HomeIcon({ size = '1.5em', className }: IconProps) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <path d="M3.5 10.7 12 3.8l8.5 6.9" />
+      <path d="M5.6 9.4V20h12.8V9.4" />
+      <path d="M9.8 20v-5.4h4.4V20" />
     </svg>
   );
 }

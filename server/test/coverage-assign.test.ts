@@ -85,6 +85,44 @@ describe('staff assign — the clean case', () => {
       { event: 'SHIFT_ASSIGNED', recipient_id: driver.id, shift_id: shift.id },
     ]);
   });
+
+  // D33 — the banner names who did it, so the payload has to carry the assigner.
+  // Without `who` on the row there is nothing for `renderPush` to name, and the
+  // driver is back to "you're on a run" with no idea who put them there.
+  it('carries the assigning coordinator’s name on the payload', async () => {
+    const staff = await makeUser({ tier: 'STAFF', firstName: 'Dana', lastName: 'Cole' });
+    const driver = await makeDriver();
+    const shift = await makeShift({ createdBy: staff.id, startsAt: at(3 * DAY) });
+
+    await assignDriver(staffActor(staff.id), shift.id, { driverId: driver.id });
+
+    const row = await db
+      .selectFrom('notification')
+      .select('payload')
+      .executeTakeFirstOrThrow();
+    expect(row.payload).toMatchObject({ who: 'Dana Cole' });
+  });
+
+  // D33's one omission. A coordinator who also drives can assign a run to
+  // themselves, and "Dana Cole put you on a run" addressed to Dana Cole is worse
+  // than the nameless sentence — so `who` is left off and the fallback speaks.
+  it('leaves the name off when the coordinator assigns the run to themselves', async () => {
+    const staff = await makeUser({
+      tier: 'STAFF',
+      duties: ['DRIVE'],
+      firstName: 'Dana',
+      lastName: 'Cole',
+    });
+    const shift = await makeShift({ createdBy: staff.id, startsAt: at(3 * DAY) });
+
+    await assignDriver(staffActor(staff.id), shift.id, { driverId: staff.id });
+
+    const row = await db
+      .selectFrom('notification')
+      .select('payload')
+      .executeTakeFirstOrThrow();
+    expect(row.payload).not.toHaveProperty('who');
+  });
 });
 
 describe('staff assign — I20’s exemption', () => {

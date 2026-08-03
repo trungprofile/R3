@@ -85,6 +85,10 @@ function donor(over: Partial<DonorSummary> = {}): DonorSummary {
     mapUrl: null,
     hasPhoto: false,
     active: true,
+    ntfbDonorCode: null,
+    trashRateBakery: null,
+    trashRateProduce: null,
+    trashRateDeli: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...over,
   };
@@ -261,11 +265,14 @@ describe('confirmBody', () => {
 // ---------------------------------------------------------------------------
 
 describe('draftFrom', () => {
-  it('brings the driver’s donor, category and note across', () => {
+  it('brings the driver’s donor and note across, but never a category', () => {
+    // D24: the driver no longer picks a category, because they cannot know it and
+    // it is not their job. Even a row that somehow carries one must not seed the
+    // form with it — the receiver, who is holding the food, picks it here.
     const draft = draftFrom(row({ note: 'left on the dock', categoryId: 'cat-3' }));
     expect(draft.sourceMode).toBe('MASTER');
     expect(draft.donorId).toBe('donor-1');
-    expect(draft.categoryId).toBe('cat-3');
+    expect(draft.categoryId).toBeNull();
     expect(draft.note).toBe('left on the dock');
   });
 
@@ -374,6 +381,14 @@ describe('describeRow', () => {
 
   it('prints a confirmed weight with its unit', () => {
     expect(describeRow(row({ status: 'CONFIRMED', weight: '87.50' }))).toBe('Produce · 87.5 lb');
+  });
+
+  it('says a driver’s prefill has no kind of food yet, never "null"', () => {
+    // D24 made `categoryName` nullable on a SUGGESTED row. The template literal
+    // that built this line would otherwise render the word "null" to a receiver.
+    expect(describeRow(row({ categoryName: null, weight: null }))).toBe(
+      'no kind of food yet · no weight yet',
+    );
   });
 });
 

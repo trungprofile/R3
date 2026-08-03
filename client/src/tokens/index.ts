@@ -76,8 +76,13 @@ export const duration = {
 
 // Viewport classes. §0 maps each device to a surface and §4 gives each a nav;
 // the spec states no pixel breakpoints, so these are ours (see report
-// `Assumed:`): phone < 768, tablet 768–1023, desktop >= 1024.
+// `Assumed:`): phone < 768, tablet 768–1199, desktop >= 1200.
+//
+// D36 moved the desktop edge up from 1024. Every current iPad in landscape sits
+// between 1024 and 1194, so the old number handed a receiving dock the desktop
+// left sidebar and left the screen it was reading squeezed into what remained.
+// The tablet edge does NOT move with it — 768 is still where a phone stops.
 export const breakpoint = {
   tabletMinPx: 768,
-  desktopMinPx: 1024,
+  desktopMinPx: 1200,
 } as const;

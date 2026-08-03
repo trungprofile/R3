@@ -80,6 +80,19 @@
   margin: 0;
 }
 
+/* The run is finished (`D37`). The same block as `--blocked` but in `--success`:
+ * nothing needs attention here, and nothing went wrong — the run is closed and the
+ * numbers above are the ones the report will use. */
+.s22b-closed {
+  font-size: var(--font-body);
+  color: var(--text);
+  background: var(--surface-paper);
+  border-left: var(--space-1) solid var(--success);
+  border-radius: var(--radius-control);
+  padding: var(--space-3) var(--space-4);
+  margin: 0;
+}
+
 /* The run is not ready. Warning fill behind dark text (§2) — this is "needs
  * attention", not a failure, and nothing has gone wrong. */
 .s22b-blocked {

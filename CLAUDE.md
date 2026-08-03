@@ -6,13 +6,20 @@ System of record for Amazing Grace Food Pantry's weekly food-rescue cycle (rescu
 
 - `S2.4` is a device-level banner the shell mounts.
 - `S3.2` (metrics) is Admin's default **tab** since `D18`. `/metrics` still resolves, as a redirect.
-- The NTFB category mapping is Admin's **Category matching** tab since `D17`, not part of S3.1.
+- The NTFB category mapping is not part of S3.1 (`D17`) and no longer its own Admin tab either: `D40` folded it into Admin's **Categories** tab, where a category's target is edited beside the category. `/admin?tab=mapping` still resolves, as a redirect.
+- `S1.4` (My shifts) is a **tab on the board** since `D30`, not a nav entry. `/my-shifts` still resolves.
 
-Not yet deployed, and no production data exists. The first hands-on QA pass has been through it once — see [`qa-round-1-changes.md`](docs/features/qa-round-1-changes.md).
+There is also **one screen `ui-ux-spec.md §8` did not originally have**: **Home** (`/`), added by `D22`. It is where sign-in lands, and it shows one card per capability the signed-in user holds. It is not a duty picker and §4's ban on one still stands.
 
-One thing is **deliberately unbuilt because it is not ours to invent**, and a task that seems to need it should stop rather than guess: NTFB's own category names, and which of ours reports under each (the `ntfb_category` table ships empty — `phases-1-3.md` D12). A real receipt named ten of them and `phases-1-3.md §3.1` records the list, but it is one receipt's worth, our `Frz Non Meat` matches none of it, and seeding ten of eleven is the same failure one row smaller. The pantry enters them on S3.1.
+Not yet deployed, and no production data exists. Four QA passes have been through it — `qa-round-1-changes.md`, an automated sweep, a hands-on pass on a volunteer holding two duties (`D22`–`D25`), and a second hands-on pass over that build (`D30`–`D41`).
 
-The Meal Connect format itself is **no longer a guess**: a submitted receipt and its three entry screens settled it (`D13`, `D15`, migration 0013). The far end is a web form with no import, so the export is a hand-entry worksheet ordered by receipt, and a line item is `(category, storage)` rather than a category alone.
+**Navigation is one entry per capability, on every viewport (`D30`).** Home first, then Pick up food / Receive a load / Report / Schedule / Admin as the user's tier and duties allow, then Inbox — in the order a week runs. No group headings. Home is capped at six cards (`D31`). The phone and tablet bar is capped at four by `ui-ux-spec.md §3`, so office work is reached through Home there; that is the design, not a truncation.
+
+**Nothing is deliberately unbuilt any more.** That paragraph used to name NTFB's category list as not ours to invent, with `ntfb_category` shipping empty under `D12`. **The pantry supplied it on 2026-08-02** — including where `Frz Non Meat` reports, the single unknown row that had kept the whole table unseedable. All ten NTFB categories, all eleven mappings and every storage value now ship seeded (`D26`, migration 0016), and `D12` is retired. `phases-1-3.md §3.1` records the table. Still outstanding, and still not ours to invent: **the NTFB donor codes** for the stores on our routes (`donor.ntfb_donor_code`, nullable, blank on the receipt until entered).
+
+The Meal Connect format is settled by a submitted receipt plus screenshots of all three entry screens (`D13`, `D15`, `D29`, migration 0013). The far end is a web form with **no import**, so the export is **a printed receipt, not a file** — one card per `(pickup date, donor)` mirroring the portal's own form, with the CSV removed (`D29`). A line item is `(category, storage)` rather than a category alone.
+
+**Trash is computed, never weighed** (`D27`): a per-store share of bakery, produce and deli weight is deducted per receipt and reported as its own NTFB category. The algorithm and its load-bearing rounding order are `domain-modeling.md §5.4`. The AGFP `Trash` category ships archived so nobody can weigh into it. The deduction **never changes the reported total** — it moves weight between categories — and there is a test asserting exactly that.
 
 ## Find the rule before writing the code
 
@@ -37,6 +44,7 @@ Add `docs/features/<name>.md` once a feature accumulates worked examples or edge
 | [`phases-1-3.md`](docs/features/phases-1-3.md) | changing behaviour anywhere — the build record for all three phases: standing decisions `D1`–`D15`, what still needs a human, the stored shapes that are cheap to change only while the database is empty, and the assumptions that change what a person sees |
 | [`test-plan.md`](docs/features/test-plan.md) | testing the app before the pilot — what a green gate does **not** prove, the ten test tracks and how to run them in parallel, exit criteria, and the risks to disclose rather than let a demo discover |
 | [`qa-round-1-changes.md`](docs/features/qa-round-1-changes.md) | undoing or questioning anything from the first QA pass — one row per piece of feedback, what was done, and what reverting it costs |
+| [`qa-round-2-results.md`](docs/features/qa-round-2-results.md) | asking what has already been tested and what a green gate does not prove — the automated sweep's coverage matrix, its defects, and the list of things only a person on a real device can check |
 
 **`D#` and `A#` citations in code resolve to that doc.** Roughly thirty comments across migrations, services, tests and client code cite a decision or an assumption by number — `phase-1-build-plan.md D3`, `phase-3-state.md A189`, and so on. The numbering is one series across the three phases and keeps its original meaning; only the file it lives in changed.
 
@@ -49,7 +57,10 @@ The six per-phase docs (`phase-{1,2,3}-{build-plan,state}.md`) and the 24 lane r
 ```
 client/src/
   screens/{s1-rescue,s2-receive,s3-report}/  one folder per UI §8 screen ID
-    s1-8-admin/{metrics,mapping}/            two screens that became Admin tabs (D17, D18)
+    s1-0-home/                               the Home hub — a screen §8 did not have (D22)
+    s1-8-admin/{metrics,mapping}/            metrics is Admin's default tab (D18); mapping is a
+                                             section of its Categories tab (D17, then D40)
+  app/nav.tsx                                WHICH nav entries exist — one per capability (D30)
   components/  tokens/  api/                 UI §3 contracts, §2 tokens, typed fetch
   sw.ts                                      service worker — push only, never cache-first (§4.5)
 server/

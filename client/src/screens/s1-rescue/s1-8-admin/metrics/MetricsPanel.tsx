@@ -18,13 +18,22 @@
 //
 // THE PERIOD IS SHARED and sits above the tabs, because it is a fact about the
 // whole screen rather than about either panel: switching from intake to coverage
-// must not silently change the window being read. It is held as a LENGTH plus a
-// number of whole periods back, not as two dates, so that:
+// must not silently change the window being read.
 //
-//   - stepping back always moves by the period's own length, which is exactly the
-//     window `previousIntake` is measured against (`services/metrics.ts`), and
-//   - the window recomputes when the pantry's own zone arrives on the sign-in
-//     (A120) instead of freezing whatever the machine's clock said first.
+// SINCE D39 IT IS TWO DATES, DEFAULTING TO THIS WEEK. It used to be a segmented
+// row of 1 / 4 / 12 weeks plus a step counter, defaulting to 28 days — which A179
+// recorded as a guess no doc ever settled. D39 answers A179: the default is the
+// same Monday-to-Sunday week S3.1 reports on and S1.2's board opens on, read from
+// the one `app/week.ts` helper all three share, so an admin with the report in one
+// tab and this in another cannot be shown two different weeks under one word.
+//
+// What did NOT change is the thing that made the old shape right: Earlier/Later
+// still step by the window's OWN LENGTH, which is exactly the window
+// `previousIntake` is measured against (`services/metrics.ts`). `periodFor` always
+// took a length rather than a "last N", so it carried straight over.
+//
+// The window still starts null and resolves once the pantry's zone arrives on the
+// sign-in (A120), rather than freezing whatever the machine's clock said first.
 //
 // The panel is reached at `/admin?tab=metrics`, on a route declared
 // `requires: { tier: 'ADMIN' }` in `app/routes.ts` — a hierarchical comparison
@@ -36,7 +45,7 @@
 // this is read + export." The one primary button per panel is its download, and
 // there is nothing here to edit, cancel or confirm.
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { todayInZone, useSession } from '../../../../app/index.ts';
 import { Button, Segmented, tabPanelProps } from '../../../../components/index.ts';
 import { CoverageTab } from './CoverageTab.tsx';
@@ -44,12 +53,14 @@ import { IntakeTab } from './IntakeTab.tsx';
 import {
   canGoLater,
   COPY,
-  DEFAULT_PERIOD_DAYS,
-  PERIOD_PRESETS,
-  periodFor,
+  defaultPeriod,
+  isThisWeek,
+  isValidPeriod,
+  periodError,
   periodRangeLabel,
+  stepPeriod,
   TABS,
-  type PeriodPresetId,
+  type Period,
   type TabId,
 } from './metrics.ts';
 import './metrics.css';
@@ -59,15 +70,16 @@ const ID_PREFIX = 's32';
 export function MetricsPanel() {
   const { timezone } = useSession();
   const [tab, setTab] = useState<TabId>('intake');
-  const [presetId, setPresetId] = useState<PeriodPresetId>(String(DEFAULT_PERIOD_DAYS) as PeriodPresetId);
-  /** Whole periods back from the one ending today. 0 is A179's default window. */
-  const [stepsBack, setStepsBack] = useState(0);
 
   // Today at the PANTRY, not on this machine (A120). A run's date is a pantry-local
   // fact, so a desktop in another zone must not shift the window near midnight.
   const today = todayInZone(timezone);
-  const days = Number(presetId);
-  const period = useMemo(() => periodFor(today, days, stepsBack), [today, days, stepsBack]);
+
+  /** Null until an admin touches a field, so the window follows the pantry's own
+   *  day as it arrives rather than freezing the first answer the clock gave. */
+  const [chosen, setChosen] = useState<Period | null>(null);
+  const period = chosen ?? defaultPeriod(today);
+  const dateError = periodError(period);
 
   return (
     <div className="s32">
@@ -76,35 +88,44 @@ export function MetricsPanel() {
           An `<h2>`, not an `<h1>`: S1.8's own title is the page heading now. */}
       <h2 className="s32-title">{COPY.title}</h2>
 
+      {/* Two date fields (D39). §1.5 rules out a dropdown where a visible control
+          fits, and a range is what two date fields are. "This week" is offered
+          only when it would change something. */}
       <section className="s32-period" aria-label={COPY.period.heading}>
         <div className="s32-period__group">
-          <p className="s32-period__label">{COPY.period.label}</p>
-          <Segmented
-            label={COPY.period.label}
-            options={PERIOD_PRESETS}
-            value={presetId}
-            onChange={(value) => {
-              setPresetId(value);
-              // A new length re-anchors on today. Keeping the step count would put
-              // the window somewhere neither button had been asked to go.
-              setStepsBack(0);
-            }}
+          <DateField
+            label={COPY.period.from}
+            value={period.from}
+            onChange={(from) => setChosen({ ...period, from })}
           />
+          <DateField
+            label={COPY.period.to}
+            value={period.to}
+            onChange={(to) => setChosen({ ...period, to })}
+          />
+          {isThisWeek(period, today) ? null : (
+            <Button onClick={() => setChosen(null)}>{COPY.period.thisWeek}</Button>
+          )}
         </div>
 
         <div className="s32-period__nav">
+          {/* Both step by the window's OWN length, so consecutive views are
+              adjacent and non-overlapping — which is the window `previousIntake`
+              is measured against, one screen up. */}
           <Button
-            onClick={() => setStepsBack((steps) => steps + 1)}
+            onClick={() => setChosen(stepPeriod(period, -1))}
             aria-label={COPY.period.earlierAria}
+            disabled={!isValidPeriod(period)}
           >
             {COPY.period.earlier}
           </Button>
-          {/* Hidden rather than disabled (§3 prefers hiding): a period after today
-              holds no data, so there is nothing behind the button to explain. */}
-          {canGoLater(stepsBack) ? (
+          {/* Hidden rather than disabled (§3 prefers hiding): dates after today
+              hold no data, so there is nothing behind the button to explain. */}
+          {canGoLater(period, today) ? (
             <Button
-              onClick={() => setStepsBack((steps) => Math.max(0, steps - 1))}
+              onClick={() => setChosen(stepPeriod(period, 1))}
               aria-label={COPY.period.laterAria}
+              disabled={!isValidPeriod(period)}
             >
               {COPY.period.later}
             </Button>
@@ -117,6 +138,12 @@ export function MetricsPanel() {
         <p className="s32-period__range" aria-live="polite">
           {periodRangeLabel(period)}
         </p>
+
+        {dateError !== null ? (
+          <p className="s32-period__error" role="alert">
+            {dateError}
+          </p>
+        ) : null}
       </section>
 
       <Segmented
@@ -130,10 +157,46 @@ export function MetricsPanel() {
 
       <div className="s32-panel" {...tabPanelProps(ID_PREFIX, tab)}>
         {/* Exactly one panel is mounted, which is the other half of the tabs
-            contract — and it also means only one of the two reads is in flight. */}
-        {tab === 'intake' ? <IntakeTab period={period} /> : null}
-        {tab === 'coverage' ? <CoverageTab period={period} /> : null}
+            contract — and it also means only one of the two reads is in flight.
+            A half-typed range is not sent: a backwards window would come back
+            empty and read as "nothing happened" rather than as a typo. */}
+        {!isValidPeriod(period) ? null : (
+          <>
+            {tab === 'intake' ? <IntakeTab period={period} /> : null}
+            {tab === 'coverage' ? <CoverageTab period={period} /> : null}
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+/**
+ * A `YYYY-MM-DD` field.
+ *
+ * `components/TextInput` takes `text` or `password` only and `components/` is not
+ * this screen's to widen, so the native date control is spelled out here rather
+ * than by loosening a contract every screen depends on. It is one `<input>` and a
+ * label, which is what `TextInput` is; nothing outside this folder imports it.
+ */
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="r3-field s32-period__field">
+      <span className="r3-field__label">{label}</span>
+      <input
+        className="r3-field__control"
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   );
 }

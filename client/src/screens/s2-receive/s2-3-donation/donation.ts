@@ -102,15 +102,20 @@ export function emptyDraft(): DonationDraft {
   };
 }
 
-/** Load a driver's prefill into the form. Donor, category and note come across;
- *  the weight does not, because a `SUGGESTED` row has none (I16a exempts it) and
- *  supplying one is exactly what the receiver is here for. */
+/** Load a driver's prefill into the form. Donor and note come across; neither the
+ *  weight nor the category does, because a `SUGGESTED` row has neither (I16a exempts
+ *  the weight, D24 the category) and supplying both is exactly what the receiver is
+ *  here for.
+ *
+ *  The category is forced to `null` rather than copied even for a row that somehow
+ *  carries one: since D24 the driver has no picker, so an inherited category could
+ *  only be a pre-D24 guess. `validateDraft` already refuses a submit without one. */
 export function draftFrom(row: DonationSummary): DonationDraft {
   return {
     sourceMode: row.source,
     donorId: row.donorId,
     donorLabel: row.donorLabel ?? '',
-    categoryId: row.categoryId,
+    categoryId: null,
     weight: row.weight ?? '',
     reportable: row.reportable,
     note: row.note ?? '',
@@ -284,8 +289,12 @@ export function removeRow(rows: readonly DonationSummary[], id: string): Donatio
 
 /** One line describing a row, for a list that has no room for a form. */
 export function describeRow(row: DonationSummary): string {
+  // D24 stopped the driver picking a category, so a prefill arrives with none and
+  // `categoryName` is null until the receiver chooses one. Without this branch the
+  // row reads "null · no weight yet".
+  const kind = row.categoryName ?? COPY.noCategoryYet;
   const weight = row.weight === null ? COPY.noWeightYet : weightWithUnit(row.weight);
-  return `${row.categoryName} · ${weight}`;
+  return `${kind} · ${weight}`;
 }
 
 /** Whether the receiver may still change this row. False once
@@ -383,6 +392,9 @@ export const COPY = {
   pendingHint: 'A driver flagged these on a run. Tap one to weigh it.',
   pendingLabel: 'Donations waiting for weights',
   noWeightYet: 'no weight yet',
+  /** D24: a driver's prefill carries no category, so the row has to say so rather
+   *  than render an empty gap the receiver cannot interpret. */
+  noCategoryYet: 'no kind of food yet',
   discard: 'Discard',
   discardQuestion: 'Throw this one away?',
   discardConsequence:

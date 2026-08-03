@@ -289,6 +289,15 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
         ) : null}
       </div>
 
+      {/* A5: the rule above is right, but an owner who has cancelled a run before
+          will look for the red button and not find it. Say why it is gone and who
+          can still move the run. Below the actions rather than inside them —
+          `.s13__actions` turns into a reversed row on the desktop, which is a
+          layout for buttons and not for a sentence. */}
+      {capabilities.showStartedNotice ? (
+        <p className="s13__started">{COPY.releaseStarted}</p>
+      ) : null}
+
       {releasing ? (
         <ReleaseDialog
           shift={shift}

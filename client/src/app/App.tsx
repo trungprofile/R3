@@ -13,27 +13,9 @@ import type { ScreenRegistry } from './AppShell.tsx';
 import { IdlePrompt } from './IdlePrompt.tsx';
 import { OfflineBanner } from './OfflineBanner.tsx';
 import { RouterProvider, useRouter } from './router.tsx';
-import { homePathFor, HOME_PATH } from './routes.ts';
 import { SessionProvider, useSession } from './SessionProvider.tsx';
 import { ToastProvider } from './ToastProvider.tsx';
-import { useViewport } from './useViewport.ts';
 import { OnboardingCard, onServiceWorkerNavigate, usePwa } from '../pwa/index.ts';
-
-/** `/` is not a screen. A signed-in user lands on the board (S1.2) — except a
- *  receiver at the shared tablet, who lands on the run picker, because §4 gives that
- *  surface no navigation at all (`homePathFor`). */
-function HomeRedirect() {
-  const { path, navigate } = useRouter();
-  const { status, user } = useSession();
-  const viewport = useViewport();
-
-  useEffect(() => {
-    if (status !== 'signed-in' || path !== '/') return;
-    navigate(user ? homePathFor(user, viewport) : HOME_PATH, { replace: true });
-  }, [status, user, viewport, path, navigate]);
-
-  return null;
-}
 
 /**
  * Tapping an alert banner while R3 is already open.
@@ -73,7 +55,8 @@ function Shell({
 
   return (
     <>
-      <HomeRedirect />
+      {/* No `/` redirect any more: D22 made `/` the Home hub, a real screen in the
+          route table, so `HOME_PATH` resolves rather than needing to be bounced. */}
       <AlertNavigation />
       <AppShell
         screens={screens}

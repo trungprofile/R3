@@ -35,6 +35,7 @@ import {
   canMoveRun,
   canSetDriver,
   dayHeading,
+  dayHeadingParts,
   driverChoices,
   duplicateNotice,
   firstOccurrence,
@@ -113,6 +114,10 @@ function donor(over: Partial<DonorSummary> = {}): DonorSummary {
     mapUrl: null,
     hasPhoto: false,
     active: true,
+    ntfbDonorCode: null,
+    trashRateBakery: null,
+    trashRateProduce: null,
+    trashRateDeli: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...over,
   };
@@ -249,6 +254,36 @@ describe('pantry-local calendar and clock', () => {
     expect(formatShortDate('2026-08-04', '2026-01-01')).toBe('Aug 4');
     expect(formatShortDate('2027-08-04', '2026-01-01')).toBe('Aug 4, 2027');
     expect(formatDayLabel('2026-08-04', '2026-08-01')).toBe('Tue, Aug 4');
+  });
+
+  // The heading splits so `.s16-day__date` can hold the date on one line — a
+  // "Tomorrow, Aug 3" that wrapped between "Aug" and "3" read as two dates.
+  it('splits the heading into the day and the date', () => {
+    expect(dayHeadingParts('2026-08-04', '2026-08-04')).toEqual({
+      lead: 'Today',
+      date: 'Aug 4',
+    });
+    expect(dayHeadingParts('2026-08-05', '2026-08-04')).toEqual({
+      lead: 'Tomorrow',
+      date: 'Aug 5',
+    });
+    expect(dayHeadingParts('2026-08-06', '2026-08-04')).toEqual({
+      lead: 'Thursday',
+      date: 'Aug 6',
+    });
+    // The out-of-year form carries its own comma, and it is inside the part that
+    // must not break — so the whole of "Aug 12, 2027" stays on one line.
+    expect(dayHeadingParts('2027-08-12', '2026-08-04')).toEqual({
+      lead: 'Thursday',
+      date: 'Aug 12, 2027',
+    });
+  });
+
+  it('composes the sentence from those parts, so the two cannot drift', () => {
+    for (const iso of ['2026-08-04', '2026-08-05', '2026-08-06', '2027-08-12']) {
+      const { lead, date } = dayHeadingParts(iso, '2026-08-04');
+      expect(dayHeading(iso, '2026-08-04')).toBe(`${lead}, ${date}`);
+    }
   });
 });
 

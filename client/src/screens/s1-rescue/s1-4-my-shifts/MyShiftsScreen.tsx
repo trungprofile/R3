@@ -8,6 +8,14 @@
 // in `app/routes.ts` — set membership, never a tier comparison (I2). The shell
 // hides it from anyone else and the server refuses it again; neither check is the
 // rule on its own.
+//
+// TWO WAYS IN SINCE D30. Its nav entry is gone — a driver was carrying two entries
+// for one job — and the board (S1.2) mounts this same component as its second tab.
+// The route stays: a bookmark, and the Home hub's "My shifts" card, both still point
+// here, and a screen that is only ever a tab is a screen you cannot link to.
+//
+// The two mountings differ in exactly one thing, `embedded`, and it is a heading
+// question rather than a behavioural one. See the prop.
 
 import { useState } from 'react';
 import type { ScreenProps } from '../../../app/index.ts';
@@ -26,14 +34,29 @@ const TABS: readonly SegmentedOption<TabId>[] = [
   { value: 'away', label: "When I'm away" },
 ];
 
-export function MyShiftsScreen(_props: ScreenProps) {
+/** `params` is optional because the board mounts this as a tab rather than as a
+ *  route, and a tab has no `:params` to hand it. Still assignable to the registry's
+ *  `ComponentType<ScreenProps>`, which is the only other caller. */
+interface MyShiftsScreenProps extends Partial<ScreenProps> {
+  /**
+   * D30 — mounted inside another screen's tab rather than as `/my-shifts`.
+   *
+   * Drops this screen's own `<h1>`, and nothing else. The board already carries the
+   * page heading and a selected tab reading "My shifts", so a second `<h1>` would be
+   * both a repeated word on screen and two top-level headings in one document.
+   */
+  embedded?: boolean;
+}
+
+export function MyShiftsScreen({ embedded = false }: MyShiftsScreenProps) {
   const [tab, setTab] = useState<TabId>('runs');
 
   return (
     <div className="s14">
-      {/* Matches the nav item that leads here ("My Shifts", `app/nav.tsx`), so the
-          heading confirms where the tap landed rather than renaming the place. */}
-      <h1 className="s14-title">My shifts</h1>
+      {/* Matches the tab or card that leads here ("My shifts"), so the heading
+          confirms where the tap landed rather than renaming the place. Absent when
+          the board owns the page heading (D30). */}
+      {embedded ? null : <h1 className="s14-title">My shifts</h1>}
       <Segmented
         mode="tabs"
         idPrefix="s14"

@@ -212,9 +212,37 @@
 
 .r3-stop__status {
   flex: none;
-  color: var(--text-muted);
-  font-size: var(--font-label);
   text-align: right;
+}
+
+/* --- A stop's disposition, as a chip (§3) --------------------------------- */
+
+/* The pill itself is `.r3-chip` in `components.css` — shared with the shift chip
+   so a status reads the same everywhere. Only the tones are this screen's,
+   because a stop's four dispositions are not a shift's five statuses.
+
+   Every one of them carries its word (`stopStatusLabel`), so colour is never the
+   only signal (§2, §3). Tone assignment is `stopStatusTone` in `logic.ts`. */
+
+/* Still to do — the loudest thing on the row, because "what is left" is the only
+   question a driver asks this list. Orange as a FILL, never as text (§2). */
+.r3-stop-chip--todo {
+  background: var(--brand-orange);
+  color: var(--text-on-brand);
+}
+
+.r3-stop-chip--done {
+  background: var(--success);
+  color: var(--text-on-fill);
+}
+
+/* Settled, and not work. Same muted pill for both, and the moved row is already
+   struck through by `.r3-stop--moved`. */
+.r3-stop-chip--skipped,
+.r3-stop-chip--moved {
+  background: var(--surface-paper);
+  color: var(--text-muted);
+  border-color: var(--border);
 }
 
 .r3-stop__address,
@@ -318,15 +346,31 @@
   border-top: 1px solid var(--border);
 }
 
-/* A milestone, not a completion: --success reads as "recorded", and the run
-   itself carries no Done chip because it is still IN_PROGRESS (I27, D1). */
-.r3-pickup__confirmed {
-  margin: 0 0 var(--space-3);
+/* The driver's work is done, the shift is not: --success reads as "recorded",
+   and the run still carries no Done chip because it is still IN_PROGRESS
+   (I11, I12, I27, D23). */
+.r3-pickup__completed {
+  margin: 0 0 var(--space-4);
   color: var(--success);
 }
 
-.r3-pickup__confirmed .r3-pickup__hint {
-  color: var(--text-muted);
+/* The locked run note (D23). Same paper card as the staff note above it, because
+   it is the same kind of thing: words on this run that nobody is editing here. */
+.r3-pickup__locked-note {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-paper);
+}
+
+.r3-pickup__locked-note p {
+  margin: 0;
+}
+
+/* The one consequence in the confirm modal (§6), above the summary it applies to. */
+.r3-complete__consequence {
+  margin: 0 0 var(--space-4);
 }
 
 /* --- Flag a stop not on my route (cap 12) --------------------------------- */
@@ -416,11 +460,6 @@
 .r3-review__name {
   flex: 1;
   font-weight: 600;
-}
-
-.r3-review__status {
-  color: var(--text-muted);
-  font-size: var(--font-label);
 }
 
 .r3-review__note {

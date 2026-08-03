@@ -29,18 +29,29 @@ import type {
   StoreIntake,
 } from '../../../shared/src/metrics.js';
 import { db } from '../db/index.js';
-import { addDays, dayNumber, localCalendarDate, parseDate } from '../time.js';
+import { addDays, dayNumber, parseDate } from '../time.js';
 import { isoDate } from './schedule.js';
-import { addAll } from './report.js';
+import { addAll, currentWeek } from './report.js';
 
-/** The period a caller gets when they name none: the last 28 days, ending today. */
+/**
+ * The period a caller gets when they name none: THIS WEEK, Monday to Sunday (D39).
+ *
+ * It was the last 28 days, which `A179` recorded as a guess no doc ever settled —
+ * four whole weeks, chosen so the previous-period comparison would be like-for-like
+ * rather than a ragged month. **D39 answers A179**: the default is now the same
+ * Monday-to-Sunday week S3.1 reports on (A178, `weekBounds`) and S1.2's board defaults
+ * to, imported from `report.ts` rather than re-derived, so an admin with the report and
+ * the metrics open cannot be shown two different weeks under one word.
+ *
+ * The like-for-like argument survives intact: the previous period is still computed
+ * from the window's own LENGTH (`intakeMetrics` below), so a seven-day window compares
+ * against the seven days before it. What is lost is the four-week default's smoothing,
+ * and that is the trade — a default nobody chose, against a default that agrees with
+ * every other screen. Explicit `from`/`to` still reach any window at all.
+ */
 async function defaultRange(): Promise<{ from: string; to: string }> {
-  const { timezone } = await db
-    .selectFrom('app_config')
-    .select('timezone')
-    .executeTakeFirstOrThrow();
-  const today = localCalendarDate(new Date(), timezone);
-  return { from: isoDate(addDays(today, -27)), to: isoDate(today) };
+  const { weekStart, weekEnd } = await currentWeek();
+  return { from: weekStart, to: weekEnd };
 }
 
 function subtract(a: string, b: string): string {

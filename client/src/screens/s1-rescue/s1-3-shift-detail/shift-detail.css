@@ -164,9 +164,11 @@
   margin-top: var(--space-6);
 }
 
-@media (min-width: 1024px) {
+/* 1200px since D36; must be changed with `tokens/index.ts`, which a media query
+   cannot read. */
+@media (min-width: 1200px) {
   /* On the desktop the two actions sit side by side and stop stretching: a
-     full-bleed red button at 1024px reads as an alarm, not a choice. */
+     full-bleed red button at full width reads as an alarm, not a choice. */
   .s13__actions {
     flex-direction: row-reverse;
     justify-content: flex-end;
@@ -175,6 +177,14 @@
   .s13__actions > .r3-btn--block {
     width: auto;
   }
+}
+
+/* Why "Cancel this run" is not on screen (A5). Muted, under the actions: it is an
+ * explanation, not a warning, and nothing has gone wrong. */
+.s13__started {
+  margin: var(--space-3) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-label);
 }
 
 /* --- release dialog ------------------------------------------------------- */

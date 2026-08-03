@@ -8,57 +8,40 @@
 // NOTHING HERE RETRIES. §6 makes retry a visible affordance the Reporter taps,
 // never a silent loop behind a spinner.
 //
-// Two calls cannot use `api` as it stands and say why at their own definitions:
-// the PUTs (`api` has no `put` yet) and the export (a CSV file, not JSON). Both
-// reuse `client.ts`'s exported primitives rather than re-deciding anything.
+// EVERY CALL IS JSON NOW (D29). The export used to be a second, hand-rolled
+// `fetch` because it answered with a CSV file, and a file cannot travel through a
+// layer that parses JSON — so its refusal path was written twice. The far end
+// turned out to be a web form with no import, the file went with it, and the
+// export is an ordinary `api.get` like everything else on this screen.
 
-import {
-  ApiError,
-  api,
-  isOnline,
-  kindForStatus,
-  reportActivity,
-  reportNetworkFailure,
-  reportNetworkSuccess,
-} from '../../../api/index.ts';
+import { api } from '../../../api/index.ts';
 import type {
-  ExportRow,
+  ReceiptSubmissionRequest,
   ReportEntry,
+  ReportExport,
   ReviseEntryRequest,
   WeeklyReport,
 } from '../../../api/shared.ts';
-import { exportFilename } from './report.ts';
 
-/**
- * What `GET /report/export?format=json` answers with.
- *
- * Declared here rather than in `shared/src/report.ts` because this lane does not
- * own that file. `ExportRow` and `EXPORT_COLUMNS` — the two things that actually
- * define the worksheet — are already shared; this is the envelope around them, and
- * it belongs beside the call that reads it until somebody moves it.
- */
-export interface ExportSheet {
-  weekStart: string;
-  weekEnd: string;
-  /** `EXPORT_COLUMNS`, echoed by the server so the printed headings and the CSV
-   *  headings come from one array rather than from two that agree today. */
-  columns: string[];
-  rows: ExportRow[];
+/** The window on the wire (D41). Both dates or neither: omitting them asks for
+ *  the current pantry-local week, which the SERVER resolves, because the pantry's
+ *  zone is what decides which week "now" is in and the client's answer would only
+ *  agree by luck. */
+export interface RangeQuery {
+  from: string;
+  to: string;
 }
 
-/** Omitting `week` asks for the current pantry-local week — the server resolves
- *  it, because the pantry's zone is what decides which week "now" is in and the
- *  client's answer would only agree by luck. */
-function weekQuery(week: string | null): { week?: string } {
-  return week === null ? {} : { week };
+function rangeQuery(range: RangeQuery | null): { from?: string; to?: string } {
+  return range === null ? {} : { from: range.from, to: range.to };
 }
 
 // ---------------------------------------------------------------------------
-// The week
+// The range
 // ---------------------------------------------------------------------------
 
-export function fetchReport(week: string | null, signal: AbortSignal): Promise<WeeklyReport> {
-  return api.get<WeeklyReport>('/report', { query: weekQuery(week), signal });
+export function fetchReport(range: RangeQuery | null, signal: AbortSignal): Promise<WeeklyReport> {
+  return api.get<WeeklyReport>('/report', { query: rangeQuery(range), signal });
 }
 
 /**
@@ -71,12 +54,12 @@ export function fetchReport(week: string | null, signal: AbortSignal): Promise<W
  * only well-posed one level down.
  */
 export function fetchEntries(
-  week: string | null,
+  range: RangeQuery | null,
   categoryId: string,
   signal: AbortSignal,
 ): Promise<ReportEntry[]> {
   return api.get<ReportEntry[]>('/report/entries', {
-    query: { ...weekQuery(week), categoryId },
+    query: { ...rangeQuery(range), categoryId },
     signal,
   });
 }
@@ -90,8 +73,18 @@ export function fetchEntries(
  * the category's entries as they now stand, so the drill-in re-renders from the
  * server's answer rather than from a guess about what the write did.
  */
-export function reviseWeight(id: string, body: ReviseEntryRequest): Promise<ReportEntry[]> {
-  return api.put<ReportEntry[]>(`/report/weights/${encodeURIComponent(id)}`, { body });
+export function reviseWeight(
+  id: string,
+  body: ReviseEntryRequest,
+  range: RangeQuery | null,
+): Promise<ReportEntry[]> {
+  // The range rides along so the entries that come back are the panel the Reporter
+  // is standing in front of, narrowed to the category they have open — it used to
+  // answer with a whole week across every category (D41).
+  return api.put<ReportEntry[]>(`/report/weights/${encodeURIComponent(id)}`, {
+    body,
+    query: rangeQuery(range),
+  });
 }
 
 /**
@@ -110,118 +103,45 @@ export function setReportable(id: string, reportable: boolean): Promise<unknown>
 }
 
 // ---------------------------------------------------------------------------
-// The printed worksheet (D16)
+// The export — the week's receipts (D29)
 // ---------------------------------------------------------------------------
 
 /**
- * The same worksheet the CSV is built from, as JSON, for the print view.
+ * Every receipt in the week, in the order they are typed: date, then store.
  *
- * `?format=json` on the SAME route, answered by the SAME service call, and refused
- * by the same conflict when a category carrying weight is unmapped (D12, A184).
- * That sameness is the point and is not a convenience: A186 records that S3.1's
- * export is server-built *precisely so it can refuse to emit a short one*, unlike
- * S3.2's client-built metrics CSV. Re-shaping these rows in the browser would put a
- * second, unrefusable path to the same file next to the refusing one, and the short
- * report it could emit is invisible at the far end — the failure Success Metric 4
- * exists to kill.
- *
- * This one CAN go through `api`: it is JSON, so a refusal arrives as an `ApiError`
- * with the server's own sentence on it, exactly like every other call here.
+ * Server-built, and refused outright while a category carrying weight is unmapped
+ * (D12, A184). A186 records why that matters and it has not changed: this export
+ * exists to be REFUSABLE, because a short submission is invisible at the far end.
+ * Re-shaping receipts in the browser would put a second, unrefusable path beside
+ * the refusing one. Nothing here rebuilds a line, a total or a checkbox.
  */
-export function fetchExportRows(week: string, signal?: AbortSignal): Promise<ExportSheet> {
-  return api.get<ExportSheet>('/report/export', {
-    query: { week, format: 'json' },
+export function fetchExport(range: RangeQuery, signal?: AbortSignal): Promise<ReportExport> {
+  return api.get<ReportExport>('/report/export', {
+    query: rangeQuery(range),
     ...(signal ? { signal } : {}),
   });
 }
 
 // ---------------------------------------------------------------------------
-// Export — a CSV file, not JSON
+// The check-off (D35)
 // ---------------------------------------------------------------------------
 
 /**
- * Downloads the week's Meal Connect file.
+ * Tick or un-tick one receipt as filed into Meal Connect.
  *
- * Fetched rather than pointed at with a plain link, for one reason: the server
- * refuses the export while a category carrying weight is unmapped, and a link
- * would answer that refusal by navigating away from the report into an error
- * body. Reading the response here means a refusal arrives as an `ApiError` the
- * screen can say out loud, exactly like every other failure (§6).
+ * `(pickupDate, donorId)` IS the receipt's key and the table's primary key
+ * (migration 0018), so there is no id to send and none to have been given first.
+ * The un-tick is a real DELETE, which is what makes a mis-tick reversible rather
+ * than something to be corrected with a second fact.
  *
- * The filename comes from `content-disposition` when the server sent one, so the
- * file on the Reporter's desktop is named by the thing that produced it rather
- * than by a second guess at the same convention.
+ * Neither answers with anything. The screen re-reads the range afterwards, because
+ * the tick is a fact two people can be looking at and a locally patched card is
+ * exactly the thing this table exists to stop being the source of truth.
  */
-export async function downloadExport(week: string, weekEnd: string): Promise<void> {
-  if (!isOnline()) throw new ApiError('offline');
-
-  const url = `/api/report/export?week=${encodeURIComponent(week)}`;
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: 'GET',
-      credentials: 'same-origin',
-      headers: { Accept: 'text/csv' },
-    });
-  } catch (cause) {
-    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
-    reportNetworkFailure();
-    throw new ApiError('offline');
-  }
-
-  reportNetworkSuccess();
-  if (response.ok) reportActivity();
-
-  if (!response.ok) {
-    const detail = await readMessage(response);
-    throw new ApiError(kindForStatus(response.status), {
-      status: response.status,
-      ...(detail === null ? {} : { detail }),
-    });
-  }
-
-  const blob = await response.blob();
-  const name = filenameFrom(response) ?? exportFilename(week, weekEnd);
-  saveBlob(blob, name);
+export function markSubmitted(body: ReceiptSubmissionRequest): Promise<void> {
+  return api.post<void>('/report/submissions', { body });
 }
 
-/**
- * The refusal body, when the export is blocked.
- *
- * The download is the one call on this screen that cannot go through `api`: it
- * returns a FILE, and `api` parses JSON. So its failure path is hand-rolled, and this
- * is the piece that turns a 409 into the sentence `EXPORT_BLOCKED_MESSAGE` puts on
- * screen rather than a bare status (§6: plain, never a raw code).
- */
-async function readMessage(response: Response): Promise<string | null> {
-  try {
-    const body = (await response.json()) as { message?: unknown };
-    return typeof body.message === 'string' ? body.message : null;
-  } catch {
-    // A refusal with no JSON body is still a refusal; the caller has a status.
-    return null;
-  }
-}
-
-/** `attachment; filename="agfp-ntfb-2026-07-27-to-2026-08-02.csv"` → the name. */
-function filenameFrom(response: Response): string | null {
-  const header = response.headers.get('content-disposition');
-  if (header === null) return null;
-  const match = /filename="([^"]+)"/.exec(header);
-  return match?.[1] ?? null;
-}
-
-/** The one DOM trick on this screen: an object URL behind a synthetic click, so
- *  the browser writes the file with its own download UI instead of the page
- *  navigating to it. Revoked immediately — the browser has already read it. */
-function saveBlob(blob: Blob, filename: string): void {
-  const href = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = href;
-  anchor.download = filename;
-  anchor.rel = 'noopener';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(href);
+export function clearSubmitted(body: ReceiptSubmissionRequest): Promise<void> {
+  return api.delete<void>('/report/submissions', { body });
 }

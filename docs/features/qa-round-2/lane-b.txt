@@ -1,0 +1,43 @@
+
+=== 1. Access matrix — every registered route, every persona
+
+  97 routes x 7 personas
+  276 should-admit, 396 should-refuse
+
+=== 2. Default deny — undeclared paths
+
+  GET /not-a-route -> 403
+  GET /admin -> 403
+  GET /metrics -> 403
+  GET /shifts/x/y/z -> 403
+
+=== 3. The public roster carries no PII
+
+  8 entries, fields: id, username, firstName, lastName, credentialKind
+
+=== 4. Races — two requests in the same instant
+
+  status spread: 5x200, 3x500
+    a rejected one said: {"error":"INTERNAL","message":"Something went wrong. Try again.","correlationId":"be2bce76-0cb2-4670-be38-5c3d385350ad"}
+  8 parallel weights: 5 accepted, stored delta 5.00 lb
+  weigh-vs-skip on one stop: weigh 200, skip 409
+
+=== 5. D9 / D14 — the receiver's window shuts, the Reporter's does not
+
+  receiver adding to a 12-day-old IN_PROGRESS run: 403
+    said: {"error":"FORBIDDEN","message":"The time to change this run has passed. Ask someone with reporting access to fix it."}
+  closing the same lapsed run: 200 {"shiftId":"d05b5118-1bdb-41da-873c-b26b3b5fc053","purgedSuggestions":0}
+  reporter revising the same entry: 200
+  restored the original weight: 200
+
+=== 6. A95 — I20's staff exemption is scoped
+
+  assign a volunteer without DRIVE: 409 {"error":"DRIVER_UNAVAILABLE","message":"That person isn't set up to drive.","eligibility":{"driverId":"01bcb575-a1ee-4623-acdf-cd8a6aa839d2","eligible":false,"reasons":["NO_DRIVE_DUTY"],"conflictingS
+  assign a deactivated account: 409 {"error":"DRIVER_UNAVAILABLE","message":"That account is switched off.","eligibility":{"driverId":"830f71b6-59f7-4773-98c1-0cad2ade5691","eligible":false,"reasons":["DEACTIVATED"],"conflictingShiftIds
+
+=== Result
+
+  1083 checks, 1 failed
+
+  [major] contention produces an honest refusal, not a 500
+      3 of 8 parallel writes returned 5xx: {"error":"INTERNAL","message":"Something went wrong. Try again.","correlationId":"be2bce76-0cb2-4670-be38-5c3d385350ad"}

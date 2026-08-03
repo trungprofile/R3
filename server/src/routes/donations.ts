@@ -76,6 +76,11 @@ export const donationRoutes = [
    *
    * Creates a `SUGGESTED` row and never a `ShiftStop` (I14). Refused if the donor is
    * already a stop on this run (I29): that food is another weight on the stop.
+   *
+   * No `categoryId` since D24 — a category is required on `CONFIRMED` only (migration
+   * 0015), and the receiver names it. A body that still sends one is ignored rather
+   * than refused, which is what lets a phone running yesterday's cached bundle keep
+   * flagging pickups through the deploy.
    */
   defineRoute({
     method: 'post',
@@ -88,7 +93,6 @@ export const donationRoutes = [
         String(req.params['id']),
         {
           ...sourceFields(input),
-          categoryId: requiredString(input, 'categoryId'),
           ...(input['note'] !== undefined ? { note: noteField(input) } : {}),
         },
       );

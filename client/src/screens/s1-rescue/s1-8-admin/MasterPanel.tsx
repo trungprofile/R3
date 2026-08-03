@@ -30,8 +30,10 @@ import {
 import { useAsyncData, useToast } from '../../../app/index.ts';
 import {
   COPY,
+  EMPTY_MASTER_CONTEXT,
   emptyMasterValues,
   fieldKind,
+  hintForField,
   inactiveLabel,
   isValid,
   removalText,
@@ -39,10 +41,11 @@ import {
   validateMaster,
   writeFailureText,
   type FieldErrors,
+  type MasterContext,
   type MasterRecordView,
 } from './logic.ts';
 import type { MasterConfig } from './masters.ts';
-import { FieldGroup, ImageField, InactiveChip } from './parts.tsx';
+import { ChoiceField, FieldGroup, ImageField, InactiveChip } from './parts.tsx';
 
 type View =
   | { kind: 'list' }
@@ -55,6 +58,22 @@ export function MasterPanel({ config }: { config: MasterConfig }) {
   // list under the new heading.
   const load = useCallback((signal: AbortSignal) => config.load(signal), [config]);
   const state = useAsyncData(load);
+
+  /**
+   * Whatever the FIELDS need that is not a record (D40).
+   *
+   * Only the Categories config has any: the food bank's category list, which the
+   * `choice` field offers as options. Loaded beside the records rather than with
+   * them because it is a different resource on a different route, and a config
+   * with no choice field fetches nothing at all.
+   */
+  const loadContext = useCallback(
+    async (signal: AbortSignal): Promise<MasterContext> =>
+      config.loadContext ? config.loadContext(signal) : EMPTY_MASTER_CONTEXT,
+    [config],
+  );
+  const contextState = useAsyncData(loadContext);
+  const context = contextState.data ?? EMPTY_MASTER_CONTEXT;
 
   const [view, setView] = useState<View>({ kind: 'list' });
   const [values, setValues] = useState<Record<string, string>>(() =>
@@ -104,9 +123,15 @@ export function MasterPanel({ config }: { config: MasterConfig }) {
         // so only a comparison with what was loaded says whether it changed (D20).
         await config.save(view.record, values, active);
       }
-      toast.success(COPY.master.saved);
+      // Categories say something more than "Saved." (D40): an unmatched one will
+      // hold the report up while it carries weight, and that is a consequence to
+      // hear when it is chosen rather than to discover on S3.1 a week later.
+      toast.success(config.savedText?.(values, context) ?? COPY.master.saved);
       openList();
       state.reload();
+      // The food bank list carries a "how many of ours report under this" count
+      // (I21's delete/archive hint), and a matching change moves it.
+      contextState.reload();
     } catch (cause) {
       setFailure(writeFailureText(cause));
     } finally {
@@ -163,32 +188,64 @@ export function MasterPanel({ config }: { config: MasterConfig }) {
             {view.kind === 'create' ? config.createTitle : config.editTitle}
           </h2>
 
-          {config.fields.map((field) =>
-            // One control per FIELD KIND, not one panel per entity (D20). Donors
-            // are still this panel with a different config.
-            fieldKind(field) === 'image' ? (
-              <ImageField
-                key={field.key}
-                label={field.label}
-                hint={field.hint}
-                value={values[field.key] ?? ''}
-                onChange={(next) => setValues({ ...values, [field.key]: next })}
-                disabled={busy}
-              />
-            ) : (
-              <TextInput
-                key={field.key}
-                label={field.label}
-                value={values[field.key] ?? ''}
-                onChange={(next) => setValues({ ...values, [field.key]: next })}
-                disabled={busy}
-                autoComplete="off"
-                {...(field.multiline === true ? { multiline: true } : {})}
-                {...(field.hint !== undefined ? { hint: field.hint } : {})}
-                {...(shown[field.key] !== undefined ? { error: shown[field.key] } : {})}
-              />
-            ),
-          )}
+          {config.fields.map((field) => {
+            const value = values[field.key] ?? '';
+            // The hint may depend on what is typed: D27's rate fields say what a
+            // BLANK one will fall back to, which a blank control cannot show.
+            const hint = hintForField(field, value);
+            return (
+              <div className="s18-field" key={field.key}>
+                {/* A heading and one sentence over a group of fields, set on the
+                    group's first field. D27's three rates need saying once, not
+                    three times: what the number does is the same sentence for
+                    all three, and repeating it would be the D21 cut all over. */}
+                {field.section !== undefined ? (
+                  <div className="s18-section">
+                    <h3 className="s18-section__title">{field.section.title}</h3>
+                    <p className="s18-section__body">{field.section.body}</p>
+                  </div>
+                ) : null}
+
+                {/* One control per FIELD KIND, not one panel per entity (D20).
+                    Donors are still this panel with a different config. */}
+                {fieldKind(field) === 'choice' ? (
+                  /* D40 — where this category reports. §1.5 rules out a dropdown
+                     where a visible column of big targets fits, and the food bank's
+                     list is short by construction (D26 seeds ten). A radio group
+                     rather than a `<select>` for exactly that reason, and because
+                     the "leave it unmatched" option has to be as visible as the
+                     rest: it is a real answer, not the absence of one. */
+                  <ChoiceField
+                    label={field.label}
+                    hint={hint}
+                    value={value}
+                    options={field.options?.(context) ?? []}
+                    onChange={(next) => setValues({ ...values, [field.key]: next })}
+                    disabled={busy}
+                  />
+                ) : fieldKind(field) === 'image' ? (
+                  <ImageField
+                    label={field.label}
+                    hint={hint}
+                    value={value}
+                    onChange={(next) => setValues({ ...values, [field.key]: next })}
+                    disabled={busy}
+                  />
+                ) : (
+                  <TextInput
+                    label={field.label}
+                    value={value}
+                    onChange={(next) => setValues({ ...values, [field.key]: next })}
+                    disabled={busy}
+                    autoComplete="off"
+                    {...(field.multiline === true ? { multiline: true } : {})}
+                    {...(hint !== undefined ? { hint } : {})}
+                    {...(shown[field.key] !== undefined ? { error: shown[field.key] } : {})}
+                  />
+                )}
+              </div>
+            );
+          })}
 
           {/* §3.3's ACTIVE ⇄ inactive toggle. Only on edit: a record is created in
               use, and offering the choice up front would be a question with one

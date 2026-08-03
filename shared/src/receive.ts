@@ -201,6 +201,15 @@ export interface ReceiveDoneSummary {
 export const RECEIVE_INCOMPLETE_MESSAGE =
   'Every stop needs a weight or a skip before you can finish this run.';
 
-/** Receive-done is the one completion action (I11) and has no undo. */
+/**
+ * Receive-done is the one completion action (I11) and has no undo.
+ *
+ * The second sentence used to read "You can still fix a weight afterwards." That
+ * was FALSE for the person reading it: `requireReceivable()` refuses every receiver
+ * write once the shift is `COMPLETED`, so the modal promised something the server
+ * denies. Corrections after close belong to the Reporter (D14), which is who the
+ * receiver has to go and find — so the copy names them rather than implying the
+ * receiver can come back to it.
+ */
 export const RECEIVE_DONE_CONFIRM =
-  'This closes out the run. You can still fix a weight afterwards.';
+  'This closes out the run. After this you cannot change a weight yourself — ask whoever does the reporting.';

@@ -60,7 +60,7 @@ over the merged diff, both mandatory, **the gate deciding pass/fail rather than 
 
 ---
 
-## 2. Standing decisions (D1–D21)
+## 2. Standing decisions (D1–D41)
 
 Numbering is one series across all three phases. Decisions are *settled*; they are not
 re-litigated. Where one supersedes another, both are kept.
@@ -273,41 +273,227 @@ component contracts that force such copy — `EmptyState`'s required body ("say 
 and `ConfirmModal`'s required `consequence` — were **not** loosened. Their text was trimmed.
 An em dash used as an empty-value glyph is not prose and stays.
 
+### QA round 2 and 3 (2026-08-02)
+
+Round 2 was an automated sweep; round 3 was hands-on on a volunteer holding **two** duties, plus
+the pantry finally handing over NTFB's real category list and the arithmetic behind their paper
+log. `D22`–`D25` come from the first QA pass, `D26`–`D29` from the pantry, and `D30`–`D41` from the
+second QA pass over that build.
+
+**D22 — navigation is a Home hub plus a nav grouped by capability, on every surface.**
+`ui-ux-spec.md §4` said the tablet has no nav, on the premise that each shared device hosts one
+duty workflow. The premise was false: `luispark` holds `DRIVE` and `RECEIVE`, and a desktop window
+narrowed to iPad width lands in the same band. The 768–1023px band therefore had **no navigation
+at all**, and `Receive` had no nav entry on *any* surface — a receiver could not find how to start
+weighing. Now: `/` is a **Home** hub showing one card per capability; the desktop nav is grouped
+`PICKING UP` / `RECEIVING` / `OFFICE`; phone and tablet share one bar capped at four items (§3),
+with office work reached through Home. **Still no duty picker** — nothing is chosen, everything is
+shown. Board stops being the front door and stops being a top-level tab, but stays available to the
+Staff tier as well as to drivers. Resolves the spec's own open assumption 2.
+
+**D23 — "Complete this run" completes the driving, not the shift.**
+The driver's finish action is renamed, moves into a confirm modal, locks the run note, leaves a
+read-only summary and navigates Home. `pickup_completed_at` still completes nothing: `I11` (locked)
+keeps receive-done as the only completion and `I12` holds `COMPLETED` behind every stop being
+weighed, which a driver cannot do. The wording overclaims slightly and was chosen anyway, by the
+human, with that stated. The summary's cost — no "Flag a stop not on my route" afterwards — is said
+out loud on the screen rather than left to be discovered.
+
+**D24 — a suggested donation may have no category until it is confirmed.** *Supersedes `D8`.*
+Amends the **locked** `domain-modeling.md §2.3` and `I16` under explicit human authorization,
+2026-08-02. A driver flagging an ad-hoc pickup from the roadside cannot know the category and it is
+not their job; the receiver picks it when they weigh it. `category_id` is nullable while
+`SUGGESTED` and required on `CONFIRMED` (`ck_ud_confirmed_category`, migration 0015). This
+**repairs** rather than creates a doc conflict: `D8` only ever existed because the locked doc said
+`required`, and it had to overrule `ui-ux-spec.md §S1.5`'s "just a donor picker … no weight entry".
+That sentence is true again. The anonymous "no name for it" option went with it — the choices are a
+store from the list or **Other** with a required typed name.
+
+**D25 — the Meal Connect agency line is gone from the screen and the printed sheet.**
+The person entering the submission already knows the agency code. Consequence worth knowing before
+someone reads the API shape and assumes otherwise: **`WeeklyReport.mealConnect` now has no reader
+anywhere in the client.** The server still composes it from `app_config`; the field was left on the
+contract deliberately, because the codes are real configuration and a future sheet may want them
+back, but nothing renders it today.
+
+**D26 — the NTFB list, all 11 mappings and every storage value ship seeded.** **Retires `D12`.**
+The pantry supplied their real list. `Frz Non Meat`, the single row that matched none of the ten
+names on the sample receipt and therefore kept the whole table unseedable, maps to **Prepared
+Meal** alongside Deli. See §3.1 for the table. Seeding is idempotent and never overwrites an
+admin's later edit. The AGFP `Trash` category ships **archived**, because `D27` computes it.
+
+**D27 — Trash is computed from the other categories, never entered.**
+Per receipt, a share of bakery, produce and deli weight is deducted and reported as Trash. Rates are
+per store, admin-editable, falling back to pantry defaults of 10 / 5 / 15 percent; Sam's Club and
+Costco run produce at 10. The algorithm, its load-bearing rounding order and the conservation
+property live in `domain-modeling.md §5.4`. **The deduction never changes the reported total** — it
+moves weight between categories, and Trash is itself reported. Metrics (S3.2) stay **gross**: the
+deduction is a food-bank convention, not a claim about how much food the pantry moved.
+
+**D28 — every pound on the receipt is a whole number, and the receipt total is the sum of the
+rounded rows.** **Answers `A189`**, which said explicitly that whoever confirmed this had to decide
+where the remainder goes before it could be implemented. The rows win: everything on the sheet adds
+up exactly as printed, at the cost of a receipt sitting a pound or two from the true intake.
+
+**The visible consequence, which must not be mistaken for a bug: S3.1 and S3.2 now report the same
+week differently.** S3.1 rounds all three of its totals, because it is the screen a reporter checks
+the receipt against and those two have to agree. S3.2 does not round, because it answers a
+different question — how much food the pantry actually moved. For the QA world's closed week that
+is **446 on S3.1 against 445.75 on S3.2**, and the quarter-pound is the entire difference.
+Rounding only *one* of S3.1's three totals is not available: `unreported = intake − reported` goes
+negative the moment rounding pushes reported above intake. The gap is therefore named on S3.1
+itself rather than left for a reporter to find, which is exactly the case `D21` keeps copy for —
+two similar numbers sitting together, differing for a reason nobody can deduce from the numbers.
+
+**D29 — the export is a printed receipt, not a file.** *Supersedes `D13`'s column list; `D13`'s
+finding that Meal Connect has no import still stands.*
+Screenshots of the portal settled the shape: it is a receipt form, not a table. The export is now a
+printable page of cards, one per `(pickup date, donor)`, mirroring that form — the two checkboxes
+included. **The CSV download is removed**; one export path cannot disagree with itself. Two things
+the old worksheet could not do: it carries **every note** from coordinator, driver and receiver, so
+the reporter can judge what belongs on the submission; and it emits receipts for pickups that
+produced **nothing** (`Scheduled Pickup Not Attempted`, `No Pounds`), which previously produced no
+row at all and were invisible to the food bank.
+
+### `D30`–`D41` — the second hands-on QA pass (2026-08-02)
+
+A pass over the `D22`–`D29` build, across four accounts. The through-line: the app was still
+offering too many doors and explaining itself too much, and the receiver's screens were sized for
+a desk rather than a dock.
+
+**D30 — one nav entry per capability, on every surface.** *Refines `D22`.*
+`D22` grouped the nav by capability but left two or three entries inside some groups, and the
+four-item bar could only show the first of each — which reads as truncation, not design. The fix
+went the other way: the desktop list collapses to one entry per capability, and the group headings
+go with it, because a heading over one item is noise. **`My shifts` became a tab on the board**
+(`?tab=mine`) — a driver's own runs and their days off are the same capability as the board they
+claim from. **`Log a donation` left the nav entirely**; the `Unscheduled donation` button on S2.1b
+is on screen in every state including the empty one, so nothing was stranded. Order is now the
+order a week runs — pick up, receive, report — which is also the Home card order, so the two
+surfaces cannot teach a volunteer different words for the same place.
+
+**D31 — Home is capped at six cards.** Pick up food, Receive a load, Report, Schedule, Admin,
+Inbox: every capability one account can hold. `My shifts` stopped being a card under `D30`. The cap
+holds by construction across the whole tier×duty space, and a test walks all of it.
+
+**D32 — the heart becomes a house, and the AGFP mark moves to the side nav.**
+The mark is dark type on a white ground and §3 pins the top bar to `--structural-dark`, so in the
+bar it needs a white plate that reads as a sticker. It sits at the top of the side nav instead, on
+the ground it was drawn for, and tapping it goes Home. **Consequence, accepted rather than hidden:
+the mark does not appear on a phone or tablet**, which have no side nav. An unreadable mark is
+worth less than none, and a light-on-dark variant of the pantry's own branding is theirs to supply.
+
+**D33 — the assignment notification names who assigned it.** "You're on a run" became
+"*Sam Okafor* put you on a run". `services/coverage.ts` was enqueuing `route` and `when` but no
+`who`, so the name was not merely unused — it never arrived. Omitted on self-assignment: a
+coordinator who assigns themselves a run should not be told their own name put them on it.
+
+**D34 — S3.1 leads with the report; the header shrinks to two figures.**
+The reporter's job is the Meal Connect submission, not the week's totals. One primary button at the
+top, figures below it, compact. Three figures became two — **Everything received** and **Reported to
+North Texas Food Bank** — since the third is their difference. *This overrode part of `D21`*, which
+had explicitly kept the per-figure captions as the only place the intake-vs-reported distinction was
+stated in words; the labels now carry that distinction in full, and a test forbids either from
+shortening to "Total". `D28`'s rounding note moved into the report view, beside the figures a
+reporter actually types.
+
+**D35 — the report tracks what has been filed.** *Adds an entity to the locked
+`domain-modeling.md`, under explicit human authorization, 2026-08-02.*
+Meal Connect takes one submission at a time and has no import (`D13`), so a reporter working
+through a fortnight of receipts needs to know which are already in — and a *second* reporter needs
+the same answer. New table `meal_connect_submission`, keyed `(pickup_date, donor_id)`: the same
+grain as the receipt (`D29`), so the key **is** the claim and two people cannot both be right. The
+tick confirms before writing and is idempotent — the first filer stands, because refusing a second
+reporter who agrees would be telling them off. Un-ticking is a delete and asks nothing: it takes a
+claim back rather than making one. **It records a filing and changes no total**; dropping every row
+would leave every figure identical. **A walk-in with only a free-text label cannot be filed** — it
+has no donor to key on, and Meal Connect's own donor picker could not be pointed at it either.
+
+**D36 — the desktop breakpoint rises 1024 → 1200.** Landscape iPads sit at 1024–1194, so every one
+of them was getting the desktop side nav — a squeezed sidebar on a receiving dock. At 1200 they
+land in the tablet band and get the bottom bar and the full width. The number is repeated in a few
+media queries because CSS cannot read a custom property there; they move together.
+
+**D37 — the confirm step is reversible, and a finished run stops offering to finish.**
+S2.2b used to show `Receive done` whether or not the run was already closed, so a volunteer could
+tap it twice. Three states now: **blocked** (a stop outstanding), **confirm** (`Receive done`, with
+`Change a weight` beside it), **closed** (a read-only summary and a way back — §3's dead-end rule).
+Submitting goes to Home. `Mark stop weighed` → **`Done`**, `Skip stop` → **`Skip`**, both keeping an
+accessible name that still states the object. **`I11` and `I12` were not touched**: what changed is
+what the screen offers, not what the service allows. The confirm's copy was also **wrong** — it
+promised "you can still fix a weight afterwards", which `requireReceivable()` denies once the shift
+is `COMPLETED`; it now names the Reporter (`D14`), who is who the receiver must actually go and find.
+
+**D38 — the run picker leads with today.** Three bands: **Still to weigh** (large cards, the
+screen's centre), **Ready to finish** (rows), **Later this week** (collapsed, closed by default).
+Band 1's cut is `occurrence_date <= today`, not `= today` — a run left unweighed from last Tuesday
+is not "later this week", and burying it is how it stays unclosed. Band 2 is deliberately *not*
+"Finished": those runs are all-stops-resolved but still `IN_PROGRESS`, and calling them finished
+would claim `I11` had happened.
+
+**D39 — Admin metrics default to this week, with an explicit From / To.** *Answers `A179`.*
+The 1/4/12-week presets are gone; any of them is two dates away. `Earlier`/`Later` still step by the
+chosen range's own length, so the previous-period comparison stays like-for-like. The default is the
+Monday–Sunday week `D41` gives S3.1 — the first time the two screens have named the same period.
+`A179` had picked 28 days precisely because no doc settled it.
+
+**D40 — Categories and Category matching merge into one Admin tab.** *Retires the tab `D17`
+created; the mapping and its rules are unchanged.*
+Where a category reports to is now edited **where the category is configured** — the pantry's
+categories above, NTFB's reference list below. Same instinct as `D30`: one thing, one place.
+`?tab=mapping` still resolves, as a redirect, the courtesy `D18` gave `/metrics`.
+
+**D41 — S3.1 takes a From / To range, defaulting to this week.** `computeWeek()` became
+`computeRange(from, to)` — it was already the single source the totals and the receipts both read,
+so this widened one function's window rather than touching two paths. A receipt is keyed
+`(pickup date, donor)`, so a longer range simply yields more cards, and **the conservation property
+holds over any window** because both `D28`'s rounding and `D27`'s deduction key on the receipt, not
+on the range. A backwards range is refused, not silently swapped. `?week=` still resolves.
+
 ---
 
 ## 3. What still needs a human
 
-### 3.1 The NTFB category list, the mapping, and storage per row — **blocks export**
+### 3.1 ~~The NTFB category list, the mapping, and storage per row~~ — **RESOLVED 2026-08-02**
 
-`ntfb_category` ships empty (D12) and `category.ntfb_storage` ships null (D15). A Reporter adds
-NTFB's categories on S3.1, points each of the 11 AGFP categories at one, and types the Storage
-beside it. Until the first half is done the report shows every category as unmapped and **refuses to
-export**. The second half does not block; it is named on the mapping row instead.
+*This was the one thing blocking the pilot. The pantry supplied it. Kept rather than deleted,
+because how it was resolved is the point.*
 
-**What the one receipt showed** — recorded so nobody re-derives it from a PDF, and deliberately
-**not seeded**:
+`ntfb_category` shipped empty under `D12` and the mapping was the pantry's to enter. The blocker
+was never the nine names we could read off a real receipt — it was the **one** we could not:
+`Frz Non Meat` matched none of them, and seeding ten of eleven is the fabricated-value failure
+`D12` exists to prevent, one row smaller. Holding the whole table hostage to a single unknown row
+looked pedantic for four months and turned out to be right: the answer was not guessable.
 
-| NTFB category (observed) | Storage on that line |
-| :---- | :---- |
-| Meat | Frozen |
-| Bread | Dry |
-| Produce | Refrigeration |
-| Prepared Meals | Frozen |
-| Dairy | Refrigeration |
-| Assorted Dry Food | Dry |
-| Non-Food | Dry |
-| Pet Food | Dry |
-| Health & Beauty | Dry |
-| Trash | Dry |
+**What the pantry gave us**, with the storage requirement per category and the mapping from our
+eleven. Now seeded by `D26` / migration 0016:
 
-Ten names off *one* receipt, not the dropdown's vocabulary. Our eleven line up closely enough that
-AGFP's list was clearly derived from NTFB's — but **`Frz Non Meat` matches none of the ten**, and
-that one gap is why the table is still the pantry's to fill. Seeding ten of eleven is the
-fabricated-value failure D12 exists to prevent, one row smaller.
+| AGFP category | NTFB category | Storage |
+| :---- | :---- | :---- |
+| Frozen Meat | Meat | Frozen |
+| Bakery | Bread | Dry |
+| Produce | Produce | Refrigerated |
+| Deli | Prepared Meal | Frozen |
+| Dairy | Dairy | Refrigerated |
+| Dry | Dry Food | Dry |
+| **Frz Non Meat** | **Prepared Meal** | Frozen |
+| Non Food | Non-Food | Dry |
+| Pet | Pet Food | Dry |
+| Health & Beauty | Health & Beauty | Dry |
+| Trash | Trash | Dry |
 
-**Still needed:** the full category dropdown, where `Frz Non Meat` reports, the storage wording their
-form uses, and the NTFB donor codes for the stores on our routes (`donor.ntfb_donor_code`, nullable,
-blank in the worksheet until entered).
+`Frz Non Meat` reports as **Prepared Meal**, alongside Deli — "deli and non-meat map to prepared
+meal". Both also share a storage value, so they roll into one report line on the screen while
+staying two line items on the receipt.
+
+Where this differs from the sample receipt, **the pantry's wording wins**: `Refrigerated` not
+`Refrigeration`, `Dry Food` not `Assorted Dry Food`, `Prepared Meal` not `Prepared Meals`. This is
+what a person types into Meal Connect, so it matches what they say.
+
+**Still needed:** the **NTFB donor codes** for the stores on our routes. `donor.ntfb_donor_code` is
+nullable and blank on the receipt until entered; Meal Connect's own picker shows them as
+`H-E-B Food Stores (810)`. Until `D27` it had no write path anywhere in the app and could only be
+set by hand-written SQL; the Admin store form now takes it.
 
 ### 3.2 A160 — the phone topbar overflows at 390px. **The one known unfixed defect.**
 
@@ -345,21 +531,35 @@ many unconfirmed prefills the close discarded.
 - **The bottom nav is `position: static`**, so it scrolls with content rather than staying pinned.
   No doc requires it to be fixed, so this is an open question, not a defect — but on a 15-run week
   the driver scrolls to the bottom to change screens.
-- **A189 — does the Meal Connect form accept a decimal in Pounds?** Every value on the sample
-  receipt is an integer, but so was every value typed into it, so the receipt is no evidence.
-  The worksheet emits `numeric(8,2)` unchanged. **If it does reject decimals, rounding is not a
-  one-line change**: rounding each row makes Σ rows disagree with the receipt total *and* with the
-  week's own figure, leaving the Reporter holding two numbers that do not match while Meal Connect
-  shows a third. Whoever confirms this must decide where the remainder goes before it is
-  implemented. *Cited by `services/report.ts:788`, `shared/src/report.ts:251`.*
-- **A191 — R3 exports nothing for a stop that produced no food.** Meal Connect's form carries
-  `Scheduled Pickup Not Attempted` and `No Pounds`, which suggests NTFB expects a receipt for a
-  fruitless pickup rather than silence. R3 knows both states (`SKIPPED`; a `COLLECTED` stop with no
-  weights) and emits neither, because the report is `weight_entry ∪ unscheduled_donation` and such a
-  stop is in neither half. **Deliberately not built** — emitting them would widen
-  `domain-modeling.md §6`'s union, and that doc is **locked**, so it is a doc change first and a code
-  change second. It also turns on a fact nobody here has: whether NTFB wants those receipts from
-  *us*, or whether the checkboxes exist for food banks whose own drivers do the pickups.
+- ~~**A189 — does the Meal Connect form accept a decimal in Pounds?**~~ **ANSWERED 2026-08-02
+  (`D28`).** The assumption was right that this needed a human: it said "whoever confirms this must
+  decide where the remainder goes before it is implemented," and the pantry's own paper log settled
+  both halves at once. Every pound on the receipt is now a **whole number, and the receipt total is
+  the sum of the rounded rows** — the rows win, so everything on the sheet adds up exactly as
+  printed. The cost, accepted knowingly: a receipt can sit a pound or two from the true intake, and
+  S3.1's own total may differ from the sum of the receipts by the same rounding. The alternative
+  (total wins, rows do not add up) is worse for the person typing it in, because they see the
+  discrepancy and cannot tell whether they mis-keyed. The rounding order the pantry uses is now
+  fixed in `domain-modeling.md §5.4` and is load-bearing.
+- ~~**A191 — R3 exports nothing for a stop that produced no food.**~~ **BUILT 2026-08-02 (`D29`).**
+  The assumption read the portal correctly: `Scheduled Pickup Not Attempted` and `No Pounds` exist
+  because NTFB does want a receipt for a fruitless pickup rather than silence, and the pantry
+  confirmed it. R3 now emits both — a `SKIPPED` stop or a run nobody worked ticks the first, a
+  resolved stop that came to nothing ticks the second, and the driver's reason rides along in the
+  receipt's Notes. **It did not widen the locked union**, which was the reason for holding off: the
+  report's totals are still `weight_entry ∪ unscheduled_donation` and a not-attempted receipt
+  carries **zero lines and zero pounds**. What changed is the shape of the export, not the
+  arithmetic. This closes the last case where a pickup could vanish silently between the pantry and
+  the food bank, which is the same failure as the lost paper sheet, one step further downstream.
+- **A192 — the trash-rate defaults are mirrored as a client constant.** `app_config`'s
+  `trash_rate_bakery / produce / deli` are not exposed on any endpoint, so the Admin store form
+  hardcodes **10 / 5 / 15** to fill the hint beside a blank field ("Blank uses the pantry default,
+  10%"). It is **communication only** — a blank field sends `null` and the server applies whatever
+  `app_config` actually holds, so the stored value can never be wrong. What can be wrong is the
+  sentence: if those defaults ever become editable, the hint starts lying and the constant must
+  come off the wire instead. The alternative was a blank control that silently decides something,
+  which is worse for the one field in the app where a number changes what the food bank is told.
+  *Cited by `s1-8-admin/masters.ts`.*
 - **A183 / D11** — confirm the mapping belongs on S3.1 rather than S1.8.
 - **A72** — a browser presenting a valid `r3_device` marker registers device-scoped, never
   user-scoped. A privacy-shaped default worth ratifying: the alternative leaks one person's alerts
@@ -401,8 +601,12 @@ cites by number.
   cross-checking the board against the report see the same seven days. The client half is
   `app/week.ts`, extracted from the report screen for the purpose; it and `weekBounds` must change
   together. Getting this wrong is now visible in two places instead of one, which is the point.
-- **A179 — metrics default to the last 28 days.** Four whole weeks, so the previous-period
-  comparison is like-for-like rather than a ragged month. Both endpoints accept explicit `from`/`to`.
+- ~~**A179 — metrics default to the last 28 days.**~~ **ANSWERED 2026-08-02 (`D39`).** The
+  assumption was the right kind of guess — four whole weeks kept the previous-period comparison
+  like-for-like — but it was a guess, and it meant S3.1 and S3.2 named different periods. The
+  default is now **this week**, the same Monday–Sunday week `D41` gives the report, and the
+  presets are replaced by explicit From / To. `Earlier`/`Later` still step by the chosen range's
+  own length, so the like-for-like property `A179` was protecting survives the change.
 - **A180 — the export groups; it does not emit one row per entry.** Two receivers adding 60 lb and
   40 lb of produce from one store on one day export as a single 100 lb row, per `data-model.md §8`'s
   grain. The drill-in still resolves that row to both entries with their receivers (Success Metric

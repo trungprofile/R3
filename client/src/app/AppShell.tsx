@@ -18,7 +18,7 @@ import {
 } from '../components/index.ts';
 import { displayName } from '../api/session.ts';
 import { canSee } from './access.ts';
-import { navItemsFor } from './nav.tsx';
+import { flattenNav, navItemsFor } from './nav.tsx';
 import { useRouter } from './router.tsx';
 import { HOME_PATH, homePathFor, routeById } from './routes.ts';
 import type { ScreenId } from './routes.ts';
@@ -96,7 +96,9 @@ export function AppShell({ screens, unreadCount, alertsEnabled, onFixAlerts }: A
     );
   }
 
-  const items = navItemsFor(user, viewport);
+  // Sections on the desktop, one flat capped section elsewhere (D22).
+  const sections = navItemsFor(user, viewport);
+  const items = flattenNav(sections);
   const activeId = match?.route.id ?? null;
 
   const chrome = (
@@ -117,7 +119,7 @@ export function AppShell({ screens, unreadCount, alertsEnabled, onFixAlerts }: A
     content = (
       <EmptyState title="That page isn't here.">
         <button type="button" className="r3-linkish" onClick={() => navigate(HOME_PATH)}>
-          Go to the board
+          Go home
         </button>
       </EmptyState>
     );
@@ -126,18 +128,17 @@ export function AppShell({ screens, unreadCount, alertsEnabled, onFixAlerts }: A
     // anyway (`architecture.md §4.5`). The refusal there is the rule.
     //
     // The way out is not decoration. §3 obliges an empty state to say what to do
-    // next, and this one has to carry the affordance itself: the tablet has NO nav
-    // (`nav.tsx` returns [] for it), so without this button a receiver who lands
-    // here — by a stale URL after a re-login, most likely — has nothing left but
-    // the browser's address bar. `homePathFor` rather than the board, for the same
-    // reason it exists: that is the one screen a nav-less receiver can use.
+    // next, and this one carries the affordance itself: a stale URL after a
+    // re-login is the usual way to land here, and the button is faster than
+    // finding the nav. One destination for everyone since D22 gave every viewport
+    // a hub; the second wording existed only because the tablet had no nav.
     const home = homePathFor(user, viewport);
     content = (
       <EmptyState
         title="You don't have access to this page."
         action={
           <button type="button" className="r3-linkish" onClick={() => navigate(home)}>
-            {home === HOME_PATH ? 'Go to the board' : 'Go to receiving'}
+            Go home
           </button>
         }
       >
@@ -164,11 +165,18 @@ export function AppShell({ screens, unreadCount, alertsEnabled, onFixAlerts }: A
       {chrome}
       <div className="r3-app__body">
         {viewport === 'desktop' && items.length > 0 ? (
-          <SideNav items={items} activeId={activeId} onSelect={onSelect} />
+          <SideNav
+            sections={sections}
+            activeId={activeId}
+            onSelect={onSelect}
+            onSelectHome={() => navigate(HOME_PATH)}
+          />
         ) : null}
         <main className="r3-app__main">{content}</main>
       </div>
-      {viewport === 'phone' && items.length > 0 ? (
+      {/* The tablet gets the bar too (D22). It used to be phone-only, which left the
+          768-1023px band with no navigation at all. */}
+      {viewport !== 'desktop' && items.length > 0 ? (
         <BottomNav items={items} activeId={activeId} onSelect={onSelect} />
       ) : null}
     </div>

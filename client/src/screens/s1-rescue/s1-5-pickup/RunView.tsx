@@ -1,11 +1,19 @@
-// The active run — the ordered stop list, and "Heading back" underneath it.
+// The active run — the ordered stop list, and "Complete this run" underneath it.
 //
 // S1.5's rules, in the order they appear there:
 //   - big check-off rows, tap to mark picked up
 //   - a stop can be skipped, with a reason-free confirm
 //   - reordering allowed, and changing order never loses check state
 //   - the next unchecked stop is visually the focus (the one primary action)
-//   - once no stop is `PENDING`, "Heading back" appears (I27)
+//   - once no stop is `PENDING`, the finish action appears (I27)
+//
+// D23 changed the finish action's shape: the button opens a confirm modal
+// carrying the stop summary and the run note, and once confirmed this screen is
+// `RunSummary` — read only, no actions at all. `pickup_completed_at` still
+// completes nothing (I27) and the shift is still `IN_PROGRESS`, because I11
+// (locked) makes the receiver's receive-done the only completion and I12 needs
+// every stop WEIGHED first. The word on the button is the human's decision (D23);
+// the state machine did not move to meet it.
 //
 // "Visually the focus" is taken literally here: the current stop is the one card
 // open, and the rest are one-line rows a tap away (`isStopExpanded`). That is
@@ -22,7 +30,7 @@
 // vanishes from a list the driver is reading while driving.
 
 import { useState } from 'react';
-import { useAsyncData, useSession, useToast } from '../../../app/index.ts';
+import { HOME_PATH, useAsyncData, useRouter, useSession, useToast } from '../../../app/index.ts';
 import { Button, ConfirmModal, EmptyState } from '../../../components/index.ts';
 import type {
   DonationSummary,
@@ -30,7 +38,13 @@ import type {
   RunDetail,
   RunStopSummary,
 } from '../../../api/shared.ts';
-import { fetchDonorPlaces, resolveStop, saveOrder, saveStopNote } from './api.ts';
+import {
+  confirmHeadingBack,
+  fetchDonorPlaces,
+  resolveStop,
+  saveOrder,
+  saveStopNote,
+} from './api.ts';
 import {
   COPY,
   NO_STOP_EXPANSION,
@@ -53,7 +67,8 @@ import {
   type StopExpansion,
 } from './logic.ts';
 import { AdHocStep } from './AdHocStep.tsx';
-import { ReviewStep } from './ReviewStep.tsx';
+import { CompleteRunModal } from './CompleteRunModal.tsx';
+import { RunSummary } from './RunSummary.tsx';
 import { StopCard } from './StopCard.tsx';
 
 export interface RunViewProps {
@@ -69,7 +84,9 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
   // Read before any early return: a hook after a conditional `return` runs on some
   // renders and not others, which is the one thing React's rules forbid outright.
   const { timezone } = useSession();
-  const [reviewing, setReviewing] = useState(false);
+  const { navigate } = useRouter();
+  const [completing, setCompleting] = useState(false);
+  const [completeBusy, setCompleteBusy] = useState(false);
   const [flagging, setFlagging] = useState(false);
   // What the driver flagged on this run, for the acknowledgement list. Held here
   // rather than fetched: `GET /shifts/:id/donations` is the RECEIVE duty's, so a
@@ -140,9 +157,37 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
     }
   };
 
-  if (reviewing) {
-    return <ReviewStep run={run} onRun={onRun} onClose={() => setReviewing(false)} />;
-  }
+  /**
+   * D23's one write. The SAME request as before — `POST /pickup-complete` with
+   * the run note — because nothing about the server changed: `pickup_completed_at`
+   * is set, the shift stays `IN_PROGRESS` (I27), and the receiver's receive-done
+   * is still the only thing that completes it (I11, I12).
+   *
+   * Afterwards the screen goes home. The run is now a read-only summary and
+   * leaving the driver parked on a full-screen takeover with nothing to do on it
+   * would be the same dead end the summary exists to avoid.
+   */
+  const completeRun = async (note: string) => {
+    setCompleteBusy(true);
+    const trimmed = note.trim();
+    try {
+      onRun(await confirmHeadingBack(run.shiftId, trimmed === '' ? null : trimmed));
+      setCompleting(false);
+      toast.success(COPY.completeToast);
+      navigate(HOME_PATH);
+    } catch (error) {
+      toast.error(messageFor(error));
+      if (shouldReloadAfter(error)) onReload();
+    } finally {
+      setCompleteBusy(false);
+    }
+  };
+
+  const heading = headingBackState(run, timezone ?? undefined);
+
+  // D23: the run is done being worked. No stop list, no note editor, no flag —
+  // `actionsFor` returns nothing here, and this is the screen that matches it.
+  if (heading.confirmed) return <RunSummary run={run} />;
 
   if (flagging) {
     return (
@@ -157,7 +202,6 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
   const stops = orderedStops(run.stops);
   const onRunStops = stopsOnThisRun(run.stops);
   const focusId = nextPendingStop(run.stops)?.id ?? null;
-  const heading = headingBackState(run, timezone ?? undefined);
 
   return (
     <>
@@ -204,23 +248,14 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
         </ol>
       )}
 
+      {/* I27's gate: on screen only once no stop is left PENDING. Confirming is
+          one-way for this screen (D23), so it goes through a modal rather than
+          straight onto the wire. */}
       {heading.offered ? (
         <div className="r3-pickup__handoff">
-          {/* The time is the whole message (D21): the driver can see they are
-              marked, and only the clock reading tells them anything more. */}
-          {heading.confirmed ? (
-            <p className="r3-pickup__confirmed">
-              <strong>{COPY.confirmedTitle}</strong>
-              {heading.confirmedAt ? ` · ${heading.confirmedAt}` : null}
-            </p>
-          ) : null}
           <div className="r3-pickup__primary">
-            <Button
-              variant={heading.confirmed ? 'secondary' : 'primary'}
-              block
-              onClick={() => setReviewing(true)}
-            >
-              {heading.confirmed ? COPY.reviewAgain : COPY.headingBack}
+            <Button variant="primary" block onClick={() => setCompleting(true)}>
+              {COPY.completeRun}
             </Button>
           </div>
         </div>
@@ -248,6 +283,15 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
           {COPY.flagAdHoc}
         </Button>
       </section>
+
+      {completing ? (
+        <CompleteRunModal
+          run={run}
+          busy={completeBusy}
+          onCancel={() => setCompleting(false)}
+          onConfirm={(note) => void completeRun(note)}
+        />
+      ) : null}
 
       {skipTarget ? (
         // Reason-free confirm (S1.5) that still names the consequence (§6): the

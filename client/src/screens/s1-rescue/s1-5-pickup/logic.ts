@@ -14,7 +14,6 @@
 import { toApiError } from '../../../api/index.ts';
 import { DONATION_ON_ROUTE_MESSAGE } from '../../../api/shared.ts';
 import type {
-  CategorySummary,
   DonationSummary,
   DonorSummary,
   FlagAdHocRequest,
@@ -64,12 +63,12 @@ export function phaseFor(run: RunDetail, viewerId: string): PickupPhase {
 /**
  * Every action this screen offers, named.
  *
- * There is deliberately no run-closing action in this list and no code path in
- * this folder that writes `Shift.status`: I11 makes the receiver's receive-done
- * the only completion and it ships in Phase 2 (build-plan D1), so a Phase-1 run
- * stays `IN_PROGRESS` after the last stop is resolved and after
- * `pickup_completed_at` is set. A "finish run" button here would be a second
- * completion path that Phase 2 would have to remove again.
+ * `complete-run` is a LABEL, not a state transition (D23). It posts
+ * `pickup_completed_at` and nothing else: I11 (locked) makes the receiver's
+ * receive-done the only completion, and I12 needs every stop `WEIGHED` before a
+ * shift may reach `COMPLETED` — which a driver has no scale to do. So no action
+ * in this list writes `Shift.status`, and the run is still `IN_PROGRESS` on the
+ * far side of the one called "complete".
  */
 export type PickupAction =
   | 'start'
@@ -78,7 +77,9 @@ export type PickupAction =
   | 'reorder'
   | 'stop-note'
   | 'run-note'
-  | 'heading-back'
+  /** D23: "Complete this run" — the confirm modal, and the milestone behind it
+   *  (I27). The driver's work is what completes; the shift is not. */
+  | 'complete-run'
   /** Phase 2, cap 12: record a pickup that was never on the planned route. Writes
    *  an UnscheduledDonation and never a ShiftStop (I14), so it closes nothing and
    *  changes no stop's disposition. */
@@ -89,15 +90,22 @@ export function actionsFor(run: RunDetail, viewerId: string): PickupAction[] {
   if (phase.kind === 'unavailable') return [];
   if (phase.kind === 'start') return ['start'];
 
-  // Available for the whole of an in-progress run, before and after the milestone:
-  // the server's only state test is `status === 'IN_PROGRESS'`, and a driver can be
-  // handed something extra at any point of the drive.
+  // D23: once the driver has completed the run, this screen is a read-only
+  // summary. No stop actions, no note edit, and no flag — the last of which is
+  // the cost of the choice, so `COPY.summaryNoFlag` says out loud that an extra
+  // pickup now needs a phone call. The shift is untouched and still IN_PROGRESS
+  // (I27); what closed is the driver's own screen, not the run.
+  if (run.pickupCompletedAt !== null) return [];
+
+  // Available for the whole of an in-progress run: the server's only state test is
+  // `status === 'IN_PROGRESS'`, and a driver can be handed something extra at any
+  // point of the drive.
   const actions: PickupAction[] = ['stop-note', 'flag-ad-hoc'];
   if (nextPendingStop(run.stops) !== null) actions.push('collect', 'skip');
   if (stopsOnThisRun(run.stops).length > 1) actions.push('reorder');
-  // The whole-run note lives on the review screen, which is reachable only once
-  // the gate is met (S1.5).
-  if (canHeadBack(run.stops)) actions.push('heading-back', 'run-note');
+  // The whole-run note lives in the confirm modal, which is reachable only once
+  // the gate is met (S1.5, I27) and only until it is confirmed.
+  if (canHeadBack(run.stops)) actions.push('complete-run', 'run-note');
   return actions;
 }
 
@@ -319,6 +327,32 @@ export function stopStatusLabel(disposition: ShiftStopDisposition): string {
 }
 
 /**
+ * How loudly a disposition reads, as the chip vocabulary `§3` fixes.
+ *
+ * A stop still to do carries the MOST weight, because "what is left" is the only
+ * question a driver asks this list. Picked up is the success tone, skipped and
+ * moved are muted: both are settled, and neither is work.
+ *
+ * The word is never dropped for the colour (§2, §3): `stopStatusLabel` renders
+ * inside the chip in every one of these tones, so the row reads the same in
+ * sunlight, in greyscale and out loud.
+ */
+export type StopStatusTone = 'todo' | 'done' | 'skipped' | 'moved';
+
+export function stopStatusTone(disposition: ShiftStopDisposition): StopStatusTone {
+  switch (disposition) {
+    case 'PENDING':
+      return 'todo';
+    case 'COLLECTED':
+      return 'done';
+    case 'SKIPPED':
+      return 'skipped';
+    case 'REASSIGNED':
+      return 'moved';
+  }
+}
+
+/**
  * A stop the driver can still resolve.
  *
  * Only out of `PENDING`: `domain-modeling.md §3.2` gives the driver two edges and
@@ -394,16 +428,20 @@ export function canMoveDown(stops: readonly RunStopSummary[], stopId: string): b
 }
 
 // ---------------------------------------------------------------------------
-// Heading back (I27)
+// Completing the run (I27, D23)
+//
+// The MILESTONE did not change: `pickup_completed_at`, one gate, one endpoint,
+// no `Shift.status` write (I27). Only the driver's word for it did, and this
+// section keeps the domain's name so the two never get confused.
 // ---------------------------------------------------------------------------
 
 export interface HeadingBackState {
   /** On screen at all: no `PENDING` stop remains (I27's gate). */
   offered: boolean;
-  /** `pickup_completed_at` is already set. A second confirm keeps the first
-   *  timestamp (A89), so this changes the copy, not the availability. */
+  /** `pickup_completed_at` is already set. Since D23 this closes the screen down
+   *  to a read-only summary rather than reopening an editable note. */
   confirmed: boolean;
-  /** Local-time reading of the milestone, for the confirmed line. */
+  /** Local-time reading of the milestone, for the summary's heading. */
   confirmedAt: string | null;
 }
 
@@ -437,12 +475,17 @@ export function timeOfDay(iso: string, timeZone?: string): string {
   });
 }
 
-/** One line per stop for the review screen: what happened, plus the note the
- *  receiver will read (S1.5: "stop-by-stop collected/skipped, each stop's note"). */
+/** One line per stop for the confirm modal and the read-only summary: what
+ *  happened, plus the note the receiver will read (S1.5: "stop-by-stop
+ *  collected/skipped, each stop's note").
+ *
+ *  The disposition travels raw rather than pre-formatted, so the one component
+ *  that renders it (`StopStatusChip`) owns both the word and the tone and the two
+ *  cannot drift apart. */
 export interface ReviewLine {
   id: string;
   name: string;
-  status: string;
+  disposition: ShiftStopDisposition;
   note: string | null;
 }
 
@@ -450,7 +493,7 @@ export function reviewLines(stops: readonly RunStopSummary[]): ReviewLine[] {
   return orderedStops(stops).map((stop) => ({
     id: stop.id,
     name: stop.donorName,
-    status: stopStatusLabel(stop.disposition),
+    disposition: stop.disposition,
     note: stop.note,
   }));
 }
@@ -475,55 +518,52 @@ export function truckLabel(truck: TruckSummary): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Where the food came from, as the three shapes the wire allows.
+ * Where the food came from, as the two shapes the driver may send.
  *
- * `donor_id` and `donor_label` are mutually exclusive (`ck_ud_source_exclusive`) and
- * both may be null, which is the anonymous case — so the picker is a three-way
- * choice rather than a text field with a lookup bolted on. `DonationSource` names
- * the same three, derived server-side from which column is set.
+ * `donor_id` and `donor_label` are mutually exclusive (`ck_ud_source_exclusive`).
+ * The third shape the column pair allows — both null, the anonymous row — is no
+ * longer offered here (D24): `ck_ud_i16b_source` permits an anonymous row only
+ * when it is not reportable, and everything a driver flags is reportable by
+ * default (I15). So "Other" now means "type the name", and there is no way to
+ * record a pickup from nowhere.
  */
 export type AdHocStore =
   | { kind: 'master'; donorId: string }
-  | { kind: 'label'; donorLabel: string }
-  | { kind: 'anon' };
+  | { kind: 'label'; donorLabel: string };
 
-/** What the flag screen holds while the driver fills it in. `weight` is absent and
- *  has nowhere to go: the driver has no scale, and the receiver weighs it (S1.5). */
+/** What the flag screen holds while the driver fills it in.
+ *
+ *  `weight` is absent and has nowhere to go: the driver has no scale, and the
+ *  receiver weighs it (S1.5). `categoryId` is absent for the same shape of
+ *  reason (D24) — a driver at a loading dock cannot know which of eleven
+ *  categories a mixed pallet reports under, and the receiver picks it at confirm
+ *  time, where it is required. */
 export interface AdHocDraft {
-  store: AdHocStore;
-  /** Required — the locked doc has no `SUGGESTED` exemption for Category (D8). */
-  categoryId: string | null;
+  /** Null until the driver picks. Nothing is preselected: with the anonymous
+   *  option gone there is no answer that is right by default. */
+  store: AdHocStore | null;
   note: string;
 }
 
-/** Opens on the master list with nothing chosen, which is the common case: most
- *  ad-hoc pickups are from a store the pantry already knows. */
 export const EMPTY_AD_HOC_DRAFT: AdHocDraft = {
-  store: { kind: 'anon' },
-  categoryId: null,
+  store: null,
   note: '',
 };
 
-/** Radio values for the two options that are not a donor id. Prefixed so they can
+/** The radio value for the one option that is not a donor id. Prefixed so it can
  *  never collide with a uuid. */
 export const AD_HOC_LABEL_CHOICE = '__label__';
-export const AD_HOC_ANON_CHOICE = '__anon__';
 
-export function adHocChoiceOf(store: AdHocStore): string {
-  switch (store.kind) {
-    case 'master':
-      return store.donorId;
-    case 'label':
-      return AD_HOC_LABEL_CHOICE;
-    case 'anon':
-      return AD_HOC_ANON_CHOICE;
-  }
+/** Empty string for "nothing chosen yet" — no radio in the group matches it, which
+ *  is exactly the state the form opens in. */
+export function adHocChoiceOf(store: AdHocStore | null): string {
+  if (store === null) return '';
+  return store.kind === 'label' ? AD_HOC_LABEL_CHOICE : store.donorId;
 }
 
 /** The radio's value back into a store. `label` keeps whatever was already typed so
  *  tapping away and back does not clear the box. */
 export function adHocStoreFor(choice: string, typedLabel: string): AdHocStore {
-  if (choice === AD_HOC_ANON_CHOICE) return { kind: 'anon' };
   if (choice === AD_HOC_LABEL_CHOICE) return { kind: 'label', donorLabel: typedLabel };
   return { kind: 'master', donorId: choice };
 }
@@ -548,32 +588,23 @@ export function selectableDonors(
   return donors.filter((donor) => donor.active && !onRoute.has(donor.id));
 }
 
-/** Active categories only — an archived one is hidden from new entry and kept for
- *  history (§3.3, S1.8). */
-export function selectableCategories(categories: readonly CategorySummary[]): CategorySummary[] {
-  return categories.filter((category) => category.active);
-}
-
 /**
  * The request body, or null when the draft is not ready to send.
  *
- * Two things make it ready, and neither is a domain rule this screen owns — the
- * server checks both again:
- *   - a category (D8: required, and the one field S1.5's prose does not mention)
- *   - a store, *if* the driver chose to type one. "No name for it" is a complete
- *     answer; a blank "Somewhere else" box is not.
+ * One thing makes it ready now, and it is not a domain rule this screen owns —
+ * the server checks it again: **a store the row can be attributed to**. Either
+ * one picked from the master list, or a name typed under "Other". D24 removed
+ * the anonymous option, so a blank "Other" box is an unfinished form rather than
+ * a third answer, and `adHocStoreProblem` says so where the box is.
  *
  * `donorId` and `donorLabel` are never both present, which is what
  * `ck_ud_source_exclusive` requires and what the server's `resolveSource` refuses.
  */
 export function adHocRequest(draft: AdHocDraft): FlagAdHocRequest | null {
-  if (draft.categoryId === null || draft.categoryId === '') return null;
+  if (draft.store === null) return null;
 
   const note = draft.note.trim();
-  const tail = {
-    categoryId: draft.categoryId,
-    ...(note === '' ? {} : { note }),
-  };
+  const tail = note === '' ? {} : { note };
 
   switch (draft.store.kind) {
     case 'master':
@@ -582,8 +613,6 @@ export function adHocRequest(draft: AdHocDraft): FlagAdHocRequest | null {
       const label = draft.store.donorLabel.trim();
       return label === '' ? null : { donorLabel: label, ...tail };
     }
-    case 'anon':
-      return tail;
   }
 }
 
@@ -592,15 +621,30 @@ export function adHocReady(draft: AdHocDraft): boolean {
 }
 
 /**
+ * The one sentence the store picker can be wrong in, or null.
+ *
+ * Only "Other" with nothing typed. Every other unfinished state is "nothing
+ * picked yet", which the empty radio group already shows and which a message
+ * would only repeat (D21).
+ */
+export function adHocStoreProblem(draft: AdHocDraft): string | null {
+  if (draft.store === null || draft.store.kind !== 'label') return null;
+  return draft.store.donorLabel.trim() === '' ? COPY.flagOtherStoreRequired : null;
+}
+
+/**
  * One line per pickup the driver flagged on this run.
  *
  * Deliberately NOT a stop and never rendered as one: a driver-add writes no
  * `ShiftStop` (I14), so it has no position, no disposition, and nothing to check
- * off. `donorDisplay` is the server's — it already collapses the anonymous case
- * into the "unattributed" bucket the report uses.
+ * off.
+ *
+ * The store is the whole line since D24: the driver no longer picks a category,
+ * so there is none to read back, and a line naming one the receiver has not
+ * chosen yet would be inventing it.
  */
 export function flaggedLine(donation: DonationSummary): string {
-  return `${donation.donorDisplay} · ${donation.categoryName}`;
+  return donation.donorDisplay;
 }
 
 /** The I29 refusal, told apart from every other failure so it can be shown next to
@@ -654,9 +698,10 @@ export const FORBIDDEN_IN_COPY = [
  *
  * Two constraints beyond §7, both from what this screen is:
  *
- *   - Nothing may say the run is over. `pickup_completed_at` is a handoff signal,
- *     not a completion (I27), and in Phase 1 the run stays `IN_PROGRESS` forever
- *     (D1). "Heading back" is a statement about the driver, not about the run.
+ *   - The DRIVER's run may be called complete (D23); the shift may not. I11
+ *     (locked) makes the receiver's receive-done the only completion action and
+ *     I12 holds `COMPLETED` behind every stop being WEIGHED, so no sentence here
+ *     may say the food is done, weighed, or reported.
  *   - Nothing may promise the pantry was told. The truck-inbound alert is the one
  *     piece of cap 13 held back to Phase 2 (PRD §5), and the server deliberately
  *     enqueues nothing, so copy that says "we let them know" would be false.
@@ -712,20 +757,35 @@ export const COPY = {
   noStops: 'This run has no stops.',
   noStopsNext: 'There is nothing to pick up, so you can head back whenever you like.',
 
-  // --- heading back (I27) -------------------------------------------------
-  headingBack: 'Heading back',
-  headingBackToast: 'Marked as heading back.',
-  reviewAgain: 'Review your run',
-  reviewTitle: 'Heading back',
-  reviewIntro: 'A last look at your run. Anything you write here goes to the pantry with it.',
+  // --- completing the run (D23, I27) --------------------------------------
+  //
+  // "Complete this run" is the human's word, taken as asked and stated once here
+  // so nobody reads it as a state change: what completes is the DRIVER's work.
+  // The shift stays `IN_PROGRESS` because I11 (locked) makes the receiver's
+  // receive-done the only completion action and I12 will not let a shift reach
+  // `COMPLETED` until every stop is WEIGHED, which needs a scale the driver does
+  // not have. So nothing below may claim the pantry is finished with the food.
+  completeRun: 'Complete this run',
+  completeQuestion: 'Complete this run?',
+  /** The one thing confirming takes away, said before it is taken (§6). */
+  completeConsequence:
+    'Your note is saved with the run and you cannot change it afterwards. The pantry weighs the food and finishes the run from there.',
+  completeConfirm: 'Complete this run',
+  completeToast: 'Run completed. The pantry takes it from here.',
   runNoteLabel: 'Note about the whole run',
-  runNoteHint: 'Last chance to add something before the pantry weighs it.',
-  // S1.5 names this action "Confirm — heading back". D21 forbids the em dash, and
-  // a hyphen swap is not the fix, so the punctuation goes and the words stay.
-  confirmHeadingBack: 'Confirm heading back',
-  saveRunNote: 'Save note',
   backToStops: 'Back to my stops',
-  confirmedTitle: "You're marked as heading back",
+
+  // --- the run afterwards, read only (D23) --------------------------------
+  completedTitle: 'You completed this run',
+  completedNoteLabel: 'Your note about the run',
+  completedNoNote: 'You did not leave a note.',
+  /** The way off a read-only, nav-less screen. Not an action on the run. */
+  summaryLeave: 'Go home',
+  /** The cost of a read-only summary, said out loud rather than discovered: the
+   *  flag is gone with every other action, so a driver who remembers an extra
+   *  pickup needs a person. */
+  summaryNoFlag:
+    'You can no longer add an extra pickup here. Phone the pantry if you picked up somewhere that is not on this list.',
 
   // --- flag a stop not on my route (cap 12) -------------------------------
   // Nothing here may promise anyone was told, for the same reason as above: the
@@ -733,25 +793,20 @@ export const COPY = {
   // alert of its own, and the truck-inbound one belongs to "Heading back".
   flagAdHoc: 'Flag a stop not on my route',
   flagTitle: 'A stop not on my route',
-  flagIntro:
-    'Record something extra you picked up. You do not weigh it. The pantry does that when you get back.',
   flagStoreLabel: 'Which store?',
   // Kept: a driver looking for a store that is missing from the list cannot
   // otherwise tell whether it is absent or already handled.
   flagStoreHint: 'Stops already on your route are not listed. Add their food to the stop itself.',
-  flagOtherStore: 'Somewhere else',
+  flagOtherStore: 'Other',
   flagOtherStoreLabel: 'Store name',
-  flagOtherStoreHint: 'For a store the pantry does not have on file yet.',
-  flagNoStore: 'No name for it',
-  flagCategoryLabel: 'What kind of food?',
-  flagCategoryHint: 'Your best guess is fine. The pantry can change it when they weigh it.',
+  /** D24 took the anonymous option away, so "Other" cannot be finished without a
+   *  name. Shown where the empty box is, not as a hint under the label. */
+  flagOtherStoreRequired: 'Type the store name to flag this pickup.',
   flagNoteLabel: 'Note for the pantry',
   flagSubmit: 'Flag this pickup',
   flagSuccess: 'Flagged. The pantry weighs it when you get back.',
   flagNoDonors: 'No stores to pick from.',
   flagNoDonorsNext: 'Type the store name instead, or ask an admin to add the store.',
-  flagNoCategories: 'No kinds of food are set up yet.',
-  flagNoCategoriesNext: 'Ask an admin to add one, then come back and flag this pickup.',
   // I14: a driver-add writes no ShiftStop, so the label has to keep these apart
   // from the route above it. It is the label doing that job now, not a hint under
   // the list repeating it (D21).

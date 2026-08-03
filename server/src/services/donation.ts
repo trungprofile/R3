@@ -23,12 +23,15 @@
 // Enforcement tiers (`architecture.md §4.1`) — this file is tier 3:
 //
 //   tier 1  `ck_ud_source_exclusive`, `ck_ud_confirmed_weight` (I16a),
-//           `ck_ud_i16b_source` (I16b) — all three are real CHECKs in migration 0011
+//           `ck_ud_i16b_source` (I16b) — all three are real CHECKs in migration 0011 —
+//           plus `ck_ud_confirmed_category` (I16c, migration 0015, D24), which is where
+//           "a donation has a category" moved to once the driver stopped picking one
 //   tier 3  here: I29's on-route guard (cross-table, so no CHECK can express it),
 //           I17's SUGGESTED-only-from-driver-add rule, and the edit window
 
 import { sql } from 'kysely';
 import {
+  DONATION_CATEGORY_REQUIRED_MESSAGE,
   DONATION_ON_ROUTE_MESSAGE,
   DONATION_SOURCE_REQUIRED_MESSAGE,
   DONATION_WINDOW_CLOSED_MESSAGE,
@@ -143,7 +146,10 @@ async function readDonations(
 function donationQuery(reader: Reader) {
   return reader
     .selectFrom('unscheduled_donation')
-    .innerJoin('category', 'category.id', 'unscheduled_donation.category_id')
+    // LEFT, not INNER (D24). A `SUGGESTED` row may now carry no category at all, and
+    // an inner join would make the driver's own prefill invisible to the receiver who
+    // has to act on it — including to `readOne` immediately after the insert.
+    .leftJoin('category', 'category.id', 'unscheduled_donation.category_id')
     .innerJoin('app_user', 'app_user.id', 'unscheduled_donation.created_by')
     .leftJoin('donor', 'donor.id', 'unscheduled_donation.donor_id')
     .leftJoin('shift', 'shift.id', 'unscheduled_donation.shift_id')
@@ -212,9 +218,10 @@ async function readOne(reader: Reader, id: string): Promise<DonationSummary> {
  * and not here. Refusing keeps "planned" and "unplanned" disjoint by construction
  * rather than by convention, which is what lets the report trust the split.
  *
- * `categoryId` is required by the locked doc even though S1.5's prose says the control
- * is "just a donor picker … and an optional note" — see `shared/src/donation.ts`
- * `FlagAdHocRequest` and build-plan D8 for why that conflict resolves this way.
+ * No `categoryId` since D24. The locked doc's "Category | required" was amended on
+ * 2026-08-02 to apply on `CONFIRMED` only (migration 0015), which supersedes D8 and
+ * makes S1.5's own prose — "just a donor picker … and an optional note" — true again.
+ * The driver at the dock was guessing; the receiver at the scale is not.
  */
 export async function flagAdHoc(
   actor: DonationActor,
@@ -222,7 +229,6 @@ export async function flagAdHoc(
   input: {
     donorId?: string | null;
     donorLabel?: string | null;
-    categoryId: string;
     note?: string | null;
   },
 ): Promise<DonationSummary> {
@@ -243,8 +249,6 @@ export async function flagAdHoc(
     if (!shift) throw notFound('No such run.');
     if (shift.ownerId !== actor.id) throw forbidden('That run is not yours.');
     if (shift.status !== 'IN_PROGRESS') throw conflict('That run is not in progress.');
-
-    await requireActiveCategory(tx, input.categoryId);
 
     if (source.donorId !== null) {
       await requireActiveDonor(tx, source.donorId);
@@ -267,7 +271,10 @@ export async function flagAdHoc(
         shift_id: shiftId,
         donor_id: source.donorId,
         donor_label: source.donorLabel,
-        category_id: input.categoryId,
+        // NULL while SUGGESTED, exactly like `weight` below (D24, migration 0015).
+        // `ck_ud_confirmed_category` is what makes this safe: the row cannot reach
+        // CONFIRMED — the only status any report reads — while it is still null.
+        category_id: null,
         // NULL while SUGGESTED — I16a only requires a weight once CONFIRMED, and the
         // driver has no scale.
         weight: null,
@@ -372,9 +379,10 @@ export async function createDonation(
  * Confirm a driver-flagged row: `SUGGESTED → CONFIRMED`.
  *
  * Every field may be re-supplied because the driver's flag is a prefill, not a
- * commitment — the receiver sees the food and may correct the donor or the category
- * the driver guessed at. Only the shift stays put: it records where the food came
- * from, which the receiver is not in a position to revise.
+ * commitment — the receiver sees the food and may correct the donor the driver guessed
+ * at. Since D24 the CATEGORY is not a correction but an entry: the driver no longer
+ * supplies one, so this is where it is named. Only the shift stays put: it records
+ * where the food came from, which the receiver is not in a position to revise.
  *
  * The transition is a conditional UPDATE on `status = 'SUGGESTED'`, so a second
  * receiver confirming the same prefill gets a refusal rather than silently
@@ -424,7 +432,11 @@ export async function confirmDonation(
     const reportable = input.reportable ?? existing.reportable;
     requireSourceWhenReportable(source, reportable);
 
+    // D24 — the prefill normally arrives with no category, so this is where one is
+    // named for the first time. Refused here with a sentence rather than left to
+    // `ck_ud_confirmed_category`, which would reach `errorHandler` as a 500.
     const categoryId = input.categoryId ?? existing.categoryId;
+    if (categoryId === null) throw badRequest(DONATION_CATEGORY_REQUIRED_MESSAGE);
     await requireActiveCategory(tx, categoryId);
     if (source.donorId !== null) await requireActiveDonor(tx, source.donorId);
 

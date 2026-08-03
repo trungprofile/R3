@@ -48,8 +48,12 @@ export interface DonationSummary {
   /** What to print: the master donor's name, the free-text label, or the
    *  "unattributed" bucket an anonymous walk-in collapses into (`data-model.md §8`). */
   donorDisplay: string;
-  categoryId: string;
-  categoryName: string;
+  /** D24 — null only while `SUGGESTED`. The driver no longer picks a category, so a
+   *  prefill arrives without one and the receiver names it at confirm.
+   *  `ck_ud_confirmed_category` makes it non-null on every `CONFIRMED` row, which is
+   *  the only kind the report and metrics ever read. */
+  categoryId: string | null;
+  categoryName: string | null;
   /** Decimal string; null while `SUGGESTED` (I16a makes it required on CONFIRMED). */
   weight: string | null;
   reportable: boolean;
@@ -76,25 +80,25 @@ export interface DonationSummary {
  * Guarded by I29: the donor must not already be a stop of this shift. More food from
  * a scheduled stop is additional `weight_entry` rows, not an unscheduled donation.
  *
- * ## Why `categoryId` is here, when S1.5 says "no weight entry"
+ * ## No `categoryId`, and why that is a change (D24)
  *
- * `ui-ux-spec.md:193` describes this control as "just a donor picker (or free-text
- * label) and an optional note". But `domain-modeling.md §2.3` (locked) lists
- * `Category | required` on `UnscheduledDonation` with **no** `SUGGESTED` exemption —
- * and pointedly grants one to `weight` in the very next row ("null while SUGGESTED").
- * `data-model.md §7.2` follows it: `category_id` is `NOT NULL`, `weight` is not.
+ * `ui-ux-spec.md:193` has always described this control as "just a donor picker (or
+ * free-text label) and an optional note". D8 had to overrule that sentence, because
+ * `domain-modeling.md §2.3` (locked) listed `Category | required` on
+ * `UnscheduledDonation` with no `SUGGESTED` exemption, and the locked doc outranks the
+ * UI spec. So the driver picked a category they could not verify, standing at a loading
+ * dock, for food the receiver would weigh later anyway.
  *
- * A `SUGGESTED` row therefore cannot be stored without a category. The docs conflict;
- * `CLAUDE.md`'s authority order resolves it in favour of the locked doc, so the
- * driver picks a category and still enters no weight. Recorded as D8 in
- * `docs/features/phase-2-build-plan.md` and escalated rather than settled quietly.
+ * The locked doc was amended on 2026-08-02 under explicit human authorization: a
+ * category is required **on `CONFIRMED`**, not at creation (migration 0015, D24, which
+ * supersedes D8). The driver's picker is gone and the UI spec's original sentence is
+ * true again. The receiver picks at confirm — they are the one holding the food.
  */
 export interface FlagAdHocRequest {
   /** Exactly one of these two, or neither for an anonymous pickup
    *  (`ck_ud_source_exclusive` forbids both). */
   donorId?: string | null;
   donorLabel?: string | null;
-  categoryId: string;
   note?: string | null;
 }
 
@@ -128,10 +132,14 @@ export interface CreateDonationRequest {
  *
  * Every field is re-supplied because the driver's flag is a *prefill*, not a
  * commitment — the receiver is the one who sees the food, and may correct the donor
- * or the category the driver guessed at.
+ * the driver guessed at.
  */
 export interface ConfirmDonationRequest {
   weight: string;
+  /** Optional on the wire only in the sense that absent means "keep what the row
+   *  already has". Since D24 a prefill normally has none, so in practice the receiver
+   *  supplies it here — and `ck_ud_confirmed_category` refuses the transition if the
+   *  row would end up without one. */
   categoryId?: string;
   donorId?: string | null;
   donorLabel?: string | null;
@@ -156,6 +164,11 @@ export const REPORTABLE_EXPLAINER =
 /** I16b, refused server-side as well as hidden client-side. */
 export const DONATION_SOURCE_REQUIRED_MESSAGE =
   'A reported donation needs a store name.';
+
+/** D24 — `ck_ud_confirmed_category`, refused before the CHECK fires so the receiver
+ *  reads a sentence rather than a 500. A driver-flagged row arrives without a
+ *  category now, so this is the ordinary path, not an edge case. */
+export const DONATION_CATEGORY_REQUIRED_MESSAGE = 'Pick what kind of food this is.';
 
 /** The window has closed; correcting it is now a Reporter job on the report screen. */
 export const DONATION_WINDOW_CLOSED_MESSAGE =

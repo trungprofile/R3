@@ -15,17 +15,17 @@
 
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
-import { EXPORT_COLUMNS } from '../../shared/src/report.js';
 import { db, pool } from '../src/db/index.js';
 import {
   createNtfbCategory,
-  exportRows,
+  exportReceipts,
   listMappings,
   removeNtfbCategory,
   reportEntries,
   reviseReportedWeight,
   setMapping,
   weekBounds,
+  pantryToday,
   weeklyReport,
 } from '../src/services/report.js';
 import { intakeMetrics } from '../src/services/metrics.js';
@@ -41,6 +41,23 @@ import {
 
 /** The fixture shift sits on 2026-08-04, a Tuesday. Its week is Mon 3rd–Sun 9th. */
 const WEEK = '2026-08-04';
+
+/**
+ * An anchor date as the RANGE the report now takes (D41).
+ *
+ * `weeklyReport` / `exportReceipts` / `reportEntries` were widened from one week
+ * anchor to `(from, to)`, and the default the route applies when a caller names no
+ * dates is still this: the Monday-to-Sunday week containing the anchor (A178). These
+ * tests all work in whole weeks, so resolving the anchor here keeps every assertion
+ * below about the arithmetic rather than about the new signature.
+ */
+function weekOf(anchor: string): [string, string] {
+  const { weekStart, weekEnd } = weekBounds(anchor);
+  return [weekStart, weekEnd];
+}
+
+/** The same window as an object, for the calls that take one. */
+const RANGE = { from: weekBounds(WEEK).weekStart, to: weekBounds(WEEK).weekEnd };
 
 beforeEach(resetDatabase);
 afterAll(async () => {
@@ -81,10 +98,15 @@ describe('the union must not filter on shift', () => {
       weight: '40',
     });
     // A walk-in's date is its own received_date, which `createDonation` sets to the
-    // pantry-local today — so ask for today's week, not the fixture shift's.
-    const today = new Date().toISOString().slice(0, 10);
+    // PANTRY-LOCAL today (D10) — so ask for that day's week, not the fixture shift's
+    // and not the machine's. `new Date().toISOString()` is the UTC date, which is
+    // already tomorrow at the pantry every evening after 7pm Chicago; on a Sunday
+    // that lands the query in the NEXT week and this test failed for the clock
+    // rather than for the code. Exactly the failure §6 records from Wave 3: a green
+    // gate is evidence only if the suite is time-independent.
+    const today = await pantryToday();
 
-    const report = await weeklyReport(today);
+    const report = await weeklyReport(...weekOf(today));
     expect(report.intakeTotal).toBe('40.00');
 
     // The failure this guards: a join starting from `shift` would return 0.00 here
@@ -112,7 +134,7 @@ describe('the union must not filter on shift', () => {
       .where('id', '=', created.id)
       .execute();
 
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
     expect(report.intakeTotal).toBe('125.00');
   });
 });
@@ -127,12 +149,26 @@ describe('report_day is a business day, never created_at', () => {
 
     // The row was created just now; the shift is dated 2026-08-04. A Tuesday-night
     // run received at 12:30am Wednesday belongs to Tuesday (§8).
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
     expect(report.intakeTotal).toBe('60.00');
 
-    // And it is absent from the week that contains `created_at`.
-    const thisWeek = await weeklyReport(new Date().toISOString().slice(0, 10));
-    expect(thisWeek.intakeTotal).toBe('0.00');
+    // And it is absent from the week that contains `created_at`. That week is PINNED
+    // rather than read off the clock: asking for "the week containing now" made the
+    // assertion vacuous whenever now happened to fall in the fixture shift's own week
+    // — which it does for seven days out of every ~53, and did on 2026-08-03. Moving
+    // `created_at` to a fixed instant three weeks out makes the two weeks provably
+    // different, so this asserts the bucketing rule instead of asserting the date.
+    await db
+      .updateTable('weight_entry')
+      .set({ created_at: new Date('2026-08-26T02:30:00Z') })
+      .execute();
+
+    const createdAtWeek = await weeklyReport(...weekOf('2026-08-26'));
+    expect(createdAtWeek.intakeTotal).toBe('0.00');
+
+    // ...and it is still in the shift's week, which is the other half of the rule.
+    const stillThere = await weeklyReport(...weekOf(WEEK));
+    expect(stillThere.intakeTotal).toBe('60.00');
   });
 });
 
@@ -146,7 +182,7 @@ describe('what counts', () => {
     const entry = detail.tiles.find((t) => t.categoryId === produce.id)!.entries[0]!;
     await db.updateTable('weight_entry').set({ voided: true }).where('id', '=', entry.id).execute();
 
-    expect((await weeklyReport(WEEK)).intakeTotal).toBe('0.00');
+    expect((await weeklyReport(...weekOf(WEEK))).intakeTotal).toBe('0.00');
   });
 
   it('excludes SUGGESTED donations — a prefill is not intake (I17)', async () => {
@@ -163,7 +199,7 @@ describe('what counts', () => {
       .where('id', '=', created.id)
       .execute();
 
-    expect((await weeklyReport(WEEK)).intakeTotal).toBe('0.00');
+    expect((await weeklyReport(...weekOf(WEEK))).intakeTotal).toBe('0.00');
   });
 
   it('counts an unreported donation as INTAKE but never as REPORTED', async () => {
@@ -182,7 +218,7 @@ describe('what counts', () => {
       .where('id', '=', created.id)
       .execute();
 
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
 
     // The key data boundary of PRD §3, as two numbers that must not converge.
     expect(report.intakeTotal).toBe('15.00');
@@ -201,7 +237,7 @@ describe('the AGFP→NTFB mapping', () => {
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '10' });
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: bakery.id, weight: '5' });
 
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
     expect(report.lines).toHaveLength(1);
     expect(report.lines[0]!.total).toBe('15.00');
     // Inspectable one level before the drill-in: which AGFP categories made it up.
@@ -216,7 +252,7 @@ describe('the AGFP→NTFB mapping', () => {
     const { shift, stops, actor, produce } = await scene();
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '70' });
 
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
 
     // The silent-drop failure this exists to prevent: the report would read 0.00
     // reported with 70 lb of food in the building, and nothing would say so.
@@ -225,7 +261,7 @@ describe('the AGFP→NTFB mapping', () => {
     expect(report.readyToExport).toBe(false);
     expect(report.lines).toHaveLength(0);
 
-    await expect(exportRows(WEEK)).rejects.toThrow(/not matched/i);
+    await expect(exportReceipts(...weekOf(WEEK))).rejects.toThrow(/not matched/i);
   });
 
   it('counts unmapped-but-reportable weight as REPORTED, never as UNREPORTED', async () => {
@@ -237,7 +273,7 @@ describe('the AGFP→NTFB mapping', () => {
     const { shift, stops, actor, produce } = await scene();
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '70' });
 
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
 
     expect(report.intakeTotal).toBe('70.00');
     expect(report.reportedTotal).toBe('70.00');
@@ -268,7 +304,7 @@ describe('the AGFP→NTFB mapping', () => {
       .where('id', '=', walkIn.id)
       .execute();
 
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
 
     expect(report.intakeTotal).toBe('45.00');
     expect(report.reportedTotal).toBe('40.00'); // 10 mapped + 30 unmapped
@@ -283,23 +319,26 @@ describe('the AGFP→NTFB mapping', () => {
     await setMapping(produce.id, ntfb.id, 'Refrigeration');
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '70' });
 
-    const { rows } = await exportRows(WEEK);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      day: '2026-08-04',
-      ntfbCategory: 'Produce',
-      storage: 'Refrigeration',
-      agfpCategory: 'Produce',
-      weightLb: '70.00',
-      // One line item on one receipt — what Meal Connect's review screen shows back.
-      receiptItems: '1',
-      receiptTotal: '70.00',
+    const { receipts } = await exportReceipts(...weekOf(WEEK));
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({
+      pickupDate: '2026-08-04',
+      // Meal Connect's own two figures, which its review screen shows back before
+      // Submit and which are therefore the check that a receipt was typed completely.
+      itemCount: 1,
+      totalPounds: '70',
+      notAttempted: false,
+      noPounds: false,
     });
-
-    // The header and the rows are written in two different files, so a column added
-    // to one and not the other shifts every value right of it — silently, into a
-    // spreadsheet nobody re-reads.
-    expect(Object.keys(rows[0]!)).toHaveLength(EXPORT_COLUMNS.length);
+    expect(receipts[0]!.lines).toEqual([
+      {
+        ntfbCategory: 'Produce',
+        storage: 'Refrigeration',
+        pounds: '70',
+        agfpCategory: 'Produce',
+        computed: false,
+      },
+    ]);
   });
 
   it('splits one NTFB category into two lines when the storage differs', async () => {
@@ -314,22 +353,22 @@ describe('the AGFP→NTFB mapping', () => {
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '10' });
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: bakery.id, weight: '5' });
 
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
     expect(report.lines).toHaveLength(2);
     expect(report.lines.map((line) => [line.storage, line.total])).toEqual([
       ['Dry', '5.00'],
       ['Frozen', '10.00'],
     ]);
 
-    // And two line items on one receipt, whose total is still the pair's sum.
-    const { rows } = await exportRows(WEEK);
-    expect(rows).toHaveLength(2);
-    expect(rows.map((row) => row.storage)).toEqual(['Dry', 'Frozen']);
-    expect(rows.every((row) => row.receiptItems === '2')).toBe(true);
-    expect(rows.every((row) => row.receiptTotal === '15.00')).toBe(true);
+    // And two line items on ONE receipt, whose total is still the pair's sum.
+    const { receipts } = await exportReceipts(...weekOf(WEEK));
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]!.lines.map((line) => line.storage)).toEqual(['Dry', 'Frozen']);
+    expect(receipts[0]!.itemCount).toBe(2);
+    expect(receipts[0]!.totalPounds).toBe('15');
   });
 
-  it('orders the worksheet by receipt, and totals each one', async () => {
+  it('orders the export by receipt, and totals each one', async () => {
     // Receipt order is day → store → category, because that is the order a Reporter
     // types them in. Ordering by category first scatters one receipt's lines down
     // the file, which is what this did while the format was a guess.
@@ -362,32 +401,21 @@ describe('the AGFP→NTFB mapping', () => {
       weight: '3',
     });
 
-    const { rows } = await exportRows(WEEK);
+    const { receipts } = await exportReceipts(...weekOf(WEEK));
     const donorNames = started.donors.map((d) => d.name).sort();
 
-    // Grouped: all of the first store's lines, then all of the second's.
-    expect(rows.map((row) => row.donor)).toEqual([
-      donorNames[0],
-      donorNames[0],
-      donorNames[1],
-      donorNames[1],
-    ]);
-    // Within a receipt, by category.
-    expect(rows.map((row) => row.ntfbCategory)).toEqual([
-      'Bread',
-      'Produce',
-      'Bread',
-      'Produce',
-    ]);
-    // Each receipt's own total, repeated on each of its rows — never the week's.
-    expect(rows.map((row) => row.receiptTotal)).toEqual([
-      ...Array(2).fill(rows[0]!.receiptTotal),
-      ...Array(2).fill(rows[2]!.receiptTotal),
-    ]);
-    expect(new Set(rows.map((row) => row.receiptTotal))).toEqual(new Set(['13.00', '24.00']));
+    // One card per store, in the order they are typed.
+    expect(receipts.map((r) => r.donorName)).toEqual([donorNames[0], donorNames[1]]);
+    // Within a card, by category.
+    for (const receipt of receipts) {
+      expect(receipt.lines.map((line) => line.ntfbCategory)).toEqual(['Bread', 'Produce']);
+      expect(receipt.itemCount).toBe(2);
+    }
+    // Each card's own total — never the week's.
+    expect(receipts.map((r) => r.totalPounds).sort()).toEqual(['13', '24']);
   });
 
-  it('carries the food bank’s own donor number into the worksheet', async () => {
+  it('carries the food bank’s own donor number onto the receipt', async () => {
     // Meal Connect's donor picker reads `H-E-B Food Stores (810)`, so the code is
     // what makes a row unambiguous at the far end.
     const { shift, stops, actor, produce, donors } = await scene();
@@ -400,8 +428,8 @@ describe('the AGFP→NTFB mapping', () => {
       .execute();
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '9' });
 
-    const { rows } = await exportRows(WEEK);
-    expect(rows[0]!.donorCode).toBe('810');
+    const { receipts } = await exportReceipts(...weekOf(WEEK));
+    expect(receipts[0]!.donorCode).toBe('810');
   });
 
   it('clears the storage when the category it belonged to is cleared', async () => {
@@ -427,7 +455,7 @@ describe('the AGFP→NTFB mapping', () => {
     // `bakery` exists, is unmapped, and has no entries this week.
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '5' });
 
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
     expect(report.unmapped).toHaveLength(0);
     expect(report.readyToExport).toBe(true);
   });
@@ -460,7 +488,7 @@ describe('the drill-in (Success Metric 4)', () => {
     const { shift, stops, actor, produce } = await scene();
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '12' });
 
-    const entries = await reportEntries(WEEK);
+    const entries = await reportEntries(...weekOf(WEEK));
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       kind: 'WEIGHT',
@@ -486,7 +514,7 @@ describe('the drill-in (Success Metric 4)', () => {
       .where('id', '=', created.id)
       .execute();
 
-    const entries = await reportEntries(WEEK);
+    const entries = await reportEntries(...weekOf(WEEK));
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       kind: 'DONATION',
@@ -511,12 +539,18 @@ describe("the Reporter's correction (cap 15)", () => {
       .where('id', '=', shift.id)
       .execute();
 
-    const before = await reportEntries(WEEK);
+    const before = await reportEntries(...weekOf(WEEK));
     expect(before[0]!.receiverWindowOpen).toBe(false);
 
-    const after = await reviseReportedWeight({ id: reporter.id }, before[0]!.id, {
-      weight: '120',
-    });
+    const after = await reviseReportedWeight(
+      { id: reporter.id },
+      before[0]!.id,
+      { weight: '120' },
+      // D41 — the revise re-reads the RANGE the Reporter is looking at, narrowed to
+      // the entry's own category. It used to answer with the whole week across every
+      // category, under one category's heading in the drill-in.
+      RANGE,
+    );
 
     // One live entry, the new value; the old row retained and voided (I13).
     expect(after).toHaveLength(1);
@@ -570,7 +604,7 @@ describe("the Reporter's correction (cap 15)", () => {
     expect(updated.reportable).toBe(false);
 
     // And it took effect: the week's reported total drops by the toggled-off donation.
-    const report = await weeklyReport(WEEK);
+    const report = await weeklyReport(...weekOf(WEEK));
     expect(report.unreportedTotal).toBe('25.00');
   });
 
@@ -578,11 +612,11 @@ describe("the Reporter's correction (cap 15)", () => {
     const { shift, stops, actor, produce } = await scene();
     const reporter = await makeReceiver();
     await addWeight(actor, shift.id, stops[0]!.id, { categoryId: produce.id, weight: '10' });
-    const entries = await reportEntries(WEEK);
+    const entries = await reportEntries(...weekOf(WEEK));
 
-    await reviseReportedWeight({ id: reporter.id }, entries[0]!.id, { weight: '20' });
+    await reviseReportedWeight({ id: reporter.id }, entries[0]!.id, { weight: '20' }, RANGE);
     await expect(
-      reviseReportedWeight({ id: reporter.id }, entries[0]!.id, { weight: '30' }),
+      reviseReportedWeight({ id: reporter.id }, entries[0]!.id, { weight: '30' }, RANGE),
     ).rejects.toThrow(/already changed/i);
   });
 });

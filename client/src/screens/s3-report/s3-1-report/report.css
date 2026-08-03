@@ -45,31 +45,30 @@
   margin: var(--space-2) 0;
 }
 
-/* --- picking a week ------------------------------------------------------- */
+/* --- picking the dates (D41) ----------------------------------------------- */
 
-.s31-week {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  /* §1.2: at least an 8px gap between adjacent targets, and these three sit in a
-   * row. `--space-3` keeps them apart even when the labels grow at 200% zoom. */
-  gap: var(--space-3);
+.s31-range {
   margin-bottom: var(--space-4);
 }
 
-.s31-week__label {
-  flex: 1 1 16rem;
-  text-align: center;
-}
-
-.s31-week__name {
+.s31-range__name {
   font-size: var(--font-h2);
-  margin: 0;
+  margin: 0 0 var(--space-2) 0;
 }
 
-.s31-week__range {
-  font-size: var(--font-body);
-  color: var(--text);
+.s31-range__fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  /* §1.2: at least an 8px gap between adjacent targets, and these sit in a row.
+   * `--space-3` keeps them apart even when the labels grow at 200% zoom. */
+  gap: var(--space-3);
+}
+
+/* The two date fields are the same 48px control every other field on this screen
+ * is (§3), so they inherit `.r3-field`; only their width is theirs. */
+.s31-range__field {
+  flex: 0 1 12rem;
   margin: 0;
 }
 
@@ -140,30 +139,38 @@
   padding-top: var(--space-3);
 }
 
-/* The reported figure is the one the export carries, so it is the one with
- * emphasis. The others stay full-size and fully labelled — the emphasis says
- * which number leaves the building, not which number matters. */
-.s31-total--primary {
-  border-top-width: var(--space-1);
-  border-top-color: var(--brand-orange);
+/* SMALL AND COMPACT, UNDER THE ACTION (D34). These were three full-size figures in
+ * a card at the top of the screen, each with a sentence under it. The reporter's
+ * job is the Meal Connect report; these two are the cross-check they glance at on
+ * the way past, so they sit in one row under the primary button and take the space
+ * a row deserves. Nothing is hidden: both are still fully labelled, which since the
+ * captions went is the only place PRD §3's boundary is drawn. */
+.s31-totals--compact {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.s31-totals--compact .s31-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
 }
 
 .s31-total__label {
-  font-size: var(--font-body);
-  color: var(--text);
+  font-size: var(--font-label);
+  color: var(--text-muted);
   font-weight: 600;
 }
 
 .s31-total__value {
-  margin: var(--space-2) 0 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.s31-total__note {
-  font-size: var(--font-label);
-  color: var(--text-muted);
+  margin: 0;
+  font-size: var(--font-body);
+  font-weight: 700;
 }
 
 /* --- the report table ------------------------------------------------------ */
@@ -189,6 +196,15 @@
 
 .s31-line__total {
   white-space: nowrap;
+}
+
+/* The Trash line has no drill-in and nothing was weighed into it (D27), so what
+ * would otherwise be an empty card gets the sentence that explains the absence. */
+.s31-line__computed {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: var(--space-3) 0 0 0;
+  max-width: 46rem;
 }
 
 .s31-line__sub {
@@ -337,112 +353,403 @@
   border-top: 1px solid var(--border);
 }
 
+/* The trash deduction, shown as the subtraction it is (D27): what was weighed,
+ * what moved to Trash, what is reported. The last line keeps `.s31-drill__total`
+ * so the reported figure carries the same weight it did when it was the only one. */
+.s31-drill__totals {
+  margin: var(--space-3) 0;
+}
+
+.s31-drill__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  font-size: var(--font-body);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s31-drill__note {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 46rem;
+}
+
 /* --- the one primary action ------------------------------------------------ */
 
+/* AT THE TOP SINCE D34, and no longer a pair: "Print or save as PDF" moved inside
+ * the report view, where the cards are. One button, one job, and nothing beside it
+ * to be one mis-tap away from. */
 .s31-export {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-3);
-  margin-top: var(--space-6);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
 }
 
-/* Export and Print sit side by side and wrap together at tablet width or 200%
- * zoom. §1.2's minimum gap between adjacent targets applies here as much as
- * anywhere: these two do different things and are one mis-tap apart. */
-.s31-export__actions {
+/* --- the receipts (D29) ---------------------------------------------------- */
+
+/* ON SCREEN AND ON PAPER, deliberately the same cards. A Reporter types a receipt
+ * into a web form reading either from the monitor or from a printout, and two
+ * layouts for one submission is exactly the drift D29 removed the CSV to end. */
+
+.s31-receipts {
+  margin-top: var(--space-3);
+}
+
+.s31-receipts__head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
-/* --- the printed worksheet (D16) ------------------------------------------- */
+/* D28's whole-pound note, and D35's "how many are filed" line. Both are read once
+ * on the way in rather than stared at, so both are label-sized. */
+.s31-receipts__note,
+.s31-receipts__progress {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 46rem;
+}
 
-/* Absent from the screen entirely. The Reporter's copy of these rows is the
- * on-screen table above; this section exists for paper and for the browser's own
- * "Save as PDF", which is the whole of the answer to "can we have a PDF" without
- * the dependency D5 forbids. */
-.s31-print {
+.s31-receipts__progress {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* --- the compact list (D35) ------------------------------------------------ */
+
+.s31-receipts__list {
+  margin-bottom: var(--space-5);
+}
+
+.s31-receipts__side {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* A filed receipt is marked by its WORDS first — the row's subtitle names who and
+ * when — and the colour only agrees with them (§3: never colour alone). */
+.s31-receipts__side--done {
+  color: var(--text-muted);
+}
+
+/* ONE CARD AT A TIME ON SCREEN. The portal takes one submission at a time, so this
+ * is the shape of the work. Under `@media print` the closed ones come back: a
+ * printout is the whole range on paper and nobody is clicking anything. */
+.s31-receipts__card--closed {
   display: none;
 }
 
+.s31-receipts__title {
+  font-size: var(--font-h2);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.s31-receipts__week {
+  font-size: var(--font-body);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* --- the check-off on an open card (D35) ----------------------------------- */
+
+.s31-receipt__submit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.s31-receipt__submit-state {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0;
+}
+
+.s31-receipts__empty {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0;
+}
+
+/* One card, one Meal Connect submission. Bordered rather than merely spaced,
+ * because the boundary between two receipts is what stops a line being typed onto
+ * the wrong one. */
+.s31-receipt {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+  /* A receipt split across two sheets is how a line gets typed twice or not at
+   * all. Repeated in the print block, where it is what actually matters. */
+  break-inside: avoid;
+}
+
+.s31-receipt__head,
+.s31-receipt__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: 0;
+}
+
+.s31-receipt__totals {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.s31-receipt__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.s31-receipt__field dt {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+.s31-receipt__field dd {
+  font-size: var(--font-body);
+  font-weight: 600;
+  margin: 0;
+}
+
+.s31-receipt__boxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  font-size: var(--font-body);
+}
+
+.s31-receipt__box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.s31-receipt__tick {
+  font-size: var(--font-h3);
+  line-height: 1;
+}
+
+.s31-receipt__lines {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-body);
+  margin-top: var(--space-3);
+}
+
+.s31-receipt__lines th,
+.s31-receipt__lines td {
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-2) var(--space-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.s31-receipt__lines th {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.s31-receipt__pounds {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* A not-attempted receipt has no line items ON PURPOSE, and that is the whole
+ * reason it is emitted at all. Said in a sentence so an empty card does not read
+ * as a load that failed. */
+.s31-receipt__empty {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: var(--space-3) 0;
+}
+
+/* --- ours, below the line -------------------------------------------------- */
+
+/* Everything past this rule is NOT typed into the portal. The double border is
+ * the visual half of that sentence; `oursNote` is the other half, and neither is
+ * enough on its own (§3: never a visual signal alone). */
+.s31-receipt__ours {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: var(--space-1) double var(--border);
+}
+
+.s31-receipt__ours-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  font-weight: 600;
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s31-receipt__ours-note {
+  font-weight: 400;
+}
+
+.s31-receipt__ours-sub {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  font-weight: 400;
+  margin: var(--space-3) 0 var(--space-1) 0;
+}
+
+.s31-receipt__sources {
+  margin: 0;
+  font-size: var(--font-label);
+}
+
+.s31-receipt__source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.s31-receipt__source dt {
+  flex: 1 1 14rem;
+  color: var(--text-muted);
+}
+
+.s31-receipt__source dd {
+  flex: 1 1 14rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+/* The computed Trash line carries a sentence rather than a category name, so it
+ * is not set in the same weight as one. */
+.s31-receipt__source--computed dd {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.s31-receipt__notes {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--font-body);
+}
+
+.s31-receipt__notes li {
+  margin-bottom: var(--space-1);
+}
+
+.s31-receipt__note-role {
+  font-weight: 600;
+}
+
+.s31-receipt__note-hint,
+.s31-receipt__note-empty {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2) 0;
+  max-width: 46rem;
+}
+
+/* --- printing (D5: no library, just the browser's own dialogue) ------------- */
+
 @media print {
-  /* Everything the app draws — shell, nav, top bar, buttons, the on-screen table
-   * — is hidden, and the worksheet is promoted to the whole page. Written as
-   * `visibility` on the tree plus `position` on the section rather than
-   * `display: none` on named ancestors: this file must not know the shell's class
-   * names, and the shell is not this lane's to edit. */
-  body * {
+  /*
+   * EVERY RULE HERE IS BEHIND `.s31-print-mode`, AND THAT IS THE FIX.
+   *
+   * Printing one section means hiding the rest of the page, and this file must not
+   * name the shell's classes to do it — the shell is not this lane's to edit. The
+   * old rule was a bare `body * { visibility: hidden }`, which worked and then
+   * never stopped working: a stylesheet is loaded once and never unloaded, so
+   * after one visit to the report, Ctrl+P on ANY other screen printed a blank
+   * page. QA round 2 found exactly that.
+   *
+   * `ReportScreen` puts this class on the body while the receipts are mounted and
+   * takes it off on unmount (`PRINT_BODY_CLASS`), so the rule cannot outlive the
+   * thing it exists to print, and a page with no receipts on it cannot be hidden
+   * by them.
+   */
+  body.s31-print-mode * {
     visibility: hidden;
   }
 
-  .s31-print,
-  .s31-print * {
+  body.s31-print-mode .s31-receipts,
+  body.s31-print-mode .s31-receipts * {
     visibility: visible;
   }
 
-  .s31-print {
-    display: block;
+  body.s31-print-mode .s31-receipts {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     padding: 0;
     margin: 0;
+    border: none;
+    /* Literal black on white, and the one place in this repo where a hex value is
+     * correct rather than a token violation: `ui-ux-spec.md §2`'s palette is a
+     * screen palette, and a printer has no theme to inherit. */
     color: #000;
     background: #fff;
   }
 
-  .s31-print__title {
-    font-size: 1.2rem;
-    margin: 0 0 0.2rem 0;
-  }
-
-  .s31-print__week,
-  .s31-print__account {
-    font-size: 0.9rem;
-    margin: 0 0 0.2rem 0;
-  }
-
-  /* The agency line is the one thing the worksheet cannot check for the Reporter
-   * (`ui-ux-spec.md` S3.1), so on the copy that leaves the screen it is the one
-   * thing set apart. */
-  .s31-print__account {
-    font-weight: 700;
-    margin-bottom: 0.6rem;
-  }
-
-  .s31-print__table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.8rem;
-  }
-
-  .s31-print__table th,
-  .s31-print__table td {
-    border: 1px solid #000;
-    padding: 0.15rem 0.3rem;
-    text-align: left;
-    vertical-align: top;
-  }
-
-  /* A week can run to more rows than one sheet holds, and a receipt split across
-   * a page break with no headings above it is how a line gets typed twice or not
-   * at all. */
-  .s31-print__table thead {
-    display: table-header-group;
-  }
-
-  .s31-print__table tr {
+  /* A card is one submission. Splitting it across two sheets is how a line gets
+   * typed twice or not at all, so it does not split. */
+  body.s31-print-mode .s31-receipt {
     break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1px solid #000;
+    margin-bottom: 0.6rem;
+    padding: 0.4rem 0.6rem;
   }
 
-  /* Literal black on white, and the one place in this repo where a hex value is
-   * correct rather than a token violation: `ui-ux-spec.md §2`'s palette is a
-   * screen palette, and a printer has no theme to inherit. */
+  body.s31-print-mode .s31-receipts__title {
+    font-size: 1.2rem;
+  }
+
+  /* A printout is the whole range on paper, so the card the reporter happens to
+   * have open is not the only one that prints. */
+  body.s31-print-mode .s31-receipts__card--closed {
+    display: block;
+  }
+
+  /* The list, the buttons and the check-off are ways to WORK the receipts on
+   * screen. On paper they are neither usable nor informative, and the state they
+   * report is already stale by the time the sheet is in a hand. */
+  body.s31-print-mode .s31-receipts__list,
+  body.s31-print-mode .s31-receipt__submit,
+  body.s31-print-mode .s31-receipts__progress,
+  body.s31-print-mode .r3-back,
+  body.s31-print-mode .s31-receipts__head .r3-btn {
+    display: none;
+  }
+
+  body.s31-print-mode .s31-receipt__lines th,
+  body.s31-print-mode .s31-receipt__lines td {
+    border-bottom: 1px solid #000;
+  }
+
+  body.s31-print-mode .s31-receipt__ours {
+    border-top: 1px dashed #000;
+  }
+
   @page {
     margin: 1.5cm;
   }

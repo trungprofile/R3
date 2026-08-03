@@ -13,7 +13,7 @@
 // day starts (state A55), and this form only assembles `YYYY-MM-DD` / `HH:MM`.
 
 import { useState } from 'react';
-import { Button } from '../../../components/index.ts';
+import { Button, TimeField } from '../../../components/index.ts';
 import { useToast } from '../../../app/index.ts';
 import { DayRangePicker } from './DayRangePicker.tsx';
 import { declareTimeAway } from './data.ts';
@@ -30,37 +30,6 @@ import {
   validateForm,
 } from './logic.ts';
 import type { AwayForm as AwayFormState } from './logic.ts';
-
-function TimeChoice({
-  label,
-  value,
-  options,
-  onSelect,
-}: {
-  label: string;
-  value: string | null;
-  options: readonly string[];
-  onSelect: (time: string) => void;
-}) {
-  return (
-    <fieldset className="s14-times">
-      <legend className="s14-label">{label}</legend>
-      <div className="s14-times__grid">
-        {options.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={`s14-time${option === value ? ' s14-time--active' : ''}`}
-            aria-pressed={option === value}
-            onClick={() => onSelect(option)}
-          >
-            {formatTimeLabel(option)}
-          </button>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
 
 export interface AwayFormProps {
   /** Reload the list once a declaration lands. */
@@ -159,10 +128,15 @@ export function AwayForm({ onSaved, now }: AwayFormProps) {
 
       {form.kind === 'WINDOW' ? (
         <>
-          <TimeChoice
+          {/* Two closed fields instead of two always-visible grids of 35 buttons
+              (A5). `components/TimeField.tsx` already exists for exactly this, on
+              S1.6's publish form, and takes the same props the grid did — so
+              `laterTimes` and the end-time reset below are unchanged. */}
+          <TimeField
             label="From"
             value={form.startTime}
             options={times}
+            format={formatTimeLabel}
             onSelect={(time) => {
               setProblem(null);
               setForm((current) => ({
@@ -178,10 +152,11 @@ export function AwayForm({ onSaved, now }: AwayFormProps) {
               }));
             }}
           />
-          <TimeChoice
+          <TimeField
             label="Until"
             value={form.endTime}
             options={laterTimes}
+            format={formatTimeLabel}
             onSelect={(time) => {
               setProblem(null);
               setForm((current) => ({ ...current, endTime: time }));

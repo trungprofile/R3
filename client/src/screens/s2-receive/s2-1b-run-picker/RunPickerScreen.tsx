@@ -17,27 +17,41 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { Button, EmptyState, ErrorBlock, List, SkeletonRows } from '../../../components/index.ts';
-import { buildPath, useAsyncData, useRouter, useSession } from '../../../app/index.ts';
+import {
+  buildPath,
+  todayInZone,
+  useAsyncData,
+  useRouter,
+  useSession,
+} from '../../../app/index.ts';
 import type { ScreenProps } from '../../../app/index.ts';
 import type { ReceiveRunSummary } from '../../../api/shared.ts';
 import { fetchReceivableRuns, fetchRunStops } from './api.ts';
-import { COPY, listState, targetForStops, toCards } from './run-picker.ts';
+import { COPY, listState, targetForStops, toBands } from './run-picker.ts';
 import type { RunCardView } from './run-picker.ts';
 import { RunCard } from './RunCard.tsx';
+import { RunTile } from './RunTile.tsx';
 import './run-picker.css';
 
 export function RunPickerScreen(_props: ScreenProps) {
-  // The pantry's zone (A120), used for the CLOCK only. Every date on this screen
-  // comes from the run's own `occurrenceDate` and never from a device clock — see
-  // the date rule at the top of `run-picker.ts`.
+  // The pantry's zone (A120), used for the CLOCK — and, since `D38`, for the one
+  // calendar comparison this screen makes: which band a run falls into. Neither is
+  // the device's. Every date the receiver READS is still the run's own
+  // `occurrenceDate` — see the date rule at the top of `run-picker.ts`.
   const { timezone } = useSession();
   const { navigate } = useRouter();
 
   const load = useCallback((signal: AbortSignal) => fetchReceivableRuns(signal), []);
   const state = useAsyncData<ReceiveRunSummary[]>(load);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // `D38`: closed by default. Nothing is removed from the screen, only folded —
+  // one tap has all of it back.
+  const [laterOpen, setLaterOpen] = useState(false);
 
-  const cards = useMemo(() => toCards(state.data ?? [], timezone), [state.data, timezone]);
+  const bands = useMemo(
+    () => toBands(state.data ?? [], todayInZone(timezone), timezone),
+    [state.data, timezone],
+  );
   const view = listState(state.data, state.error, state.showLoading);
 
   /**
@@ -75,23 +89,86 @@ export function RunPickerScreen(_props: ScreenProps) {
         <EmptyState title={COPY.emptyTitle}>{COPY.emptyBody}</EmptyState>
       ) : null}
       {view === 'RUNS' ? (
-        <List label={COPY.listLabel}>
-          {cards.map((card) => (
-            <RunCard
-              key={card.run.shiftId}
-              card={card}
-              busy={busyId === card.run.shiftId}
-              onOpen={() => void openRun(card)}
-            />
-          ))}
-        </List>
+        <section className="s21b__bands" aria-label={COPY.listLabel}>
+          {/* Band 1 (`D38`) — what the receiver is actually waiting for, as large
+              cards. First on the screen and largest on it, because the question the
+              screen asks is "which run are you receiving?" and these are the only
+              answers to it. */}
+          {bands.expected.length > 0 ? (
+            <div className="s21b__band">
+              <h2 className="s21b__band-title">{COPY.bandExpected}</h2>
+              <ul className="s21b-tiles" aria-label={COPY.bandExpected}>
+                {bands.expected.map((card) => (
+                  <li key={card.run.shiftId}>
+                    <RunTile
+                      card={card}
+                      busy={busyId === card.run.shiftId}
+                      onOpen={() => void openRun(card)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Band 2 — weighed through, waiting on the tap that closes them (I11).
+              Rows, as they always were: done, but worth seeing. */}
+          {bands.finished.length > 0 ? (
+            <div className="s21b__band">
+              <h2 className="s21b__band-title">{COPY.bandFinished}</h2>
+              <List label={COPY.bandFinished}>
+                {bands.finished.map((card) => (
+                  <RunCard
+                    key={card.run.shiftId}
+                    card={card}
+                    busy={busyId === card.run.shiftId}
+                    onOpen={() => void openRun(card)}
+                  />
+                ))}
+              </List>
+            </div>
+          ) : null}
+
+          {/* Band 3 — folded away, never dropped. The heading carries the count so
+              the receiver can see there is something behind it without opening it. */}
+          {bands.later.length > 0 ? (
+            <div className="s21b__band">
+              <button
+                type="button"
+                className="s21b__disclosure"
+                aria-expanded={laterOpen}
+                onClick={() => setLaterOpen((open) => !open)}
+              >
+                {COPY.bandLaterCount(bands.later.length)}
+              </button>
+              {laterOpen ? (
+                <List label={COPY.bandLater}>
+                  {bands.later.map((card) => (
+                    <RunCard
+                      key={card.run.shiftId}
+                      card={card}
+                      busy={busyId === card.run.shiftId}
+                      onOpen={() => void openRun(card)}
+                    />
+                  ))}
+                </List>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
       {/* S2.1b: "[ Unscheduled donation ] (goes to S2.3, no run needed)". It stays
           on screen in every state, including the empty one, because it is the one
           thing a receiver can do when no run is listed — and it is `secondary`, not
           primary: §1's one high-emphasis action per screen belongs to picking a
-          run, which is the question the screen asks. */}
+          run, which is the question the screen asks.
+
+          Outside the bands on purpose (`D38`): it is not a run, so it belongs to no
+          group of them, and it must not move or fold away when one band empties.
+          It is now also the ONLY route to S2.3 — this round took the nav entry — so
+          "stays visible in every state" stopped being a courtesy and became the
+          reason the screen is reachable at all. */}
       <div className="s21b__aside">
         <Button variant="secondary" onClick={() => navigate(buildPath('donation'))}>
           {COPY.unscheduled}

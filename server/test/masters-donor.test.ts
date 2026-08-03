@@ -168,3 +168,81 @@ describe('I21 — remove: soft with history, hard without', () => {
     ).rejects.toMatchObject({ code: '23503' });
   });
 });
+
+describe('the NTFB number and the trash rates (D27)', () => {
+  it('writes the NTFB donor code — until now it had no write path at all', async () => {
+    // The column has existed since migration 0013 and is exported on the report, but
+    // nothing in the app could set it: it was hand-written SQL or nothing.
+    const donor = await createDonor({ name: 'H-E-B Food Stores', ntfbDonorCode: '810' });
+    expect(donor.ntfb_donor_code).toBe('810');
+
+    const cleared = await updateDonor(donor.id, { ntfbDonorCode: null });
+    expect(cleared.ntfb_donor_code).toBeNull();
+  });
+
+  it('refuses two stores sharing one NTFB number with a sentence, not a 500', async () => {
+    // `uq_donor_ntfb_code` (0013). The constraint is the guard; this is about what the
+    // admin reads when they hit it.
+    await createDonor({ name: 'Target', ntfbDonorCode: '6228' });
+    await expect(
+      createDonor({ name: 'Target #2', ntfbDonorCode: '6228' }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('leaves all three rates null by default — null means the pantry default', async () => {
+    // Deliberately not a copy of `app_config`'s value: a copied rate would silently
+    // stop tracking a change to the default, and nothing could tell an inherited rate
+    // from a deliberate one.
+    const donor = await createDonor({ name: 'Kroger' });
+    expect(donor.trash_rate_bakery).toBeNull();
+    expect(donor.trash_rate_produce).toBeNull();
+    expect(donor.trash_rate_deli).toBeNull();
+  });
+
+  it("stores a per-store override — Sam's 10% produce, entered in Admin", async () => {
+    const donor = await createDonor({ name: "Sam's Club", trashRateProduce: '0.10' });
+    expect(donor.trash_rate_produce).toBe('0.1000');
+    expect(donor.trash_rate_bakery).toBeNull();
+  });
+
+  it('distinguishes "leave it" from "back to the default"', async () => {
+    const donor = await createDonor({ name: 'Costco', trashRateProduce: '0.10' });
+
+    // Absent — the rate survives an unrelated edit.
+    const renamed = await updateDonor(donor.id, { name: 'Costco Wholesale' });
+    expect(renamed.trash_rate_produce).toBe('0.1000');
+
+    // Explicit null — the override is cleared and the pantry default applies again.
+    const cleared = await updateDonor(donor.id, { trashRateProduce: null });
+    expect(cleared.trash_rate_produce).toBeNull();
+  });
+
+  it('treats a blank field as clearing the override, not as a zero rate', async () => {
+    // Those differ: zero deducts nothing, which is a real and different answer.
+    const donor = await createDonor({ name: 'Aldi', trashRateDeli: '   ' });
+    expect(donor.trash_rate_deli).toBeNull();
+
+    const zeroed = await updateDonor(donor.id, { trashRateDeli: '0' });
+    expect(zeroed.trash_rate_deli).toBe('0.0000');
+  });
+
+  it('refuses a rate outside 0..1, and anything that is not a number', async () => {
+    await expect(createDonor({ name: 'Bad', trashRateBakery: '1.5' })).rejects.toMatchObject({
+      status: 400,
+    });
+    await expect(createDonor({ name: 'Bad', trashRateBakery: '-0.1' })).rejects.toMatchObject({
+      status: 400,
+    });
+    await expect(createDonor({ name: 'Bad', trashRateBakery: '10%' })).rejects.toMatchObject({
+      status: 400,
+    });
+  });
+
+  it('carries the rate as a decimal string, never through a float', async () => {
+    // `numeric(5,4)` exists for exact arithmetic; a round trip through a JS number
+    // would be the one place that exactness could be lost.
+    const donor = await createDonor({ name: 'Whole Foods', trashRateBakery: '0.1234' });
+    expect(donor.trash_rate_bakery).toBe('0.1234');
+    expect(typeof donor.trash_rate_bakery).toBe('string');
+  });
+});

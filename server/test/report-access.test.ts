@@ -16,18 +16,17 @@
 //      Admin without the REPORT duty is not a Reporter, and a Volunteer with it is
 //      (I2, set membership).
 //
-//   2. D16 added a second output format to `/report/export`. The CSV refuses a week
-//      with unmapped weight carrying food (D12) because a short file is invisible at
-//      the far end — the failure Success Metric 4 exists to kill. A second format
-//      that forgot the refusal would be a second, silent way to produce that short
-//      report, so the two are asserted to refuse together and to carry byte-identical
-//      rows.
+//   2. D29 removed the CSV and left ONE export path, which serves the Meal Connect
+//      receipts as JSON. The refusal is what survives from D16's pair of formats:
+//      a week with weight in an unmapped category is refused rather than emitted
+//      short, because a short submission is invisible at the far end — the failure
+//      Success Metric 4 exists to kill. A186 records that this export is server-built
+//      precisely so it CAN refuse, so the refusal is asserted here over real HTTP.
 
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { EXPORT_COLUMNS } from '../../shared/src/report.js';
 import { db, pool } from '../src/db/index.js';
 import { attachActor } from '../src/middleware/auth.js';
 import { errorHandler } from '../src/middleware/error.js';
@@ -44,7 +43,7 @@ import { makeCategory, makeStartedShift, makeUser, resetDatabase } from './fixtu
 const WEEK = '2026-08-04';
 
 /** A cookie-aware client: `fetch` keeps no jar and the session IS a cookie. Returns
- *  the raw body too, because one of these routes answers with a CSV. */
+ *  the raw body too, so a refusal can be read even when it is not JSON. */
 function client(base: string) {
   const jar = new Map<string, string>();
 
@@ -52,7 +51,7 @@ function client(base: string) {
     method: string,
     path: string,
     payload?: unknown,
-  ): Promise<{ status: number; text: string; body: any }> {
+  ): Promise<{ status: number; text: string; body: any; headers: Headers }> {
     const headers: Record<string, string> = {};
     if (payload !== undefined) headers['content-type'] = 'application/json';
     if (jar.size > 0) {
@@ -80,9 +79,9 @@ function client(base: string) {
     try {
       body = text.length > 0 ? JSON.parse(text) : null;
     } catch {
-      body = null; // a CSV, which is the point of keeping `text`
+      body = null; // not JSON, which is the point of keeping `text`
     }
-    return { status: res.status, text, body };
+    return { status: res.status, text, body, headers: res.headers };
   }
 
   return {
@@ -90,7 +89,9 @@ function client(base: string) {
     post: (path: string, payload?: unknown) => request('POST', path, payload ?? {}),
     patch: (path: string, payload?: unknown) => request('PATCH', path, payload ?? {}),
     put: (path: string, payload?: unknown) => request('PUT', path, payload ?? {}),
-    del: (path: string) => request('DELETE', path),
+    // A body on DELETE: the check-off's key is `(pickup date, donor)` and there is
+    // no id to put in a path (D35, migration 0018).
+    del: (path: string, payload?: unknown) => request('DELETE', path, payload),
   };
 }
 
@@ -174,6 +175,57 @@ describe('who may edit the AGFP→NTFB mapping (D17)', () => {
     ).toBe(403);
   });
 
+  it('gives the Reporter the check-off, and refuses everyone without the duty (D35)', async () => {
+    // The check-off is REPORT-duty like the rest of the report, and not a tier: D17's
+    // line holds, and filing a receipt into the portal is the reporter's job. A route
+    // declaring nothing would be REJECTED rather than open (§4.3 default-deny), so
+    // what is under test is that BOTH halves carry the declaration — the write is the
+    // obvious one to remember and the un-tick is the one to forget.
+    const donorId = await weighAWeek({ mapped: true });
+    const reporter = await asReporter();
+
+    const ticked = await reporter.post('/api/report/submissions', {
+      pickupDate: WEEK,
+      donorId,
+    });
+    expect(ticked.status, ticked.text).toBe(204);
+
+    const sheet = await reporter.get(`/api/report/export?week=${WEEK}`);
+    expect(sheet.body.receipts[0].submitted).not.toBeNull();
+    expect(sheet.body.receipts[0].donorId).toBe(donorId);
+
+    const untick = await reporter.del('/api/report/submissions', {
+      pickupDate: WEEK,
+      donorId,
+    });
+    expect(untick.status, untick.text).toBe(204);
+    const after = await reporter.get(`/api/report/export?week=${WEEK}`);
+    expect(after.body.receipts[0].submitted).toBeNull();
+
+    // An Admin who does not report is not a Reporter (I2, set membership).
+    const admin = await asAdminWithoutReportDuty();
+    expect(
+      (await admin.post('/api/report/submissions', { pickupDate: WEEK, donorId })).status,
+    ).toBe(403);
+    expect(
+      (await admin.del('/api/report/submissions', { pickupDate: WEEK, donorId })).status,
+    ).toBe(403);
+  });
+
+  it('serves the report over an explicit from/to range (D41)', async () => {
+    const reporter = await asReporter();
+
+    const ranged = await reporter.get('/api/report?from=2026-07-27&to=2026-08-09');
+    expect(ranged.status).toBe(200);
+    expect(ranged.body.from).toBe('2026-07-27');
+    expect(ranged.body.to).toBe('2026-08-09');
+
+    // A backwards range is a typo a Reporter can see in two date fields, so it is
+    // refused rather than silently swapped.
+    const backwards = await reporter.get('/api/report?from=2026-08-09&to=2026-07-27');
+    expect(backwards.status).toBe(400);
+  });
+
   it('still gives that same Reporter the report itself', async () => {
     // The half of D17 that did NOT change, and the reason the two declarations sit
     // in one file: reporting is a duty a Volunteer can hold (PRD §2), and moving the
@@ -230,7 +282,7 @@ describe('who may edit the AGFP→NTFB mapping (D17)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// D16 — two formats, one refusal
+// D29 — one export path, and the refusal that has to survive it
 // ---------------------------------------------------------------------------
 
 /** A week with one weighed category, mapped or not. */
@@ -248,105 +300,72 @@ async function weighAWeek({ mapped }: { mapped: boolean }) {
     categoryId: produce.id,
     weight: '70',
   });
+
+  // The store the receipt is keyed on (D35), returned so the check-off tests do not
+  // have to go back to the database to find out which one it was.
+  return started.stops[0]!.donor_id;
 }
 
-/** The CSV back as cells, minus the header. Quoting is RFC 4180 with every field
- *  quoted (`routes/report.ts`), so a naive split on `","` is exact here. */
-function csvCells(text: string): string[][] {
-  return text
-    .trim()
-    .split('\r\n')
-    .slice(1)
-    .map((line) => line.slice(1, -1).split('","').map((cell) => cell.replace(/""/g, '"')));
-}
-
-describe('the export refuses identically in both formats (D16, D12)', () => {
-  it('refuses the printed sheet exactly where it refuses the file', async () => {
-    // THE HIGHEST-VALUE ASSERTION IN THIS FILE. A186 records that S3.1's export is
-    // server-built *precisely so it can refuse to emit a short one*. `?format=json`
-    // is a branch below a single `exportRows()` call for that reason, and if anyone
-    // ever moves the branch above it, this is what says so.
+describe('the export refuses rather than emitting a short submission (D29, D12)', () => {
+  it('refuses the week over HTTP while a category carrying weight is unmapped', async () => {
+    // A186: S3.1's export is server-built PRECISELY so it can refuse to emit a short
+    // one. While D16 kept two formats, this test asserted they refused together; with
+    // one path left, what still has to hold is that the refusal is reached before any
+    // payload is shaped, and that the screen shows the server's own words (§6).
     await weighAWeek({ mapped: false });
     const reporter = await asReporter();
 
-    const csv = await reporter.get(`/api/report/export?week=${WEEK}`);
-    const json = await reporter.get(`/api/report/export?week=${WEEK}&format=json`);
-
-    expect(csv.status).toBe(409);
-    expect(json.status).toBe(409);
-    expect(json.status).toBe(csv.status);
-    // The same sentence, not merely the same code: the screen shows the server's
-    // own words (§6), so a second refusal with different wording would be a second
-    // explanation of one rule.
-    expect(json.body.message).toMatch(/not matched/i);
-    expect(json.body.message).toBe(csv.body.message);
+    const refused = await reporter.get(`/api/report/export?week=${WEEK}`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toMatch(/not matched/i);
+    // Nothing partial came back with it.
+    expect(refused.body.receipts).toBeUndefined();
   });
 
-  it('carries the same rows, in the same order, once the week is exportable', async () => {
+  it('serves receipts, not a file, once the week is exportable', async () => {
     await weighAWeek({ mapped: true });
     const reporter = await asReporter();
 
-    const csv = await reporter.get(`/api/report/export?week=${WEEK}`);
-    const json = await reporter.get(`/api/report/export?week=${WEEK}&format=json`);
+    const res = await reporter.get(`/api/report/export?week=${WEEK}`);
 
-    expect(csv.status).toBe(200);
-    expect(json.status).toBe(200);
-    expect(json.body.weekStart).toBe('2026-08-03');
-    expect(json.body.weekEnd).toBe('2026-08-09');
-    expect(json.body.columns).toEqual([...EXPORT_COLUMNS]);
+    expect(res.status).toBe(200);
+    // JSON, and no attachment: D29 removed the CSV, so nothing here should be trying
+    // to make the browser save a file.
+    expect(res.headers.get('content-type')).toMatch(/application\/json/);
+    expect(res.headers.get('content-disposition')).toBeNull();
 
-    // D13's grain and order: one row per line item, `Receipt Items` and `Receipt
-    // Total (lb)` repeated on every row of a receipt, and no `NTFB Code`.
-    expect(json.body.rows).toHaveLength(1);
-    expect(json.body.rows[0]).toMatchObject({
-      day: '2026-08-04',
+    // D41 renamed the window: it is a RANGE now, defaulting to this week, and a
+    // field called `weekEnd` holding a date eleven days after `weekStart` would be a
+    // field that lies. `?week=` still resolves to that anchor's whole week, which is
+    // what this request asks for.
+    expect(res.body.from).toBe('2026-08-03');
+    expect(res.body.to).toBe('2026-08-09');
+    expect(res.body.receipts).toHaveLength(1);
+    expect(res.body.receipts[0]).toMatchObject({
+      pickupDate: '2026-08-04',
+      itemCount: 1,
+      totalPounds: '70',
+      notAttempted: false,
+      noPounds: false,
+    });
+    expect(res.body.receipts[0].lines[0]).toMatchObject({
       ntfbCategory: 'Produce',
       storage: 'Refrigeration',
       agfpCategory: 'Produce',
-      weightLb: '70.00',
-      receiptItems: '1',
-      receiptTotal: '70.00',
+      pounds: '70',
+      computed: false,
     });
-
-    // And the same values in the same column positions. The failure this catches is
-    // a field added to one output and not the other, which shifts every value right
-    // of it into a neighbouring column — a corruption nothing downstream would
-    // notice, because every cell still holds a plausible value.
-    const fromCsv = csvCells(csv.text);
-    const fromJson = json.body.rows.map((row: Record<string, string>) => [
-      row['day'],
-      row['donor'],
-      row['donorCode'],
-      row['ntfbCategory'],
-      row['storage'],
-      row['agfpCategory'],
-      row['weightLb'],
-      row['receiptItems'],
-      row['receiptTotal'],
-    ]);
-    expect(fromCsv).toEqual(fromJson);
-    expect(fromCsv[0]).toHaveLength(EXPORT_COLUMNS.length);
   });
 
-  it('still answers a CSV to a caller that asks for no format', async () => {
-    // `format` is an addition, not a replacement (D16): the file stays, and a
-    // Reporter who prefers the spreadsheet keeps it.
+  it('ignores a stale `format` parameter rather than answering an error', async () => {
+    // Nothing in the app sends one any more, so this is about a bookmark saved while
+    // D16's two formats existed. Answering a 400 would turn a dead query parameter
+    // into a dead end.
     await weighAWeek({ mapped: true });
     const reporter = await asReporter();
 
-    const csv = await reporter.get(`/api/report/export?week=${WEEK}`);
-    expect(csv.status).toBe(200);
-    expect(csv.text.startsWith(`"${EXPORT_COLUMNS[0]}"`)).toBe(true);
-  });
-
-  it('treats an unrecognised format as the file, never as an error', async () => {
-    // Nothing in the app sends one, so this is about a stale bookmark or a typed
-    // URL. Answering a 400 would turn a harmless query parameter into a dead end.
-    await weighAWeek({ mapped: true });
-    const reporter = await asReporter();
-
-    const odd = await reporter.get(`/api/report/export?week=${WEEK}&format=pdf`);
-    expect(odd.status).toBe(200);
-    expect(odd.text.startsWith(`"${EXPORT_COLUMNS[0]}"`)).toBe(true);
+    const stale = await reporter.get(`/api/report/export?week=${WEEK}&format=json`);
+    expect(stale.status).toBe(200);
+    expect(stale.body.receipts).toHaveLength(1);
   });
 });

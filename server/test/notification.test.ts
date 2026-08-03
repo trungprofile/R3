@@ -457,7 +457,13 @@ describe('banner copy obeys ui-ux-spec.md §7', () => {
       'SHIFT_OPENED',
       'SHIFT_AT_RISK',
     ]) {
-      for (const payload of [{}, { route: 'Tuesday North', when: 'Tue Aug 4, 2:00 PM' }]) {
+      // The third shape is D33's: a payload naming a person. Swept here so the
+      // named form of any event's copy is held to §7 too, not only the plain one.
+      for (const payload of [
+        {},
+        { route: 'Tuesday North', when: 'Tue Aug 4, 2:00 PM' },
+        { route: 'Tuesday North', when: 'Tue Aug 4, 2:00 PM', who: 'Dana Cole' },
+      ]) {
         const message = renderPush({
           id: 'n1',
           event,
@@ -479,6 +485,48 @@ describe('banner copy obeys ui-ux-spec.md §7', () => {
           );
         }
       }
+    }
+  });
+
+  // D33 — "you're on a run" answered the wrong question. A driver who did not put
+  // themselves on it wants to know who did, and when it is.
+  it('names the assigner in the title and keeps the run in the body', () => {
+    const message = renderPush({
+      id: 'n1',
+      event: 'SHIFT_ASSIGNED',
+      recipientId: 'u1',
+      subscriptionId: null,
+      shiftId: 's1',
+      payload: { route: 'Tuesday North', when: 'Tue Aug 4, 2:00 PM', who: 'Dana Cole' },
+      attempts: 0,
+    });
+
+    expect(message.title).toBe('Dana Cole put you on a run');
+    expect(message.body).toContain('Tuesday North');
+    expect(message.body).toContain('Tue Aug 4, 2:00 PM');
+  });
+
+  it('falls back to the nameless wording when no one is named', () => {
+    // §7's rule, restated in `renderPush`: a notification enqueued with a bare
+    // payload still has to say something useful. An empty string is the same case
+    // as an absent one — it would otherwise render a leading space.
+    for (const payload of [
+      { route: 'Tuesday North', when: 'Tue Aug 4, 2:00 PM' },
+      { route: 'Tuesday North', when: 'Tue Aug 4, 2:00 PM', who: '' },
+      {},
+    ]) {
+      const message = renderPush({
+        id: 'n1',
+        event: 'SHIFT_ASSIGNED',
+        recipientId: 'u1',
+        subscriptionId: null,
+        shiftId: 's1',
+        payload,
+        attempts: 0,
+      });
+
+      expect(message.title).toBe("You're on a run");
+      expect(message.body.length).toBeGreaterThan(0);
     }
   });
 

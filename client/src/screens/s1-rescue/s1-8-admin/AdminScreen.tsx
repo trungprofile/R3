@@ -6,11 +6,13 @@
 // shown at a time; §1.5 rules out putting them behind a dropdown, and four is
 // small enough to show them all."
 //
-// It is SIX now, and the sentence still holds. D18 folded S3.2 Metrics in as the
-// first tab and D12's category matching sits beside Categories; §1 principle 5
-// rules out hiding any of them behind a dropdown just as firmly at six as at four,
-// so the row stays visible and wraps rather than collapsing. `logic.ts` PANELS is
-// the list and the reasoning.
+// It is FIVE now, and the sentence still holds. D18 folded S3.2 Metrics in as the
+// first tab; D17 added Category matching beside Categories and D40 merged the two
+// back into one, because "beside" turned out to mean an admin configured a category
+// on one tab and said where it reports on another. §1 principle 5 rules out hiding
+// any of these behind a dropdown just as firmly at five as at four, so the row stays
+// visible and wraps rather than collapsing. `logic.ts` PANELS is the list and the
+// reasoning, and `RETIRED_PANELS` is what keeps `?tab=mapping` resolving.
 //
 // So this file is `components/Segmented.tsx` in `mode="tabs"` and nothing else.
 // The keyboard behaviour a tablist obliges — one stop in the tab order, arrows
@@ -30,6 +32,7 @@
 // for the writes and STAFF or VOLUNTEER for the reads; the client check is
 // communication, never the rule (`architecture.md §4.5`).
 
+import { useState } from 'react';
 import type { ScreenProps } from '../../../app/index.ts';
 import { useRouter } from '../../../app/index.ts';
 import { Segmented, tabPanelProps } from '../../../components/index.ts';
@@ -46,6 +49,11 @@ const ID_PREFIX = 's18';
 export function AdminScreen(_props: ScreenProps) {
   const { query, setQuery } = useRouter();
   const panel = panelFromQuery(query[PANEL_QUERY_KEY]);
+
+  /** Bumped when the food bank's list changes, to remount the categories list
+   *  above it (D40). A counter rather than a callback into `MasterPanel`, because
+   *  a panel that exposed a reload handle would be a second way to refresh it. */
+  const [categoriesEpoch, setCategoriesEpoch] = useState(0);
 
   // `setQuery`, never `go`: same path, no history entry (`app/router.tsx`).
   const openPanel = (next: PanelId) => setQuery({ [PANEL_QUERY_KEY]: next });
@@ -77,14 +85,26 @@ export function AdminScreen(_props: ScreenProps) {
         {panel === 'accounts' ? <AccountsPanel /> : null}
         {panel === 'donors' ? <MasterPanel config={DONOR_CONFIG} /> : null}
         {panel === 'trucks' ? <MasterPanel config={TRUCK_CONFIG} /> : null}
-        {/* Categories ship in Phase 1 (build-plan D2, which resolved the PRD/UI
-            conflict in the UI spec's favour). Nothing consumes them until Phase
-            2's weight entry, so an inert list here is correct, not missing. */}
-        {panel === 'categories' ? <MasterPanel config={CATEGORY_CONFIG} /> : null}
-        {/* D12 — which of our categories reports under which NTFB one. The table
-            ships empty on purpose: the names are NTFB's, not ours to invent, and
-            this is where the pantry enters them. */}
-        {panel === 'mapping' ? <MappingEditor /> : null}
+        {/* ONE TAB, TWO SECTIONS (D40).
+            TOP: the pantry's own categories (build-plan D2, which resolved the
+            PRD/UI conflict in the UI spec's favour), each row's editor now
+            carrying where it reports and under which storage — so an admin says
+            both while configuring the category rather than finishing and going to
+            a second tab to find it again.
+            BOTTOM: the food bank's own list, seeded by D26, read-mostly, with the
+            count of ours reporting under each.
+            The two are stacked rather than side by side because the bottom one is
+            a reference an admin consults, not a step in the top one. */}
+        {panel === 'categories' ? (
+          <>
+            <MasterPanel key={categoriesEpoch} config={CATEGORY_CONFIG} />
+            <div className="s18-section-break" />
+            {/* Archiving a food bank category changes what the form above may
+                pick, so the list above is remounted rather than left holding
+                choices that no longer exist. */}
+            <MappingEditor onChanged={() => setCategoriesEpoch((n) => n + 1)} />
+          </>
+        ) : null}
       </div>
     </div>
   );

@@ -20,11 +20,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../api/index.ts';
-import { EXPORT_BLOCKED_MESSAGE, EXPORT_COLUMNS } from '../../../api/shared.ts';
+import { EXPORT_BLOCKED_MESSAGE } from '../../../api/shared.ts';
 import type {
-  ExportRow,
   NtfbCategory,
+  Receipt,
+  ReceiptLine,
+  ReceiptNote,
   ReportEntry,
+  ReportExport,
   UnmappedCategory,
   WeeklyReport,
 } from '../../../api/shared.ts';
@@ -32,34 +35,43 @@ import {
   BLOCKED_MESSAGE,
   COPY,
   FORBIDDEN_IN_COPY,
+  PRINT_BODY_CLASS,
   acceptKeypadValue,
   addDaysIso,
   addWeights,
   canExport,
   canSaveWeight,
+  checkboxDescription,
+  drillTotals,
   entriesTotal,
   entryDescription,
   entrySource,
-  exportCells,
-  exportFilename,
   formatDayLabel,
-  formatWeekRange,
+  formatReceiptDate,
+  formatDateRange,
   formatWeight,
   groupEntriesByDay,
   hasReportToggle,
   isCurrentWeek,
+  isEmptyExport,
   isEmptyWeek,
   isFutureWeek,
   isoWeekday,
-  mealConnectAccountNote,
   messageFor,
   missingItems,
   nextWeek,
   normalizeWeight,
+  noteAuthorLabel,
+  noteRoleLabel,
   ntfbLabel,
   openRunLabel,
   openRunsNotice,
   previousWeek,
+  receiptDonorLabel,
+  receiptEmptyText,
+  receiptKey,
+  receiptLineLabel,
+  receiptLineSource,
   reportLineTitle,
   reportState,
   reportableChoices,
@@ -67,13 +79,27 @@ import {
   rolledUpNames,
   runStatusWord,
   shouldReloadAfter,
+  subtractWeights,
   toggleDrillIn,
   totalsView,
   unmappedSummary,
-  weekLabel,
   weekStartOf,
   weightError,
   weightWithUnit,
+  // D41 — the window is a From/To range now, defaulting to this week.
+  defaultRange,
+  isThisWeek,
+  isValidRange,
+  rangeError,
+  rangeHeading,
+  // D35 — the Meal Connect check-off.
+  canMarkSubmitted,
+  formatSubmittedAt,
+  markSubmittedQuestion,
+  receiptRowDescription,
+  receiptRowTitle,
+  submittedLabel,
+  submittedProgress,
 } from './report.ts';
 
 // ---------------------------------------------------------------------------
@@ -82,8 +108,8 @@ import {
 
 function report(over: Partial<WeeklyReport> = {}): WeeklyReport {
   return {
-    weekStart: '2026-07-27',
-    weekEnd: '2026-08-02',
+    from: '2026-07-27',
+    to: '2026-08-02',
     lines: [
       {
         ntfbCategoryId: 'ntfb-1',
@@ -135,6 +161,73 @@ function ntfb(over: Partial<NtfbCategory> = {}): NtfbCategory {
   return { id: 'ntfb-1', name: 'Protein', code: '14', active: true, mappedCount: 2, ...over };
 }
 
+function line(over: Partial<ReceiptLine> = {}): ReceiptLine {
+  return {
+    ntfbCategory: 'Bread',
+    storage: 'Dry',
+    pounds: '744',
+    agfpCategory: 'Bakery',
+    computed: false,
+    ...over,
+  };
+}
+
+/** The receipt from the pantry's own paper log, as `phases-1-3.md` records it:
+ *  bakery 827 gross at 10%, deli 53 at 15%, and a 460 lb computed Trash line. */
+function receipt(over: Partial<Receipt> = {}): Receipt {
+  return {
+    pickupDate: '2026-03-20',
+    donorId: 'donor-1',
+    donorName: 'H-E-B Food Stores',
+    donorCode: '810',
+    lines: [
+      line(),
+      line({ ntfbCategory: 'Prepared Meal', storage: 'Frozen', pounds: '45', agfpCategory: 'Deli' }),
+      line({
+        ntfbCategory: 'Prepared Meal',
+        storage: 'Frozen',
+        pounds: '120',
+        agfpCategory: 'Frz Non Meat',
+      }),
+      line({
+        ntfbCategory: 'Trash',
+        storage: 'Dry',
+        pounds: '460',
+        agfpCategory: '',
+        computed: true,
+      }),
+    ],
+    itemCount: 4,
+    totalPounds: '1369',
+    notAttempted: false,
+    noPounds: false,
+    notes: [],
+    submitted: null,
+    ...over,
+  };
+}
+
+/** The same receipt, already filed into Meal Connect (D35). */
+function submittedReceipt(over: Partial<Receipt> = {}): Receipt {
+  return receipt({
+    submitted: { submittedAt: '2026-03-21T16:12:00.000Z', submittedBy: 'Karen Diaz' },
+    ...over,
+  });
+}
+
+function note(over: Partial<ReceiptNote> = {}): ReceiptNote {
+  return { role: 'DRIVER', author: 'Karen', text: 'Store was not open.', ...over };
+}
+
+function sheet(over: Partial<ReportExport> = {}): ReportExport {
+  return {
+    from: '2026-03-16',
+    to: '2026-03-22',
+    receipts: [receipt()],
+    ...over,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // The week (A178 — Monday to Sunday)
 // ---------------------------------------------------------------------------
@@ -167,17 +260,63 @@ describe('the report week', () => {
     expect(weekStartOf('')).toBe('');
   });
 
-  it('names the week in words where it can, and by its range otherwise', () => {
-    expect(weekLabel('2026-07-27', '2026-07-30')).toBe(COPY.thisWeekHeading);
-    expect(weekLabel('2026-07-20', '2026-07-30')).toBe(COPY.lastWeekHeading);
-    expect(weekLabel('2026-08-10', '2026-07-30')).toBe(COPY.futureWeekHeading);
-    expect(weekLabel('2026-06-01', '2026-07-30')).toBeNull();
+  it('defaults the range to the week containing the pantry today (D41, A178)', () => {
+    // The window is two dates now, and the DEFAULT is the load-bearing half: the
+    // same Monday-to-Sunday week `weekBounds()` cuts on the server, S1.2's board
+    // opens on, and (since D39) Admin metrics opens on. All of them read
+    // `app/week.ts` or its server mirror, so no two screens can disagree about
+    // what "this week" means.
+    expect(defaultRange('2026-07-30')).toEqual({ from: '2026-07-27', to: '2026-08-02' });
+    expect(defaultRange('2026-07-27')).toEqual({ from: '2026-07-27', to: '2026-08-02' });
+    expect(defaultRange('2026-08-02')).toEqual({ from: '2026-07-27', to: '2026-08-02' });
+    expect(isThisWeek(defaultRange('2026-07-30'), '2026-07-30')).toBe(true);
+    expect(isThisWeek({ from: '2026-07-27', to: '2026-08-09' }, '2026-07-30')).toBe(false);
+  });
+
+  it('refuses a backwards or half-typed range, in the field it was typed in', () => {
+    // Communication only: the SERVER refuses a backwards range too (`resolveRange`).
+    // This exists so a Reporter sees the typo beside the two fields that made it,
+    // rather than in a toast after a round trip.
+    expect(rangeError({ from: '2026-07-27', to: '2026-08-02' })).toBeNull();
+    expect(rangeError({ from: '2026-07-27', to: '2026-07-27' })).toBeNull();
+    expect(rangeError({ from: '2026-08-02', to: '2026-07-27' })).toBe(COPY.rangeBackwards);
+    expect(rangeError({ from: '', to: '2026-07-27' })).toBe(COPY.rangeIncomplete);
+    expect(rangeError({ from: '2026-07-27', to: 'nope' })).toBe(COPY.rangeIncomplete);
+    expect(isValidRange({ from: '2026-08-02', to: '2026-07-27' })).toBe(false);
+  });
+
+  it('names the range where it has a name, and shows the dates where it does not', () => {
+    // §1.4, recognition over recall. Most ranges have no name now that any two
+    // dates are reachable, and for those the dates ARE the answer.
+    expect(rangeHeading({ from: '2026-07-27', to: '2026-08-02' }, '2026-07-30')).toBe(
+      COPY.thisWeekHeading,
+    );
+    expect(rangeHeading({ from: '2026-07-20', to: '2026-07-26' }, '2026-07-30')).toBe(
+      COPY.lastWeekHeading,
+    );
+    // A fortnight is not a week and is not named one.
+    const fortnight = rangeHeading({ from: '2026-07-20', to: '2026-08-02' }, '2026-07-30');
+    expect(fortnight).toContain('Jul 20');
+    expect(fortnight).toContain('Aug 2');
+  });
+
+  it('names a week that has not happened rather than showing a bare zero', () => {
+    // `weekLabel` used to answer this and D41 folded it into `rangeHeading`: the
+    // same three phrases, asked of two dates instead of one, falling back to the
+    // dates themselves rather than to null. Navigating into a future week is
+    // allowed and shows an empty one, which is a true answer — but the screen says
+    // so, so nobody reads "0 lb" as a bad week.
+    expect(rangeHeading({ from: '2026-08-10', to: '2026-08-16' }, '2026-07-30')).toBe(
+      COPY.futureWeekHeading,
+    );
+    expect(isFutureWeek('2026-08-10', '2026-07-30')).toBe(true);
+    expect(isFutureWeek('2026-07-20', '2026-07-30')).toBe(false);
   });
 
   it('says which boundary the week used, at both ends', () => {
     // A178 chose Monday-to-Sunday with no doc to lean on, so the range has to
     // show its working rather than leave a Reporter to infer it.
-    const range = formatWeekRange('2026-07-27', '2026-08-02');
+    const range = formatDateRange('2026-07-27', '2026-08-02');
     expect(range).toContain('Mon');
     expect(range).toContain('Sun');
     expect(range).toContain('Jul 27');
@@ -186,8 +325,8 @@ describe('the report week', () => {
   });
 
   it('states both years when a week straddles new year', () => {
-    expect(formatWeekRange('2026-12-28', '2027-01-03')).toContain('2026');
-    expect(formatWeekRange('2026-12-28', '2027-01-03')).toContain('2027');
+    expect(formatDateRange('2026-12-28', '2027-01-03')).toContain('2026');
+    expect(formatDateRange('2026-12-28', '2027-01-03')).toContain('2027');
   });
 
   it('knows the current week and a week that has not happened', () => {
@@ -267,44 +406,48 @@ describe('weights', () => {
 // ---------------------------------------------------------------------------
 
 describe('totals', () => {
-  it('emits all three, each with its own words', () => {
+  it('emits TWO figures, together, each with its own words (D34)', () => {
+    // Three became two. "Received but not reported" is `intake - reported` and can
+    // be read straight off the pair, so the third figure was earning its place by
+    // being derivable — the same argument D21 makes about a hint that restates its
+    // control.
     const totals = totalsView(report());
-    expect(totals.map((total) => total.key)).toEqual(['reported', 'unreported', 'intake']);
-    expect(totals.map((total) => total.value)).toEqual(['324.00', '100.00', '424.00']);
+    expect(totals.map((total) => total.key)).toEqual(['intake', 'reported']);
+    expect(totals.map((total) => total.value)).toEqual(['424.00', '324.00']);
     for (const total of totals) expect(total.label.length).toBeGreaterThan(0);
   });
 
-  it('keeps the note that separates intake from reported, and drops the one that repeated a label', () => {
-    // D21 cut `reportedNote` ("This is the figure the export file will carry"):
-    // the label names the food bank and the Export button is directly below it.
-    // The other two STAY. `domain-modeling.md §6` is locked and defines intake and
-    // NTFB-reported as different unions, and these two sentences are the only
-    // place on this screen that difference is stated in words rather than implied
-    // by two numbers sitting side by side.
-    const byKey = new Map(totalsView(report()).map((total) => [total.key, total.note]));
-    expect(byKey.get('reported')).toBeNull();
-    expect(byKey.get('unreported')?.length).toBeGreaterThan(0);
-    expect(byKey.get('intake')?.length).toBeGreaterThan(0);
-    expect(byKey.get('intake')?.toLowerCase()).toContain('never the same');
+  it('still emits both together, so neither can be shown alone (PRD §3)', () => {
+    // The reason this is one function rather than two field reads: a lone big
+    // number with no label is exactly how intake and NTFB-reported get conflated,
+    // and `domain-modeling.md §6` is locked about them being different unions.
+    expect(totalsView(report())).toHaveLength(2);
+    expect(totalsView(report({ intakeTotal: '0.00', reportedTotal: '0.00' }))).toHaveLength(2);
   });
 
   it('never gives reported and intake the same label', () => {
     // PRD §3 keeps them "distinct and clearly labeled everywhere", and this is
-    // the screen most likely to blur them.
+    // the screen most likely to blur them. Since D34 deleted the captions, the
+    // labels are the ONLY place the distinction is drawn, so they carry it.
     const labels = totalsView(report()).map((total) => total.label);
     expect(new Set(labels).size).toBe(labels.length);
     for (const label of labels) expect(label.toLowerCase()).not.toBe('total');
   });
 
-  it('marks exactly one figure as the one the file carries', () => {
-    const primary = totalsView(report()).filter((total) => total.primary);
-    expect(primary).toHaveLength(1);
-    expect(primary[0]?.key).toBe('reported');
+  it('carries no per-figure caption any more (D34)', () => {
+    // The captions went with the reorder. D28's whole-pound note did NOT go: it
+    // explains why this screen and Admin metrics report the same range a pound
+    // apart, and it moved to the report view, beside the figures a reporter types.
+    for (const total of totalsView(report())) {
+      expect(Object.keys(total)).toEqual(['key', 'label', 'value']);
+    }
+    expect(COPY.wholePoundsNote.toLowerCase()).toContain('whole pounds');
+    expect(COPY.wholePoundsNote.toLowerCase()).toContain('metrics');
   });
 
   it('passes the figures the server sent through untouched', () => {
     const totals = totalsView(report({ reportedTotal: '1222.35' }));
-    expect(totals[0]?.value).toBe('1222.35');
+    expect(totals[1]?.value).toBe('1222.35');
   });
 });
 
@@ -399,60 +542,125 @@ describe('the export decision', () => {
     expect(label).toContain(COPY.runOpen);
   });
 
-  it('names the downloaded file after the week it covers', () => {
-    expect(exportFilename('2026-07-27', '2026-08-02')).toBe(
-      'agfp-ntfb-2026-07-27-to-2026-08-02.csv',
-    );
-  });
 });
 
 // ---------------------------------------------------------------------------
-// The printed worksheet (D16)
+// The receipt view (D29)
 //
-// The rows themselves are the SERVER's, fetched from `/report/export?format=json`
-// and never rebuilt here (A186) — `server/test/report-access.test.ts` is what proves
-// the two formats carry the same rows and share one refusal. What is testable on
-// this side is the one thing left that could make them disagree: the order the
-// fields are laid out in.
+// The receipts themselves are the SERVER's, fetched from `GET /report/export` and
+// never rebuilt here (A186, D12) — `server/test/` is where the arithmetic and the
+// conservation property are proved. What is testable on this side is everything
+// the CARD says about a receipt: how each field is named, which half of the card
+// it belongs to, and the three cases where a card would otherwise read as broken.
 // ---------------------------------------------------------------------------
 
-describe('the printed worksheet', () => {
-  const row: ExportRow = {
-    day: '2026-07-28',
-    donor: "Sam's Club",
-    donorCode: '6228',
-    ntfbCategory: 'Protein',
-    storage: 'Frozen',
-    agfpCategory: 'Deli, Frozen Meat',
-    weightLb: '324.00',
-    receiptItems: '2',
-    receiptTotal: '424.00',
-  };
-
-  it('lays a row out in EXPORT_COLUMNS order', () => {
-    expect(exportCells(row)).toEqual([
-      '2026-07-28',
-      "Sam's Club",
-      '6228',
-      'Protein',
-      'Frozen',
-      'Deli, Frozen Meat',
-      '324.00',
-      '2',
-      '424.00',
-    ]);
+describe('the receipt view', () => {
+  it('writes the pickup date the way the portal takes it', () => {
+    // Deliberately not the app's `Mar 20`: this line is copied into a field.
+    expect(formatReceiptDate('2026-03-20')).toBe('03/20/2026');
+    expect(formatReceiptDate('not-a-date')).toBe('not-a-date');
   });
 
-  it('emits exactly one cell per column, and never an NTFB code', () => {
-    // D13: Meal Connect picks a category by name from a dropdown, and the
-    // `MEAT48675888`-style ids on a receipt are its own per-line identifiers,
-    // issued on submission. A column count that drifts from `EXPORT_COLUMNS` is
-    // how the printed sheet and the CSV would silently stop being the same
-    // worksheet.
-    expect(exportCells(row)).toHaveLength(EXPORT_COLUMNS.length);
-    expect(EXPORT_COLUMNS).not.toContain('NTFB Code');
-    expect(EXPORT_COLUMNS[EXPORT_COLUMNS.length - 2]).toBe('Receipt Items');
-    expect(EXPORT_COLUMNS[EXPORT_COLUMNS.length - 1]).toBe('Receipt Total (lb)');
+  it('names the store the way the food bank`s own picker does', () => {
+    expect(receiptDonorLabel(receipt())).toBe('H-E-B Food Stores (810)');
+  });
+
+  it('shows no code for a store nobody has one for, rather than a guessed one', () => {
+    // D13: the code is NTFB's to issue. A walk-in label has no donor row at all.
+    expect(receiptDonorLabel(receipt({ donorCode: null }))).toBe('H-E-B Food Stores');
+    expect(receiptDonorLabel(receipt({ donorCode: '' }))).toBe('H-E-B Food Stores');
+  });
+
+  it('says a checkbox`s state in words, never by the box alone (§3)', () => {
+    expect(checkboxDescription(true, COPY.noPoundsBox)).toContain(COPY.ticked);
+    expect(checkboxDescription(false, COPY.noPoundsBox)).toContain(COPY.notTicked);
+    expect(checkboxDescription(true, COPY.noPoundsBox)).toContain(COPY.noPoundsBox);
+  });
+
+  it('tells two identical Prepared Meal lines apart by their pounds', () => {
+    // The whole reason our own half of the card exists: the Description column is
+    // gone, Deli and Frz Non Meat both report as `Prepared Meal / Frozen`, and the
+    // pair alone cannot say which row is which.
+    const [, deli, frz] = receipt().lines;
+    expect(receiptLineLabel(deli!)).toBe('Prepared Meal, Frozen, 45 lb');
+    expect(receiptLineLabel(frz!)).toBe('Prepared Meal, Frozen, 120 lb');
+    expect(receiptLineLabel(deli!)).not.toBe(receiptLineLabel(frz!));
+    expect(receiptLineSource(deli!)).toBe('Deli');
+    expect(receiptLineSource(frz!)).toBe('Frz Non Meat');
+  });
+
+  it('says where the Trash line came from instead of naming a category (D27)', () => {
+    // Nothing was ever weighed into it, so "no category" would send a Reporter
+    // looking for a paper log that does not exist.
+    const trash = receipt().lines[3]!;
+    expect(trash.computed).toBe(true);
+    expect(receiptLineSource(trash)).toBe(COPY.computedLine);
+    expect(receiptLineSource(trash).toLowerCase()).toContain('weighed');
+  });
+
+  it('names a line with no category of ours rather than showing a blank', () => {
+    expect(receiptLineSource(line({ agfpCategory: '' }))).toBe(COPY.noAgfpCategory);
+  });
+
+  it('says a missing storage requirement out loud', () => {
+    // A blank storage is one of the form's four fields empty and does NOT block
+    // the export, unlike an unmapped category — so it is named, not hidden.
+    expect(receiptLineLabel(line({ storage: '' }))).toContain(COPY.noStorage);
+  });
+
+  it('explains an empty receipt rather than leaving a card that looks broken', () => {
+    // D29's whole point: a skipped stop and a run nobody worked produced NO export
+    // row at all, so those pickups were invisible to the food bank. An empty table
+    // with nothing said over it reads as a load that failed.
+    const skipped = receipt({ lines: [], notAttempted: true, itemCount: 0, totalPounds: '0' });
+    expect(receiptEmptyText(skipped)).toBe(COPY.notAttemptedBody);
+
+    const nothing = receipt({ lines: [], noPounds: true, itemCount: 0, totalPounds: '0' });
+    expect(receiptEmptyText(nothing)).toBe(COPY.noPoundsBody);
+
+    // Neither box ticked and still no lines: unlikely, and still not a blank card.
+    expect(receiptEmptyText(receipt({ lines: [] }))).toBe(COPY.noLinesBody);
+  });
+
+  it('says nothing about emptiness on a receipt that has lines', () => {
+    expect(receiptEmptyText(receipt())).toBeNull();
+  });
+
+  it('labels every note channel in a volunteer`s words', () => {
+    const roles = ['COORDINATOR', 'DRIVER', 'STOP', 'RECEIVER', 'DONATION'] as const;
+    const labels = roles.map(noteRoleLabel);
+    // Five channels, five distinct words, none of them the wire's own.
+    expect(new Set(labels).size).toBe(roles.length);
+    for (const label of labels) expect(label).not.toMatch(/[A-Z]{2,}/);
+  });
+
+  it('names the writer where there is one, and never invents one', () => {
+    // A coordinator note stores no author; naming whoever last touched the shift
+    // would put the wrong person's name on a remark.
+    expect(noteAuthorLabel(note())).toBe('Driver (Karen)');
+    expect(noteAuthorLabel(note({ role: 'COORDINATOR', author: null }))).toBe(
+      COPY.roleCoordinator,
+    );
+    expect(noteAuthorLabel(note({ author: '' }))).toBe(COPY.roleDriver);
+  });
+
+  it('keeps two receipts apart even when the store is a free-text walk-in label', () => {
+    const a = receipt({ donorName: 'A neighbour', donorCode: null });
+    expect(receiptKey(a, 0)).not.toBe(receiptKey(a, 1));
+  });
+
+  it('knows a week with nothing to type', () => {
+    expect(isEmptyExport(sheet({ receipts: [] }))).toBe(true);
+    expect(isEmptyExport(sheet())).toBe(false);
+  });
+
+  it('keeps the print rule behind a class that only exists while receipts do', () => {
+    // The defect this replaces: `report.css` held a bare `body * { visibility:
+    // hidden }`, and a stylesheet is loaded once and never unloaded — so after one
+    // visit to the report, Ctrl+P on any other screen printed a blank page. Every
+    // print rule now sits behind this class, which the screen adds while the
+    // receipts are mounted and removes on unmount.
+    expect(PRINT_BODY_CLASS).toBe('s31-print-mode');
   });
 });
 
@@ -528,6 +736,77 @@ describe('the drill-in', () => {
 });
 
 // ---------------------------------------------------------------------------
+// The drill-in`s trash arithmetic (D27, D28)
+//
+// The bug this exists to prevent, and it is a silent one: since D27 the AGFP total
+// above the entries is NET of the deduction, while the entries are what was
+// weighed. One subtotal under them would disagree with the figure a few lines up
+// by exactly the deduction, on the one panel a Reporter opens to check a number
+// they doubt.
+// ---------------------------------------------------------------------------
+
+describe('the trash deduction, in the drill-in', () => {
+  it('subtracts exactly, in integer cents', () => {
+    expect(subtractWeights('827.00', '744.00')).toBe('83.00');
+    expect(subtractWeights('0.30', '0.10')).toBe('0.20');
+    expect(subtractWeights('12.00', 'nonsense')).toBeNull();
+  });
+
+  it('refuses to go below zero rather than showing a negative deduction', () => {
+    // Whole-pound rounding can put a net a pound ABOVE the raw sum on a category
+    // nobody deducts from. That is not a deduction, and three lines claiming it is
+    // would be worse than the one line it replaces.
+    expect(subtractWeights('744.00', '827.00')).toBeNull();
+  });
+
+  it('shows the arithmetic when the line is net of a deduction', () => {
+    // The pantry's own sheet: 827 gross bakery at 10%, 83 deducted, 744 reported.
+    const entries = [entry({ weight: '500.00' }), entry({ id: 'b', weight: '327.00' })];
+    const totals = drillTotals(entries, '744.00');
+    expect(totals.deduction).toEqual({ gross: '827.00', deducted: '83.00', net: '744.00' });
+  });
+
+  it('makes the three numbers close, whatever the rounding did', () => {
+    // The deduction is DERIVED BY SUBTRACTION rather than recomputed from a rate,
+    // so gross − deducted == net by construction. A second implementation of
+    // `domain-modeling.md §5.4`'s rounding order here would be free to disagree
+    // with the very figure it is explaining.
+    const totals = drillTotals([entry({ weight: '3691.25' })], '3322.00');
+    const { gross, deducted, net } = totals.deduction!;
+    expect(subtractWeights(gross, deducted)).toBe(addWeights([net]));
+  });
+
+  it('counts only the reportable entries into the gross', () => {
+    // A donation with the switch off is shown in the list and marked, but it never
+    // reached the line above. Counting it here would inflate the "deduction" by
+    // the amount somebody chose not to report.
+    const entries = [
+      entry({ weight: '827.00' }),
+      entry({ id: 'off', kind: 'DONATION', weight: '100.00', reportable: false }),
+    ];
+    const totals = drillTotals(entries, '744.00');
+    expect(totals.deduction?.gross).toBe('827.00');
+    expect(totals.deduction?.deducted).toBe('83.00');
+    // The subtotal over the rows still adds up every row on screen.
+    expect(totals.shown).toBe('927.00');
+  });
+
+  it('leaves the other nine categories exactly as they were', () => {
+    // No rate, no deduction, no extra lines: the panel shows the single subtotal
+    // it always did.
+    const totals = drillTotals([entry({ weight: '293.00' })], '293.00');
+    expect(totals.deduction).toBeNull();
+    expect(totals.shown).toBe('293.00');
+  });
+
+  it('shows no subtotal at all rather than a wrong one', () => {
+    const totals = drillTotals([entry({ weight: 'nonsense' })], '293.00');
+    expect(totals.shown).toBeNull();
+    expect(totals.deduction).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Errors (§6)
 // ---------------------------------------------------------------------------
 
@@ -559,7 +838,7 @@ describe('errors', () => {
 
 const COMPOSED: string[] = [
   BLOCKED_MESSAGE,
-  formatWeekRange('2026-12-28', '2027-01-03'),
+  formatDateRange('2026-12-28', '2027-01-03'),
   formatDayLabel('2026-07-28'),
   weightWithUnit('1222.35'),
   unmappedSummary([unmappedRow(), unmappedRow({ categoryName: 'Bakery' })]) ?? '',
@@ -577,14 +856,34 @@ const COMPOSED: string[] = [
   reportableSavedText("Sam's", true),
   reportableSavedText("Sam's", false),
   reportLineTitle({ ntfbCategoryName: 'Protein', ntfbCode: '14', storage: 'Frozen' }),
-  mealConnectAccountNote({
-    agencyCode: '026357P',
-    foodBank: 'North Texas Food Bank',
-    foodBankCode: '24',
-  }),
   ntfbLabel({ name: 'Protein', code: '14' }),
-  exportFilename('2026-07-27', '2026-08-02'),
-  ...totalsView(report()).flatMap((total) => [total.label, total.note ?? '']),
+  // The receipt card composes several sentences from data, and that is where a
+  // forbidden word arrives without anyone typing it into `COPY`.
+  receiptDonorLabel(receipt()),
+  receiptDonorLabel(receipt({ donorCode: null })),
+  receiptLineLabel(receipt().lines[1]!),
+  receiptLineLabel(line({ storage: '' })),
+  receiptLineSource(receipt().lines[3]!),
+  receiptEmptyText(receipt({ lines: [], notAttempted: true })) ?? '',
+  noteAuthorLabel(note()),
+  noteAuthorLabel(note({ role: 'COORDINATOR', author: null })),
+  checkboxDescription(true, COPY.notAttemptedBox),
+  ...(['COORDINATOR', 'DRIVER', 'STOP', 'RECEIVER', 'DONATION'] as const).map(noteRoleLabel),
+  ...totalsView(report()).map((total) => total.label),
+  // D35's check-off composes several sentences from data, which is where a
+  // forbidden word arrives without anyone typing it into `COPY`.
+  receiptRowTitle(receipt()),
+  receiptRowDescription(receipt(), 'America/Chicago'),
+  receiptRowDescription(submittedReceipt(), 'America/Chicago'),
+  submittedLabel(receipt()),
+  submittedLabel(submittedReceipt(), 'America/Chicago'),
+  submittedLabel(receipt({ donorId: null })),
+  submittedProgress(sheet()),
+  submittedProgress(sheet({ receipts: [submittedReceipt()] })),
+  submittedProgress(sheet({ receipts: [] })),
+  markSubmittedQuestion(receipt()),
+  rangeHeading({ from: '2026-07-27', to: '2026-08-02' }, '2026-07-29'),
+  rangeHeading({ from: '2026-07-20', to: '2026-08-09' }, '2026-07-29'),
   ...reportableChoices().map((choice) => choice.label),
   ...['OPEN', 'CLAIMED', 'IN_PROGRESS', 'ANYTHING'].map(runStatusWord),
 ];
@@ -611,14 +910,16 @@ describe('microcopy', () => {
       expect(sentence.toLowerCase()).not.toContain('undo');
       expect(sentence.toLowerCase()).not.toContain('version history');
     }
+    // D35's check-off IS reversible — un-ticking is a DELETE — and says so in
+    // plain words rather than borrowing the one word this screen reserves for the
+    // thing it does not offer.
+    expect(COPY.markConsequence.toLowerCase()).toContain('change it back');
   });
 
   it('never says or implies the file is submitted for them', () => {
     // D13, as a real receipt settled it: Meal Connect has no import. A Reporter
-    // types the receipts in by hand, so the hint has to describe a worksheet and
-    // must not suggest anything was sent. This replaces the older assertion that
-    // the copy call the columns a "guess", which was true only while nobody here
-    // had seen the format.
+    // types the receipts in by hand, so the hint has to describe what is on screen
+    // and must not suggest anything was sent.
     const hint = COPY.exportHint.toLowerCase();
     for (const promise of ['submitted', 'sends', 'sent to', 'uploads', 'uploaded']) {
       expect(hint).not.toContain(promise);
@@ -626,12 +927,36 @@ describe('microcopy', () => {
     expect(hint).toContain('meal connect');
   });
 
-  it('names the account the receipts belong in', () => {
-    // The one check the worksheet cannot make for the Reporter is whether they
-    // are signed in as the right agency. Now with a comma where an em dash was
-    // (D21) — the sentence is read off a printed sheet as often as off a screen.
-    const note = mealConnectAccountNote(report().mealConnect);
-    expect(note).toBe('Enter these under agency 026357P, North Texas Food Bank (24).');
+  it('no longer prints the agency line anywhere (D25)', () => {
+    // The person entering the submission is already signed in to the account it
+    // belongs to, so the codes were one more line to read past. The `mealConnect`
+    // field stays on the API shape; nothing on this screen reads it.
+    expect(Object.keys(COPY)).not.toContain('exportAccount');
+    for (const sentence of sentences) {
+      expect(sentence).not.toContain('026357P');
+      expect(sentence.toLowerCase()).not.toContain('under agency');
+    }
+  });
+
+  it('keeps the words Meal Connect puts on its own form', () => {
+    // The one place in R3 where somebody else's vocabulary beats ours: a Reporter
+    // is matching a label on screen to a label on a web page, so renaming
+    // `Storage Requirement` to something plainer would break the match.
+    expect(COPY.colStorage).toBe('Storage Requirement');
+    expect(COPY.itemCount).toBe('Number of Items');
+    expect(COPY.totalPounds).toBe('Total Pounds');
+    expect(COPY.notAttemptedBox).toBe('Scheduled Pickup Not Attempted');
+    expect(COPY.noPoundsBox).toBe('No Pounds');
+  });
+
+  it('says the three trash numbers apart, and says why they differ (D21, D27)', () => {
+    // §7 keeps "what a number means where two similar numbers sit together", and
+    // three of them sit together here. The note is the only place on the screen
+    // that says a deduction happened at all.
+    const labels = [COPY.drillGrossLabel, COPY.drillDeductLabel, COPY.drillNetLabel];
+    expect(new Set(labels).size).toBe(3);
+    expect(COPY.drillDeductNote.toLowerCase()).toContain('never weighed');
+    expect(COPY.drillDeductNote.toLowerCase()).toContain('does not change');
   });
 
   it('uses no em dash (D21)', () => {
@@ -640,6 +965,14 @@ describe('microcopy', () => {
     // weight keypad's draft line, which is a symbol rather than a sentence and is
     // not in this sweep.
     for (const sentence of sentences) expect(sentence).not.toContain('—');
+  });
+
+  it('marks our own half of the card as never typed into the portal (D29)', () => {
+    // Without it, a Reporter has no way to know which lines are the portal's
+    // fields and which are ours. It is the sentence that makes the rest of the
+    // card safe to read top to bottom.
+    expect(COPY.oursNote.toLowerCase()).toContain('meal connect');
+    expect(COPY.oursNote.toLowerCase()).toContain('none of this');
   });
 
   it('cut the hints that only restated the control under them (D21)', () => {
@@ -651,8 +984,16 @@ describe('microcopy', () => {
     for (const gone of ['pickerHint', 'tableHint', 'reportedNote', 'futureWeekNote']) {
       expect(keys).not.toContain(gone);
     }
-    expect(COPY.intakeNote.length).toBeGreaterThan(0);
-    expect(COPY.unreportedNote.length).toBeGreaterThan(0);
+    // D29 took the CSV and everything that only described a file.
+    for (const gone of ['exportDone', 'exportedTitle', 'printing', 'printLabel']) {
+      expect(keys).not.toContain(gone);
+    }
+    // D34 took the two remaining figure captions and `exportedNote`. The captions
+    // were kept under D21 as the only place the two unions were distinguished in
+    // words; the LABELS carry that now, and the assertion below holds them to it.
+    for (const gone of ['intakeNote', 'unreportedNote', 'unreportedLabel', 'exportedNote']) {
+      expect(keys).not.toContain(gone);
+    }
   });
 
   it('keeps the export hint short enough to be read (D21)', () => {
@@ -684,8 +1025,17 @@ describe('microcopy', () => {
   });
 
   it('names both totals in full wherever they appear', () => {
+    // With the captions gone (D34) these two labels ARE the key data boundary on
+    // this screen, so neither may shorten to "Total".
     expect(COPY.reportedLabel.toLowerCase()).toContain('report');
     expect(COPY.intakeLabel.toLowerCase()).not.toContain('report');
-    expect(COPY.unreportedLabel.toLowerCase()).toContain('not reported');
+    expect(COPY.intakeLabel.toLowerCase()).not.toBe('total');
+  });
+
+  it('offers one primary action, named for the job (D34)', () => {
+    // Two buttons became one: "Export for Meal Connect" and "Print or save as PDF"
+    // sat side by side, the second unusable until the first had been pressed, and
+    // neither was what a reporter would call the thing they came to do.
+    expect(COPY.export).toBe('Meal Connect Report');
   });
 });

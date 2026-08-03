@@ -1,4 +1,4 @@
-// S3.1 Report generation — the weekly North Texas Food Bank report, and Phase 3's
+// S3.1 Report generation — the North Texas Food Bank report, and Phase 3's
 // centrepiece. Anyone with the `report` duty, on the shared desktop.
 //
 // CANONICAL DEVICE IS THE DESKTOP. The responsive matrix marks "Report + metrics"
@@ -7,133 +7,142 @@
 //
 // WHAT THIS SCREEN IS FOR, in the PRD's terms: Success Metric 3 (the report comes
 // out of the system, with no Excel re-summing) and Success Metric 4 (every line
-// item resolves to a store, a day and a receiver). Both are visible on this one
-// screen — the totals for the first, the drill-in for the second.
+// item resolves to a store, a day and a receiver).
+//
+// THE ORDER CHANGED, AND THE ORDER IS THE POINT (D34). The screen used to open on
+// three totals in a card, with the export two scrolls below them. But the totals
+// are a CHECK and the Meal Connect report is the JOB, so the report is now the one
+// primary action and it sits at the top; two small figures sit under it, and the
+// per-NTFB-category table sits under those, for the reporter who is reconciling
+// rather than filing. Printing moved INSIDE the report view, where the cards are —
+// a print button on a screen with nothing to print hands the browser a blank page.
 //
 // THREE THINGS IT MUST NOT GET WRONG:
 //
 //   1. `reportedTotal` and `intakeTotal` are two numbers, never one. PRD §3 keeps
 //      them "distinct and clearly labeled everywhere", and this is the screen
-//      most likely to blur them. They are rendered from `totalsView`, which
-//      always emits all three with their own words.
-//   2. Export is ABSENT while the week is blocked, not disabled — a button that
-//      fails is not an interaction (§3: prefer hiding over disabling), and the
-//      server refuses it anyway. What replaces it is the explanation.
-//   3. The two ways out carry the SAME worksheet. The CSV and the printed sheet
-//      are one server call, one grain and one refusal (D16, A186); nothing here
-//      re-shapes a row.
+//      most likely to blur them. They come from `totalsView`, which always emits
+//      both with their own words — see `report.ts` for why the captions under
+//      them went and what carries the distinction now.
+//   2. The report is ABSENT while the range is blocked, not disabled — a button
+//      that fails is not an interaction (§3: prefer hiding over disabling), and
+//      the server refuses it anyway. What replaces it is the explanation.
+//   3. There is ONE way out and it ends at the printer (D29). The CSV is gone, and
+//      with it the second refusal path that had to be kept in step with the first.
 //
 // THE MATCHING EDITOR IS NO LONGER HERE (D17, overriding D11). It moved to Admin,
-// which is what took the tab strip with it: `ui-ux-spec.md §3` has no one-tab
-// `Segmented`, and a strip of one is a control that cannot do anything. What is
-// left in its place is a sentence in the blocked state naming who can clear the
-// block, because a Reporter without the Admin tier now cannot.
+// and since D40 it is the bottom half of Admin's Categories tab. What is left in
+// its place is a sentence in the blocked state naming who can clear the block.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAsyncData, useSession, useToast, todayInZone } from '../../../app/index.ts';
 import type { ScreenProps } from '../../../app/index.ts';
 import {
   Button,
-  Card,
   EmptyState,
   ErrorBlock,
-  PrinterIcon,
   SkeletonRows,
 } from '../../../components/index.ts';
-import type { WeeklyReport } from '../../../api/shared.ts';
-import { downloadExport, fetchExportRows, fetchReport, type ExportSheet } from './api.ts';
-import { PrintSheet } from './PrintSheet.tsx';
+import type { ReportExport, WeeklyReport } from '../../../api/shared.ts';
+import { fetchExport, fetchReport } from './api.ts';
+import { Receipts } from './Receipts.tsx';
 import { ReportTable } from './ReportTable.tsx';
 import {
   BLOCKED_MESSAGE,
   COPY,
+  PRINT_BODY_CLASS,
   canExport,
-  formatWeekRange,
-  isCurrentWeek,
+  defaultRange,
   isEmptyWeek,
+  isThisWeek,
+  isValidRange,
   messageFor,
-  mealConnectAccountNote,
-  nextWeek,
   openRunLabel,
   openRunsNotice,
-  previousWeek,
+  rangeError,
+  rangeHeading,
   reportState,
   toggleDrillIn,
   totalsView,
   unmappedSummary,
-  weekLabel,
-  weekStartOf,
   weightWithUnit,
+  type DateRange,
 } from './report.ts';
 import './report.css';
 
 export function ReportScreen(_props: ScreenProps) {
   const { timezone } = useSession();
   const toast = useToast();
+  const today = todayInZone(timezone);
 
-  // Null means "whatever week the pantry is in", which the SERVER resolves — the
-  // pantry's zone decides that and the client's answer would only agree by luck
-  // (A120). Once the Reporter navigates, the week is explicit from then on.
-  const [week, setWeek] = useState<string | null>(null);
+  /**
+   * The window, as two dates (D41).
+   *
+   * Null until the pantry's zone has arrived, so the FIRST read sends no dates and
+   * the server resolves "this week" in the zone that decides which week now is in
+   * (A120). Once the Reporter touches a field the range is explicit from then on,
+   * and the server is asked for exactly what is in the two fields.
+   */
+  const [range, setRange] = useState<DateRange | null>(null);
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
-  const [exported, setExported] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [printing, setPrinting] = useState(false);
-  /** The rows behind the printed sheet, fetched on demand. Held rather than
-   *  fetched with the week because most visits never print, and a worksheet built
-   *  and thrown away every time the week changes is a request nobody asked for. */
-  const [sheet, setSheet] = useState<ExportSheet | null>(null);
+  /** The range's receipts, fetched on demand. Held rather than fetched with the
+   *  range because most visits never file anything, and a set of cards built and
+   *  thrown away every time a date changes is a request nobody asked for. */
+  const [sheet, setSheet] = useState<ReportExport | null>(null);
 
-  const load = useCallback((signal: AbortSignal) => fetchReport(week, signal), [week]);
+  const load = useCallback((signal: AbortSignal) => fetchReport(range, signal), [range]);
   const remote = useAsyncData<WeeklyReport>(load);
 
-  const goToWeek = (next: string) => {
-    setWeek(next);
+  /**
+   * THE PRINT RULE LIVES ON THE BODY, AND ONLY WHILE THERE ARE RECEIPTS.
+   *
+   * Printing one section means hiding the rest of the page, and `report.css` may
+   * not name the shell's classes to do it. Left unscoped, that rule outlived this
+   * screen: a stylesheet is loaded once and never unloaded, so after one visit to
+   * the report EVERY other screen printed blank. QA round 2 found it. The class
+   * goes on for exactly as long as there is something to print and comes off on
+   * unmount, so no other screen can inherit it.
+   */
+  useEffect(() => {
+    if (sheet === null) return;
+    document.body.classList.add(PRINT_BODY_CLASS);
+    return () => document.body.classList.remove(PRINT_BODY_CLASS);
+  }, [sheet]);
+
+  /** The range on screen, resolved: the server's answer while nothing has been
+   *  typed, the two fields once something has. */
+  const shownRange: DateRange =
+    range ??
+    (remote.data !== null
+      ? { from: remote.data.from, to: remote.data.to }
+      : defaultRange(today));
+
+  const editRange = (next: DateRange) => {
+    setRange(next);
     setOpenCategoryId(null);
-    // A download belongs to the week it came from; carrying either the "exported"
-    // state or last week's printable rows across would tell the Reporter they had
-    // something they do not have.
-    setExported(false);
+    // Receipts belong to the dates they came from; carrying the last set across
+    // would put the wrong numbers in front of someone about to type them.
     setSheet(null);
   };
 
-  const runExport = async (report: WeeklyReport) => {
+  /**
+   * The report — the range's receipts, on screen and ready for the printer (D29).
+   *
+   * A refusal (a category carrying weight with no NTFB category) arrives as an
+   * `ApiError` with the server's own sentence on it and nothing is shown, which is
+   * the point of the export being server-built (A186).
+   */
+  const openReport = async (report: WeeklyReport) => {
     setExporting(true);
     try {
-      await downloadExport(report.weekStart, report.weekEnd);
-      setExported(true);
-      toast.success(COPY.exportDone);
+      setSheet(await fetchExport({ from: report.from, to: report.to }));
     } catch (cause) {
-      // The server refuses a blocked week with its own sentence; anything else
+      // The server refuses a blocked range with its own sentence; anything else
       // gets the plain per-kind message. Never a code (§6).
       toast.error(messageFor(cause));
     } finally {
       setExporting(false);
-    }
-  };
-
-  /**
-   * Print, or save as PDF — the browser's dialogue offers both (D16).
-   *
-   * Fetched THEN printed, in that order and awaited: `window.print()` is
-   * synchronous and photographs the DOM as it stands, so printing before the rows
-   * arrive would produce a sheet with a heading and nothing under it. A refusal
-   * (an unmapped category carrying weight) surfaces as a toast and no dialogue
-   * opens, which is the same refusal the CSV gets because it is the same call.
-   */
-  const runPrint = async (report: WeeklyReport) => {
-    setPrinting(true);
-    try {
-      const fetched = await fetchExportRows(report.weekStart);
-      setSheet(fetched);
-      // One frame, so React has committed the section before the browser
-      // photographs the page.
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      window.print();
-    } catch (cause) {
-      toast.error(messageFor(cause));
-    } finally {
-      setPrinting(false);
     }
   };
 
@@ -157,39 +166,70 @@ export function ReportScreen(_props: ScreenProps) {
   }
 
   const report = remote.data;
-  const today = todayInZone(timezone);
-  const label = weekLabel(report.weekStart, today);
-  const state = reportState(report, exported);
+  const state = reportState(report, sheet !== null);
   const unmapped = unmappedSummary(report.unmapped);
   const openRuns = openRunsNotice(report.openRuns);
+  const dateError = rangeError(shownRange);
+
+  // THE REPORT VIEW TAKES THE WHOLE SCREEN (D34/D35). A reporter works one store
+  // at a time, one card against one portal screen, and leaving the range's totals
+  // and the category table above them is a page to scroll past fifteen times.
+  if (sheet !== null) {
+    return (
+      <div className="s31">
+        <h1 className="s31-title">{COPY.title}</h1>
+        <Receipts
+          sheet={sheet}
+          timezone={timezone ?? undefined}
+          onBack={() => setSheet(null)}
+          onChanged={async () => {
+            // Re-read rather than patch the card in place: a tick is a fact two
+            // reporters can be looking at, and the server's answer is the one that
+            // settles who filed it.
+            setSheet(await fetchExport({ from: sheet.from, to: sheet.to }));
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="s31">
       <h1 className="s31-title">{COPY.title}</h1>
 
-      {/* Pick a week — S3.1's first line. Three big targets in a row, all three
-          always visible; §1.5 rules out a date dropdown for this. */}
-      <div className="s31-week" role="group" aria-label={COPY.weekNavLabel}>
-        <Button variant="secondary" onClick={() => goToWeek(previousWeek(report.weekStart))}>
-          {COPY.previousWeek}
-        </Button>
-        <div className="s31-week__label">
-          {label !== null ? <p className="s31-week__name">{label}</p> : null}
-          <p className="s31-week__range">{formatWeekRange(report.weekStart, report.weekEnd)}</p>
+      {/* Pick the dates (D41). Two fields and one shortcut back to this week —
+          §1.5 rules out a dropdown, and a pair of date inputs is what a range
+          actually is. The heading above them names the range where it has a name
+          ("This week"), which is §1.4's recognition over recall. */}
+      <section className="s31-range" aria-label={COPY.rangeLabel}>
+        <p className="s31-range__name">{rangeHeading(shownRange, today)}</p>
+        <div className="s31-range__fields">
+          <DateField
+            label={COPY.fromLabel}
+            value={shownRange.from}
+            onChange={(from) => editRange({ ...shownRange, from })}
+          />
+          <DateField
+            label={COPY.toLabel}
+            value={shownRange.to}
+            onChange={(to) => editRange({ ...shownRange, to })}
+          />
+          {isThisWeek(shownRange, today) ? null : (
+            <Button variant="secondary" onClick={() => editRange(defaultRange(today))}>
+              {COPY.thisWeek}
+            </Button>
+          )}
         </div>
-        <Button variant="secondary" onClick={() => goToWeek(nextWeek(report.weekStart))}>
-          {COPY.nextWeek}
-        </Button>
-        {isCurrentWeek(report.weekStart, today) ? null : (
-          <Button variant="secondary" onClick={() => goToWeek(weekStartOf(today))}>
-            {COPY.thisWeek}
-          </Button>
-        )}
-      </div>
+        {dateError !== null ? (
+          <p className="s31-error" role="alert">
+            {dateError}
+          </p>
+        ) : null}
+      </section>
 
-      {/* The blocked state leads, above everything else it is blocking.
-          D12: unmapped weight is surfaced and refuses the export, because a
-          short file that looks complete is worse than no file. */}
+      {/* The blocked state leads, above the action it is blocking.
+          D12: unmapped weight is surfaced and refuses the report, because a short
+          submission that looks complete is worse than none. */}
       {state === 'INCOMPLETE' ? (
         <section className="s31-blocked" role="status" aria-label={COPY.blockedLabel}>
           <h2 className="s31-blocked__title">{COPY.blockedTitle}</h2>
@@ -200,16 +240,56 @@ export function ReportScreen(_props: ScreenProps) {
               {unmapped}
             </p>
           ) : null}
-          {/* Where the "Match the categories" primary used to be. The matching is
-              Admin's now (D17) and a Reporter may not hold the tier, so this says
-              who to ask rather than offering a button that would 403. */}
+          {/* The matching is Admin's now (D17) and a Reporter may not hold the
+              tier, so this says who to ask rather than offering a button that
+              would 403. D40 merged it into the Categories tab; the sentence names
+              where it is today. */}
           <p className="s31-blocked__detail">{COPY.matchingIsInAdmin}</p>
         </section>
       ) : null}
 
-      {/* Open runs are surfaced and do NOT block (A184): the file would
-          merely be early, and only the Reporter knows whether the week is
-          really over. */}
+      {/* §1.1: exactly one high-emphasis button per screen, and D34 puts it here,
+          at the top, because it is the job. While the range is blocked there is
+          none: the server refuses, and a button that fails is not an interaction.
+
+          An open drill-in steps it down to secondary. The drill-in's weight edit
+          carries its own primary (Save) and the two render at the same time, which
+          is the §1.1 violation `doc-qa` caught. This yields rather than the form's
+          Save, because a Reporter with an entry open is inspecting or correcting a
+          number, and opening the report mid-correction is the wrong thing to point
+          at. Zero high-emphasis buttons is allowed; two is not. */}
+      {canExport(report) ? (
+        <div className="s31-export">
+          <Button
+            variant={openCategoryId === null ? 'primary' : 'secondary'}
+            onClick={() => void openReport(report)}
+            loading={exporting}
+            disabled={!isValidRange(shownRange)}
+          >
+            {COPY.export}
+          </Button>
+          {/* D13: Meal Connect has no import, so the hint says what the cards are
+              FOR rather than implying anything gets sent. */}
+          <p className="s31-note">{COPY.exportHint}</p>
+        </div>
+      ) : null}
+
+      {/* PRD §3: intake and reported stay two distinct, clearly labelled numbers.
+          Both come out of one function so neither can be shown alone. Small and
+          compact, under the action (D34) — "received but not reported" is the
+          difference between them and no longer has a figure of its own. */}
+      <dl className="s31-totals s31-totals--compact" aria-label={COPY.totalsLabel}>
+        {totalsView(report).map((total) => (
+          <div className="s31-total" key={total.key}>
+            <dt className="s31-total__label">{total.label}</dt>
+            <dd className="s31-total__value r3-numeric">{weightWithUnit(total.value)}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {/* Open runs are surfaced and do NOT block (A184): the submission would
+          merely be early, and only the Reporter knows whether the dates are really
+          done. */}
       {openRuns !== null ? (
         <section className="s31-open-runs" aria-label={COPY.openRunsLabel}>
           <h2 className="s31-subheading">{COPY.openRunsLabel}</h2>
@@ -222,93 +302,53 @@ export function ReportScreen(_props: ScreenProps) {
         </section>
       ) : null}
 
-      {/* PRD §3: intake and reported stay two distinct, clearly labelled
-          numbers. All three come out of one function so none can be shown
-          alone. */}
-      <Card ariaLabel={COPY.totalsLabel}>
-        <h2 className="s31-subheading">{COPY.totalsLabel}</h2>
-        <dl className="s31-totals">
-          {totalsView(report).map((total) => (
-            <div
-              className={total.primary ? 's31-total s31-total--primary' : 's31-total'}
-              key={total.key}
-            >
-              <dt className="s31-total__label">{total.label}</dt>
-              <dd className="s31-total__value">
-                <span className="r3-numeric">{weightWithUnit(total.value)}</span>
-                {total.note !== null ? (
-                  <span className="s31-total__note">{total.note}</span>
-                ) : null}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </Card>
-
       {isEmptyWeek(report) ? (
         <EmptyState title={COPY.emptyWeekTitle}>{COPY.emptyWeekBody}</EmptyState>
       ) : (
         <ReportTable
           report={report}
-          week={report.weekStart}
+          range={shownRange}
           openCategoryId={openCategoryId}
-          onToggle={(categoryId) => setOpenCategoryId((current) => toggleDrillIn(current, categoryId))}
+          onToggle={(categoryId) =>
+            setOpenCategoryId((current) => toggleDrillIn(current, categoryId))
+          }
           onChanged={remote.reload}
         />
       )}
-
-      {/* §1.1: exactly one high-emphasis button per screen, and here it is
-          Export. Print sits beside it as a secondary — same worksheet, other
-          medium, and offering two primaries would be the violation §1.1 names.
-          While the week is blocked there is neither: the server refuses both, and
-          a button that fails is not an interaction.
-
-          An open drill-in steps Export down too. The drill-in's weight edit
-          carries its own primary (Save), and the two render at the same time —
-          which is the §1.1 violation `doc-qa` caught. Export yields rather than
-          the form's Save, because a Reporter with an entry open is inspecting or
-          correcting a number, and exporting the week mid-correction is the wrong
-          thing to point at. Zero high-emphasis buttons is allowed; two is not. */}
-      {canExport(report) ? (
-        <div className="s31-export">
-          {state === 'EXPORTED' ? (
-            <p className="s31-note" role="status">
-              {COPY.exportedNote}
-            </p>
-          ) : null}
-          <div className="s31-export__actions">
-            <Button
-              variant={openCategoryId === null ? 'primary' : 'secondary'}
-              onClick={() => void runExport(report)}
-              loading={exporting}
-            >
-              {COPY.export}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => void runPrint(report)}
-              loading={printing}
-            >
-              {/* Icon plus words, never the icon alone (§3): "Print" and "Save as
-                  PDF" are the same button here and only the label can say so. */}
-              <PrinterIcon />
-              {printing ? COPY.printing : COPY.print}
-            </Button>
-          </div>
-          {/* D13: the file is a worksheet for a form somebody types into, not
-              something that gets uploaded — so the hint says what to do with it,
-              and the line under it names the account it belongs in. That is the
-              one check the worksheet itself cannot make. */}
-          <p className="s31-note">{COPY.exportHint}</p>
-          <p className="s31-note">{mealConnectAccountNote(report.mealConnect)}</p>
-        </div>
-      ) : null}
-
-      {/* Hidden on screen; under `@media print` it is the only thing on the page
-          (`report.css`). Rendered only once a Print has actually fetched rows, so
-          an accidental Ctrl-P before then prints the screen rather than a heading
-          with nothing under it. */}
-      {sheet !== null ? <PrintSheet sheet={sheet} account={report.mealConnect} /> : null}
     </div>
+  );
+}
+
+/**
+ * A `YYYY-MM-DD` field.
+ *
+ * `components/TextInput` takes `text` or `password` only and `components/` is not
+ * this screen's to widen, so the native date control is spelled out here rather
+ * than by loosening a contract every screen depends on. It is one `<input>` and a
+ * label, which is what `TextInput` is; what it is NOT is a second general-purpose
+ * field control, and nothing outside this screen imports it.
+ *
+ * §1.5 rules out a dropdown where a visible control fits, and the browser's own
+ * date picker is the one control on this screen a person already knows how to use.
+ */
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="r3-field s31-range__field">
+      <span className="r3-field__label">{label}</span>
+      <input
+        className="r3-field__control"
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   );
 }

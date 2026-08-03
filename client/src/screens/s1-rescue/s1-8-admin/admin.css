@@ -60,6 +60,36 @@
   max-width: 34rem;
 }
 
+/* One field and anything that introduces it. The form is already a column with a
+ * gap, so this wrapper adds no spacing of its own; it exists so a group heading
+ * can sit with the field it heads rather than as a sibling the gap would push
+ * away from it. */
+.s18-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* A heading and one sentence over a run of related fields (D27's trash rates are
+ * the first). Set apart with a rule above it, because the sentence applies to
+ * what follows and not to the field it sits under. */
+.s18-section {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.s18-section__title {
+  font-size: var(--font-h3);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.s18-section__body {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0;
+}
+
 .s18-group {
   display: flex;
   flex-direction: column;
@@ -78,6 +108,77 @@
   font-size: var(--font-label);
   color: var(--text-muted);
   margin: 0;
+}
+
+/* --- a pick-one field (D40) ------------------------------------------------
+ *
+ * Where a category reports to the food bank. A visible column of big targets
+ * rather than a dropdown (§1.5), and the list is short by construction — D26 seeds
+ * ten. Each row is a real radio, so the keyboard behaviour a radio group obliges
+ * (arrows between options, one tab stop) is the browser's and not a promise.
+ */
+
+.s18-choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.s18-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* §1.2's 44px floor: the whole row is the target, not the 20px dot. */
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.s18-choice:has(.s18-choice__input:checked) {
+  border-color: var(--brand-orange);
+  background: var(--surface-paper);
+}
+
+/* The ring the tokens apply to every focusable element (§2), mirrored onto the
+ * ROW because the row is what a person sees as the target. The real radio keeps
+ * its own ring too; this is not a replacement for it. */
+.s18-choice:has(.s18-choice__input:focus-visible) {
+  outline: var(--focus-width) solid var(--brand-orange);
+  outline-offset: var(--focus-offset);
+}
+
+.s18-choice__input {
+  /* Kept in the layout and in the tab order: this is the actual control, and the
+   * row around it is the target. Hiding it would mean rebuilding radio semantics
+   * by hand, which is how a keyboard user loses a form. */
+  width: var(--space-4);
+  height: var(--space-4);
+  margin: 0;
+  flex: none;
+  accent-color: var(--brand-orange);
+}
+
+.s18-choice__label {
+  font-size: var(--font-body);
+  color: var(--text);
+}
+
+.s18-choice__note {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* The rule between D40's two sections: our categories above, the food bank's own
+ * list below. A reference an admin consults, not a step in the form above it. */
+.s18-section-break {
+  border-top: 1px solid var(--border);
+  margin: var(--space-6) 0 var(--space-5) 0;
 }
 
 .s18-hint--strong {

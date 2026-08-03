@@ -52,6 +52,18 @@ CREATE TABLE app_config (
   ntfb_food_bank      text NOT NULL DEFAULT 'North Texas Food Bank',
   ntfb_food_bank_code text NOT NULL DEFAULT '24',
 
+  -- D27 — the pantry-wide trash deduction rates (migration 0017). A store with no
+  -- override of its own falls back to these. Defaults are the pantry's current
+  -- practice for a typical store; Sam's Club and Costco run produce at 0.10 and
+  -- carry a per-donor override instead.
+  trash_rate_bakery   numeric(5,4) NOT NULL DEFAULT 0.1000,
+  trash_rate_produce  numeric(5,4) NOT NULL DEFAULT 0.0500,
+  trash_rate_deli     numeric(5,4) NOT NULL DEFAULT 0.1500,
+  CONSTRAINT ck_config_trash_rates CHECK (
+    trash_rate_bakery  BETWEEN 0 AND 1 AND
+    trash_rate_produce BETWEEN 0 AND 1 AND
+    trash_rate_deli    BETWEEN 0 AND 1),
+
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
 ```
@@ -100,8 +112,19 @@ CREATE TABLE donor (
   note           text,                                -- Donor.note: permanent per-store note (PRD cap 11, admin-authored)
   ntfb_donor_code text,                              -- NTFB's own number for this store, as Meal Connect's picker shows it: `H-E-B Food Stores (810)`. Nullable — it is theirs to issue (migration 0013)
   map_url        text,                               -- D20: explicit map link for a store whose address does not name the door. NULL = derive one from `address`, which the client does (migration 0014)
+  -- D27 — per-store trash rates (migration 0017). NULL means "use the pantry
+  -- default from app_config", which is NOT the same as 0.0000: a store that
+  -- genuinely wastes nothing is an explicit zero, and the difference has to
+  -- survive an edit that clears the field.
+  trash_rate_bakery  numeric(5,4),
+  trash_rate_produce numeric(5,4),
+  trash_rate_deli    numeric(5,4),
   deactivated_at timestamptz,                        -- ACTIVE ⇄ DEACTIVATED (Domain Modeling §3.3)
-  created_at     timestamptz NOT NULL DEFAULT now()
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ck_donor_trash_rates CHECK (
+    (trash_rate_bakery  IS NULL OR trash_rate_bakery  BETWEEN 0 AND 1) AND
+    (trash_rate_produce IS NULL OR trash_rate_produce BETWEEN 0 AND 1) AND
+    (trash_rate_deli    IS NULL OR trash_rate_deli    BETWEEN 0 AND 1))
 );
 
 -- D20 — the store photo a driver sees on the current stop (migration 0014).
@@ -122,6 +145,12 @@ CREATE TABLE donor_photo (
 CREATE TABLE category (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name           text NOT NULL,                       -- required for admin-managed master data
+  -- D27 — which trash rate this category is deducted at, or NULL for none
+  -- (migration 0017). A COLUMN and not a match on the literal name 'Bakery':
+  -- I21 lets an admin rename a category, and a name match would silently stop
+  -- deducting the moment they did. `uq_category_trash_key` (§12) keeps it to one
+  -- active category per key, because two would deduct twice.
+  trash_rate_key text CHECK (trash_rate_key IS NULL OR trash_rate_key IN ('BAKERY','PRODUCE','DELI')),
   deactivated_at timestamptz,                        -- ACTIVE ⇄ ARCHIVED (Domain Modeling §3.3)
   created_at     timestamptz NOT NULL DEFAULT now()
 );
@@ -168,24 +197,53 @@ carrying two separate `Prepared Meals` lines. On `ntfb_category` it would force 
 answer per bucket and file frozen food as dry. The report and the export therefore roll
 up on the pair, not on the category alone.
 
-**Text, not an enum**, by the same argument that keeps `ntfb_category` empty: `Frozen`,
-`Dry` and `Refrigeration` are the values on *one* receipt, not a vocabulary anyone here
-has been given, and §1's case for native enums assumes the value set is known. A null
-storage does **not** block the export the way an unmapped category does — the weight
-still reaches the right category, and only one of the form's four fields is blank.
+**Text, not an enum.** Not because the values are unknown — they are known now — but
+because the pantry may be given more of them, and `§1`'s case for a native enum assumes
+a value set that does not grow. A null storage does **not** block the export the way an
+unmapped category does: the weight still reaches the right category, and only one of the
+form's four fields is blank.
 
-**Ships empty.** The 11 AGFP category names are the pantry's and are seeded at launch
-(migration 0010); NTFB's are the food bank's and appear in no doc here, so the table is
-created and nothing is inserted. A Reporter fills it in on S3.1.
+**Ships seeded** (`D26`, migration 0016, 2026-08-02). *This paragraph previously read
+"ships empty… a Reporter fills it in on S3.1", which was true for exactly as long as
+NTFB's vocabulary was unknown to us.* The pantry supplied their real category list and
+the storage requirement for each, so the table now ships with **10 rows** and all **11**
+AGFP categories mapped, storage included:
+
+| AGFP category | NTFB category | Storage |
+| :---- | :---- | :---- |
+| Frozen Meat | Meat | Frozen |
+| Bakery | Bread | Dry |
+| Produce | Produce | Refrigerated |
+| Deli | Prepared Meal | Frozen |
+| Dairy | Dairy | Refrigerated |
+| Dry | Dry Food | Dry |
+| Frz Non Meat | Prepared Meal | Frozen |
+| Non Food | Non-Food | Dry |
+| Pet | Pet Food | Dry |
+| Health & Beauty | Health & Beauty | Dry |
+| Trash | Trash | Dry |
+
+Deli and Frz Non Meat deliberately share both a bucket **and** a storage value, so they
+roll into one report line — the many-to-one case this design anticipated. Closing
+`Frz Non Meat`, which matched none of the ten names on the sample receipt, is precisely
+what made `D12` retirable: the list is no longer nine-tenths of a guess.
+
+The seed is idempotent — the insert is guarded on the table being empty and each mapping
+on `ntfb_category_id IS NULL` — so an admin's later edit survives a replay. S3.1 and the
+Admin mapping tab now **edit** this rather than entering it from nothing.
+
+The AGFP `Trash` category ships **archived**: under `D27` trash is computed from the
+other categories, so a receiver weighing into it would double-count.
 
 **A column, not a join table.** The cardinality is many-to-one — several AGFP
 categories may report under one NTFB bucket — so a join table would permit one AGFP
 category mapped to two NTFB ones, a state the report has no way to interpret. Same
 instinct as §1's native enums: make it unrepresentable rather than check for it.
 
-`NULL` means "not mapped yet", which is every row's launch state. An unmapped category
-carrying weight **blocks the export** rather than being dropped from it
-(`phase-3-build-plan.md` D12).
+`NULL` means "not mapped yet". Since `D26` **no row launches unmapped** — the state is
+now only reachable by an admin clearing a mapping, or by adding a new AGFP category. An
+unmapped category carrying weight still **blocks the export** rather than being dropped
+from it, and that guard is kept precisely because the seed can be edited away.
 
 **Soft-delete follows the §4 masters by analogy, not by I21.** I21 enumerates Donor /
 Category / Truck / User and does not mention this table — it did not exist when the
@@ -372,7 +430,7 @@ CREATE TABLE unscheduled_donation (
   shift_id      uuid REFERENCES shift(id)    ON DELETE RESTRICT,  -- 0..1: set for driver-add on a run; NULL for walk-in
   donor_id      uuid REFERENCES donor(id)    ON DELETE RESTRICT,  -- master donor, XOR label, XOR neither(anon)
   donor_label   text,                                             -- free-text donor; never auto-creates a master Donor
-  category_id   uuid NOT NULL REFERENCES category(id) ON DELETE RESTRICT,
+  category_id   uuid REFERENCES category(id) ON DELETE RESTRICT,    -- D24: NULL while SUGGESTED; required on CONFIRMED, exactly like `weight`
   weight        numeric(8,2) CHECK (weight IS NULL OR weight >= 0), -- NULL while SUGGESTED; required on CONFIRMED
   status        donation_status NOT NULL DEFAULT 'SUGGESTED',      -- SUGGESTED only from driver-add (I17)
   reportable    boolean NOT NULL DEFAULT true,                     -- I15; editable in-window then Reporter-only
@@ -386,6 +444,11 @@ CREATE TABLE unscheduled_donation (
   CONSTRAINT ck_ud_source_exclusive CHECK (donor_id IS NULL OR donor_label IS NULL),
   -- I16(a): CONFIRMED => weight present (unconditional; metrics count unreportable rows too)
   CONSTRAINT ck_ud_confirmed_weight CHECK (status <> 'CONFIRMED' OR weight IS NOT NULL),
+  -- I16(c), added by D24 (migration 0015): CONFIRMED => category present. The driver
+  -- who flags a pickup cannot know the category and it is not their job, so the row
+  -- arrives without one and the receiver picks it at confirm time. Reporting is
+  -- unaffected: report and metrics union CONFIRMED rows only.
+  CONSTRAINT ck_ud_confirmed_category CHECK (status <> 'CONFIRMED' OR category_id IS NOT NULL),
   -- I16(b): CONFIRMED ∧ reportable => source present
   CONSTRAINT ck_ud_i16b_source CHECK (
     NOT (status = 'CONFIRMED' AND reportable)
@@ -421,6 +484,34 @@ metrics = weight_entry[NOT voided]  ∪  unscheduled_donation[CONFIRMED]        
 ```
 
 Neither may filter the union on `shift` (walk-ins have none). Grouping is `report_day × category × donor-or-label`; anonymous walk-ins collapse to one "unattributed" bucket — the visible consequence of allowing a null source.
+
+### 8.1 `meal_connect_submission` — what has been filed with the food bank (`D35`)
+
+Records that a receipt was typed into Meal Connect's web form. **It carries no weight and changes
+no total** — dropping every row would leave every reported figure identical. It answers one
+question for the reporter: which receipts are already in.
+
+```sql
+CREATE TABLE meal_connect_submission (
+  pickup_date   date        NOT NULL,
+  donor_id      uuid        NOT NULL REFERENCES donor (id) ON DELETE RESTRICT,
+  submitted_at  timestamptz NOT NULL DEFAULT now(),
+  submitted_by  uuid        NOT NULL REFERENCES app_user (id) ON DELETE RESTRICT,
+  PRIMARY KEY (pickup_date, donor_id)
+);
+CREATE INDEX ix_mcs_donor ON meal_connect_submission (donor_id);
+```
+
+- **The composite primary key is the enforcement**, tier 1. It is the same grain as the receipt
+  (`D29`), so two reporters ticking the same store on the same day produce one row, not two, and
+  the first writer stands. The service ticks with `ON CONFLICT DO NOTHING`: a second reporter
+  agreeing is not an error to report back to them.
+- **No `updated_at`, no soft delete.** Un-ticking is a `DELETE`; the row's existence *is* the
+  claim, and a retracted claim leaves nothing behind worth keeping.
+- **`ON DELETE RESTRICT` on both FKs.** A donor with filing history is archived, never destroyed,
+  which is `I21`'s existing rule — this table is one more thing that makes it true.
+- **The primary key's own index leads on `pickup_date`**, which is what a range read (`D41`) wants;
+  `ix_mcs_donor` serves the other direction, "has this store ever been filed".
 
 ---
 
@@ -570,6 +661,10 @@ CREATE INDEX ix_category_active ON category (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_ntfb_active     ON ntfb_category (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_category_ntfb   ON category (ntfb_category_id);
 CREATE UNIQUE INDEX uq_ntfb_name ON ntfb_category (lower(name)) WHERE deactivated_at IS NULL;
+-- D27: one active category per trash rate key. Two would deduct the same weight twice
+-- and inflate the Trash line, which is a number that leaves the building.
+CREATE UNIQUE INDEX uq_category_trash_key ON category (trash_rate_key)
+  WHERE trash_rate_key IS NOT NULL AND deactivated_at IS NULL;
 -- §4, 0013: two live stores sharing one NTFB donor number is a data-entry mistake.
 -- Partial on both predicates — NULL is the ordinary unknown and repeats freely, and a
 -- deactivated store must not hold its code against a replacement row.
@@ -577,6 +672,11 @@ CREATE UNIQUE INDEX uq_donor_ntfb_code ON donor (ntfb_donor_code) WHERE ntfb_don
 CREATE INDEX ix_truck_active    ON truck    (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_route_active    ON route    (id) WHERE deactivated_at IS NULL;
 CREATE INDEX ix_user_active     ON app_user (id) WHERE deactivated_at IS NULL;
+
+-- §8.1, D35: the composite PK already indexes (pickup_date, donor_id), which is what a
+-- range read wants. This serves the other direction — "has this store ever been filed",
+-- which is what I21's history check on a donor asks.
+CREATE INDEX ix_mcs_donor       ON meal_connect_submission (donor_id);
 
 -- WEIGHED-EXISTS (I12) + per-(shift,donor) SUM-on-read
 CREATE INDEX ix_weight_active   ON weight_entry (shift_id, donor_id) WHERE voided = false;

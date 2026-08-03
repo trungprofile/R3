@@ -13,14 +13,70 @@ import { Button, ImageIcon, NumericKeypad, TextInput } from '../../../components
 import { DUTIES, PIN_LENGTH } from '../../../api/shared.ts';
 import type { Duty } from '../../../api/shared.ts';
 import { COPY, DUTY_LABELS, toggleDuty } from './logic.ts';
-import type { CredentialPlan } from './logic.ts';
+import type { CredentialPlan, MasterChoice } from './logic.ts';
 import { resizedPhotoDataUrl } from './photo.ts';
 
 /**
+ * A pick-one field on a master record's editor (D40).
+ *
+ * Its one use is where an AGFP category reports to the food bank, which used to be
+ * a full-screen picker on a tab of its own. §1.5 rules out a dropdown where a
+ * visible column of big targets fits, and the food bank's list is short by
+ * construction — D26 seeds ten — so it is a radio group.
+ *
+ * "Leave it unmatched" is an OPTION and not the absence of one. It is a real
+ * answer, and a control where the unmatched state is "none of these selected"
+ * cannot tell an admin who meant it from an admin who has not got to it yet — a
+ * distinction that decides whether the export refuses (D12).
+ */
+export function ChoiceField({
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  hint?: string | undefined;
+  value: string;
+  options: readonly MasterChoice[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const name = useId();
+  return (
+    <FieldGroup label={label} {...(hint !== undefined ? { hint } : {})}>
+      <ul className="s18-choices">
+        {options.map((option) => (
+          <li key={option.value === '' ? '__none' : option.value}>
+            <label className="s18-choice">
+              <input
+                type="radio"
+                name={name}
+                className="s18-choice__input"
+                value={option.value}
+                checked={value === option.value}
+                disabled={disabled}
+                onChange={() => onChange(option.value)}
+              />
+              <span className="s18-choice__label">{option.label}</span>
+              {option.note !== undefined ? (
+                <span className="s18-choice__note">{option.note}</span>
+              ) : null}
+            </label>
+          </li>
+        ))}
+      </ul>
+    </FieldGroup>
+  );
+}
+
+/**
  * A labelled group around something that is not a single input — the tier row, the
- * duty toggles, the PIN keypad. `role="group"` labelled BY the visible text rather
- * than by a copy of it in `aria-label`: a `<label>` can only point at one control,
- * and two copies of the same sentence drift.
+ * duty toggles, the PIN keypad, D40's choice list. `role="group"` labelled BY the
+ * visible text rather than by a copy of it in `aria-label`: a `<label>` can only
+ * point at one control, and two copies of the same sentence drift.
  */
 export function FieldGroup({
   label,

@@ -139,9 +139,11 @@ export function updateTruck(id: string, body: UpdateTruckRequest): Promise<Truck
   return api.patch<TruckSummary>(path('/trucks', id), { body });
 }
 
-export function fetchCategories(signal: AbortSignal): Promise<CategorySummary[]> {
-  return api.get<CategorySummary[]>('/categories', { query: INCLUDE_INACTIVE, signal });
-}
+/* D40 removed `fetchCategories`. `GET /report/mappings` returns every category
+   WITH where it reports and whether it is archived — a strictly larger answer than
+   `GET /categories` gave — so the merged Categories tab reads one endpoint instead
+   of joining two responses by id. `createCategory` and `updateCategory` below are
+   untouched: the writes are still category writes. */
 
 export function createCategory(body: CreateCategoryRequest): Promise<CategorySummary> {
   return api.post<CategorySummary>('/categories', { body });

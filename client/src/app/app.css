@@ -1,8 +1,8 @@
 /* App shell layout — `ui-ux-spec.md §4` and the responsive matrix.
  *
  * One top bar everywhere. Nav differs by device and is derived from tier/duty in
- * `nav.tsx`; this file only places it: bottom on a phone, left on a desktop,
- * absent on a tablet.
+ * `nav.tsx`; this file only places it: a bottom bar on a phone AND on a tablet
+ * (D22), a left nav on a desktop.
  */
 
 .r3-app {
@@ -23,8 +23,10 @@
   padding: var(--screen-padding);
 }
 
-/* Room for the fixed-height bottom nav so the last row is never trapped under it. */
-.r3-app--phone .r3-app__main {
+/* Room for the fixed-height bottom nav so the last row is never trapped under it.
+ * Both bar surfaces now (D22). */
+.r3-app--phone .r3-app__main,
+.r3-app--tablet .r3-app__main {
   padding-bottom: var(--space-4);
 }
 

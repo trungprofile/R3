@@ -47,22 +47,9 @@
   margin-bottom: var(--space-2);
 }
 
-.s18-map__target {
-  font-size: var(--font-body);
-  color: var(--text);
-  white-space: nowrap;
-}
-
-/* Not matched yet: the state that blocks a Reporter's export. Danger would say
- * something broke; this is a gap, so it takes the warning role's dark-on-light
- * treatment. */
-.s18-map__target--none {
-  color: var(--text);
-  background: var(--surface-paper);
-  border: 1px solid var(--warning);
-  border-radius: var(--radius-pill);
-  padding: var(--space-1) var(--space-3);
-}
+/* D40 took `.s18-map__target` and `.s18-map__target--none` with the picker they
+ * styled: where a category reports is a field on the category's own editor now
+ * (`masters.ts`), and the row that shows it is an ordinary `ListRow` subtitle. */
 
 .s18-map__archived {
   font-size: var(--font-label);

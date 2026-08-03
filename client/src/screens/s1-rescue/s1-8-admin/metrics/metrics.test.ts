@@ -37,7 +37,7 @@ import {
   csvFilename,
   csvRow,
   dayLabel,
-  DEFAULT_PERIOD_DAYS,
+  defaultPeriod,
   driverLine,
   driverOptions,
   driversByNoShows,
@@ -48,11 +48,14 @@ import {
   intakeCsv,
   isFiltered,
   maxIntake,
-  PERIOD_PRESETS,
+  isThisWeek,
+  isValidPeriod,
+  periodError,
+  periodLength,
+  stepPeriod,
   periodFor,
   periodRangeLabel,
   plural,
-  presetForDays,
   rangeLabel,
   rateLabel,
   routeLine,
@@ -172,16 +175,16 @@ describe('weights', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The period (A179)
+// The period (A179, ANSWERED by D39)
 // ---------------------------------------------------------------------------
 
 describe('the period', () => {
-  it('defaults to the last 28 days, the same window the server would pick', () => {
-    expect(DEFAULT_PERIOD_DAYS).toBe(28);
-    expect(periodFor('2026-03-30', DEFAULT_PERIOD_DAYS)).toEqual({
-      from: '2026-03-03',
-      to: '2026-03-30',
-    });
+  it('still builds a window from a LENGTH, which is what D39 kept', () => {
+    // `periodFor` always took a number of days rather than a "last N", which is
+    // why the presets going away cost nothing: an arbitrary window steps by its
+    // own length exactly as a preset one did.
+    expect(periodFor('2026-03-30', 28)).toEqual({ from: '2026-03-03', to: '2026-03-30' });
+    expect(periodFor('2026-03-30', 7)).toEqual({ from: '2026-03-24', to: '2026-03-30' });
   });
 
   it('steps back by the period’s own length, which is what trend compares against', () => {
@@ -203,18 +206,52 @@ describe('the period', () => {
     expect(periodFor('2026-01-05', 28)).toEqual({ from: '2025-12-09', to: '2026-01-05' });
   });
 
-  it('offers whole weeks only, so the comparison stays like-for-like', () => {
-    for (const preset of PERIOD_PRESETS) {
-      expect(preset.days % 7).toBe(0);
-      expect(preset.value).toBe(String(preset.days));
-    }
-    expect(presetForDays(28)?.label).toBe('4 weeks');
-    expect(presetForDays(31)).toBeNull();
+  it('defaults to THIS WEEK, the same Monday S3.1 cuts on (D39, answering A179)', () => {
+    // A179 recorded the 28-day default as a guess no doc ever settled. D39 answers
+    // it: the default is the Monday-to-Sunday week (A178) that S3.1's report and
+    // S1.2's board already use, read from the ONE `app/week.ts` helper all three
+    // share. Two screens open side by side cannot now disagree about "this week".
+    expect(defaultPeriod('2026-07-30')).toEqual({ from: '2026-07-27', to: '2026-08-02' });
+    expect(defaultPeriod('2026-07-27')).toEqual({ from: '2026-07-27', to: '2026-08-02' });
+    expect(defaultPeriod('2026-08-02')).toEqual({ from: '2026-07-27', to: '2026-08-02' });
+    expect(periodLength(defaultPeriod('2026-07-30'))).toBe(7);
+    expect(isThisWeek(defaultPeriod('2026-07-30'), '2026-07-30')).toBe(true);
+    expect(isThisWeek({ from: '2026-07-01', to: '2026-07-28' }, '2026-07-30')).toBe(false);
   });
 
-  it('does not offer a period later than today', () => {
-    expect(canGoLater(0)).toBe(false);
-    expect(canGoLater(1)).toBe(true);
+  it('measures a window by its own length, whatever an admin typed', () => {
+    expect(periodLength({ from: '2026-03-03', to: '2026-03-03' })).toBe(1);
+    expect(periodLength({ from: '2026-03-03', to: '2026-03-30' })).toBe(28);
+    // Across a DST change, because these are calendar days and not 24-hour spans.
+    expect(periodLength({ from: '2026-03-01', to: '2026-03-31' })).toBe(31);
+  });
+
+  it('steps Earlier and Later by the window OWN length, adjacent and non-overlapping', () => {
+    // The half of the old shape that survived D39, and the load-bearing half:
+    // this is exactly the window `previousIntake` is measured against, one screen
+    // up (`services/metrics.ts`). Consecutive views must not overlap or leave a
+    // gap, or the trend column compares against something nobody is looking at.
+    const week = { from: '2026-07-27', to: '2026-08-02' };
+    expect(stepPeriod(week, -1)).toEqual({ from: '2026-07-20', to: '2026-07-26' });
+    expect(stepPeriod(week, 1)).toEqual({ from: '2026-08-03', to: '2026-08-09' });
+
+    // A window an admin typed by hand steps by ITS length, not by seven.
+    const fortnight = { from: '2026-07-20', to: '2026-08-02' };
+    expect(periodLength(fortnight)).toBe(14);
+    expect(stepPeriod(fortnight, -1)).toEqual({ from: '2026-07-06', to: '2026-07-19' });
+  });
+
+  it('does not offer dates later than today', () => {
+    expect(canGoLater({ from: '2026-07-27', to: '2026-08-02' }, '2026-07-30')).toBe(false);
+    expect(canGoLater({ from: '2026-07-20', to: '2026-07-26' }, '2026-07-30')).toBe(true);
+  });
+
+  it('refuses a backwards or half-typed range, beside the fields that made it', () => {
+    expect(periodError({ from: '2026-07-27', to: '2026-08-02' })).toBeNull();
+    expect(periodError({ from: '2026-07-27', to: '2026-07-27' })).toBeNull();
+    expect(periodError({ from: '2026-08-02', to: '2026-07-27' })).toBe(COPY.period.backwards);
+    expect(periodError({ from: '', to: '2026-07-27' })).toBe(COPY.period.incomplete);
+    expect(isValidPeriod({ from: '2026-08-02', to: '2026-07-27' })).toBe(false);
   });
 });
 
@@ -607,7 +644,6 @@ const COMPOSED = [
   weightWithUnit('1222.35'),
   plural(1, 'no-show', 'no-shows'),
   ...TABS.map((tab) => tab.label),
-  ...PERIOD_PRESETS.map((preset) => preset.label),
   COPY.coverage.anyDriver,
   COPY.coverage.anyRoute,
 ];

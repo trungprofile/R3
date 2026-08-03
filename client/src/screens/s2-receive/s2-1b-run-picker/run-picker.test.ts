@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COPY,
   FORBIDDEN_IN_COPY,
+  bandFor,
   calendarDateLabel,
   clockTime,
   compareRuns,
@@ -30,6 +31,7 @@ import {
   stopStateLabel,
   stopTone,
   targetForStops,
+  toBands,
   toCard,
   toCards,
   weekdayShort,
@@ -411,6 +413,92 @@ describe('list order', () => {
 });
 
 // ---------------------------------------------------------------------------
+// The three bands (`D38`)
+// ---------------------------------------------------------------------------
+
+describe('the three bands', () => {
+  // The PANTRY's today, passed in. The screen reads it from `todayInZone(timezone)`
+  // and never from `new Date()` — passing it as an argument is what makes that
+  // testable at all, and what stops this file asserting against the machine clock.
+  const TODAY = '2026-04-21';
+
+  const todayToWeigh = run({
+    shiftId: 'today-todo',
+    occurrenceDate: TODAY,
+    stops: [stop({ state: 'PENDING' })],
+  });
+  const todayReady = run({
+    shiftId: 'today-ready',
+    occurrenceDate: TODAY,
+    stops: [stop({ state: 'WEIGHED' })],
+  });
+  const tomorrow = run({
+    shiftId: 'tomorrow',
+    occurrenceDate: '2026-04-22',
+    stops: [stop({ state: 'PENDING' })],
+  });
+  const lastWeek = run({
+    shiftId: 'last-week',
+    occurrenceDate: '2026-04-14',
+    stops: [stop({ state: 'PENDING' })],
+  });
+
+  it('leads with today"s runs that still want weighing', () => {
+    expect(bandFor(todayToWeigh, TODAY)).toBe('EXPECTED');
+  });
+
+  it('puts a run waiting only on its closing tap in the second band', () => {
+    expect(bandFor(todayReady, TODAY)).toBe('FINISHED');
+  });
+
+  it('folds tomorrow away, so it cannot be tapped by mistake', () => {
+    // The complaint `D38` came from: tomorrow's run sat close enough to today's to
+    // be hit by accident.
+    expect(bandFor(tomorrow, TODAY)).toBe('LATER');
+  });
+
+  it('keeps an overdue run in the leading band, not behind the disclosure', () => {
+    // A run left unclosed from last week is not "later this week", and the list is
+    // not bounded to today (A162) — burying it in a band that is closed by default
+    // is how it stays unclosed.
+    expect(bandFor(lastWeek, TODAY)).toBe('EXPECTED');
+    const overdueButWeighed = run({
+      occurrenceDate: '2026-04-14',
+      stops: [stop({ state: 'WEIGHED' })],
+    });
+    expect(bandFor(overdueButWeighed, TODAY)).toBe('FINISHED');
+  });
+
+  it('compares calendar slots as strings, never through a Date', () => {
+    // `YYYY-MM-DD` sorts lexicographically the way it sorts chronologically, so the
+    // comparison cannot pick up a zone on the way through — which is the whole
+    // reason a bare date is never handed to `new Date()` on this screen.
+    expect(bandFor(run({ occurrenceDate: '2026-12-31' }), '2027-01-01')).toBe('EXPECTED');
+    expect(bandFor(run({ occurrenceDate: '2027-01-01' }), '2026-12-31')).toBe('LATER');
+  });
+
+  it('splits the list into the three bands, oldest first inside each', () => {
+    const bands = toBands([tomorrow, todayReady, todayToWeigh, lastWeek], TODAY, PANTRY);
+    expect(bands.expected.map((each) => each.run.shiftId)).toEqual(['last-week', 'today-todo']);
+    expect(bands.finished.map((each) => each.run.shiftId)).toEqual(['today-ready']);
+    expect(bands.later.map((each) => each.run.shiftId)).toEqual(['tomorrow']);
+  });
+
+  it('drops no run on the floor', () => {
+    const runs = [tomorrow, todayReady, todayToWeigh, lastWeek];
+    const bands = toBands(runs, TODAY, PANTRY);
+    expect(bands.expected.length + bands.finished.length + bands.later.length).toBe(runs.length);
+  });
+
+  it('gives every band the same cards the flat list built', () => {
+    // Banding is a regrouping, not a second rendering: a card says the same thing
+    // in either treatment.
+    const bands = toBands([todayToWeigh], TODAY, PANTRY);
+    expect(bands.expected[0]).toEqual(toCards([todayToWeigh], PANTRY)[0]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The card as a whole
 // ---------------------------------------------------------------------------
 
@@ -504,6 +592,7 @@ describe('microcopy', () => {
     ...Object.values(COPY).flatMap((value) => (typeof value === 'string' ? [value] : [])),
     COPY.doneCount(2, 3),
     COPY.nextStop('Kroger'),
+    COPY.bandLaterCount(3),
     COPY.runAria("Karen's Tue AM run", 'Riverside', '2 of 3 done', 'Next: Kroger'),
   ];
 
@@ -524,6 +613,24 @@ describe('microcopy', () => {
     expect(COPY.receiveDone).toBe('Receive done');
     expect(COPY.unscheduled).toBe('Unscheduled donation');
     expect(COPY.doneCount(2, 3)).toBe('2 of 3 done');
+  });
+
+  it('names each band by what it is, never by when it is (`D38`)', () => {
+    // The bands are computed from the PANTRY's today, but no heading may say so:
+    // the moment one reads "Today" it is a claim about a clock, and the date rule
+    // this file exists for says every date on screen is the run's own. The general
+    // ban above already covers "today"; these are the headings it applies to.
+    for (const heading of [COPY.bandExpected, COPY.bandFinished, COPY.bandLater]) {
+      expect(heading).not.toMatch(/today|yesterday|tomorrow/i);
+      expect(heading.length).toBeGreaterThan(0);
+    }
+    expect(COPY.bandLaterCount(3)).toContain('3');
+  });
+
+  it('does not call a run "finished" before it is closed (I11)', () => {
+    // The second band's runs have every stop resolved and are still IN_PROGRESS —
+    // receive-done is the only thing that finishes one, and it has not happened.
+    expect(COPY.bandFinished.toLowerCase()).not.toContain('finished');
   });
 
   it('makes the empty state instructive, not just "nothing here" (§6)', () => {

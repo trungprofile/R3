@@ -130,8 +130,13 @@ describe('reordering', () => {
   });
 });
 
-describe('heading back (I27)', () => {
+describe('completing the run (I27, D23)', () => {
   it('posts the milestone with the run note alongside it', async () => {
+    // UNCHANGED BY D23. The button says "Complete this run" now and the screen
+    // locks down afterwards, but the request is the one it always was: the same
+    // endpoint, the same body, the same effect. I11 (locked) still makes the
+    // receiver's receive-done the only completion and I12 still holds COMPLETED
+    // behind every stop being WEIGHED, so nothing here moves `Shift.status`.
     await pickupApi.confirmHeadingBack('shift-1', 'gate was locked at Aldi');
     const call = only();
     expect(call.method).toBe('POST');
@@ -139,52 +144,45 @@ describe('heading back (I27)', () => {
     expect(call.body).toEqual({ note: 'gate was locked at Aldi' });
   });
 
-  it('writes the run note on its own once the milestone is set', async () => {
-    await pickupApi.saveRunNote('shift-1', null);
-    const call = only();
-    expect(call.method).toBe('PATCH');
-    expect(call.url).toBe('/api/shifts/shift-1/note');
-    expect(call.body).toEqual({ note: null });
+  it('carries a null note rather than an empty string', async () => {
+    await pickupApi.confirmHeadingBack('shift-1', null);
+    expect(only().body).toEqual({ note: null });
   });
 });
 
 describe('flagging a stop not on my route (cap 12)', () => {
-  it('asks for the stores and the kinds of food, active sets only', async () => {
+  it('asks for the stores, active set only', async () => {
     await pickupApi.fetchDonors(new AbortController().signal);
     expect(only().url).toBe('/api/donors');
-
-    calls = [];
-    await pickupApi.fetchCategories(new AbortController().signal);
-    expect(only().url).toBe('/api/categories');
-    // No `includeInactive` on either: I21 keeps a deactivated master resolvable in
-    // history but out of new work, and the server's default is the active set.
+    // No `includeInactive`: I21 keeps a deactivated master resolvable in history
+    // but out of new work, and the server's default is the active set.
   });
 
   it('posts the flag under the run, so the row carries the shift (D10)', async () => {
-    await pickupApi.flagAdHocPickup('shift-1', { donorId: 'donor-7', categoryId: 'cat-2' });
+    await pickupApi.flagAdHocPickup('shift-1', { donorId: 'donor-7' });
     const call = only();
     expect(call.method).toBe('POST');
     // D10: `POST /shifts/:id/donations` always sets `shift_id`; the receiver's
     // `POST /donations` never does. The path is what makes that structural.
     expect(call.url).toBe('/api/shifts/shift-1/donations');
-    expect(call.body).toEqual({ donorId: 'donor-7', categoryId: 'cat-2' });
+    expect(call.body).toEqual({ donorId: 'donor-7' });
   });
 
-  it('sends a category every time — D8, even though S1.5 says "just a donor"', async () => {
-    // `domain-modeling.md §2.3` (locked) has no SUGGESTED exemption for Category
-    // and `data-model.md §7.2` stores it NOT NULL, so a row without one cannot be
-    // written at all. The locked doc beats `ui-ux-spec.md:193`.
-    await pickupApi.flagAdHocPickup('shift-1', { categoryId: 'cat-2' });
-    await pickupApi.flagAdHocPickup('shift-1', { donorLabel: 'The bakery on 5th', categoryId: 'c' });
+  it('never sends a category — D24 supersedes D8', async () => {
+    // The driver stops picking one. `domain-modeling.md §2.3` was amended under
+    // explicit human authorization so Category is required on CONFIRMED only, and
+    // the receiver picks it at S2.3 where the food is in front of them. There is
+    // no field for it on the request type at all, which is the point.
+    await pickupApi.flagAdHocPickup('shift-1', { donorId: 'donor-7' });
+    await pickupApi.flagAdHocPickup('shift-1', { donorLabel: 'The bakery on 5th' });
     for (const call of calls) {
-      expect(Object.keys(call.body ?? {})).toContain('categoryId');
+      expect(Object.keys(call.body ?? {})).not.toContain('categoryId');
     }
   });
 
   it('never sends a weight — the driver has no scale', async () => {
     await pickupApi.flagAdHocPickup('shift-1', {
       donorLabel: 'The bakery on 5th',
-      categoryId: 'cat-2',
       note: 'two trays',
     });
     const keys = Object.keys(only().body ?? {});
@@ -195,21 +193,21 @@ describe('flagging a stop not on my route (cap 12)', () => {
   });
 
   it('escapes the shift id rather than pasting it into a path', async () => {
-    await pickupApi.flagAdHocPickup('a/b', { categoryId: 'cat-2' });
+    await pickupApi.flagAdHocPickup('a/b', { donorId: 'donor-7' });
     expect(only().url).toBe('/api/shifts/a%2Fb/donations');
   });
 });
 
-describe('D1/I14 — nothing here closes a run, and nothing here writes a stop', () => {
+describe('D23/I14 — nothing here closes a run, and nothing here writes a stop', () => {
   it('exports no call that completes, closes or finishes a shift', async () => {
-    // I11 makes the receiver's receive-done the only completion action, and D7
-    // keeps it to exactly one place — `receiveDone()`, which is not in this folder.
+    // The button says "Complete this run" (D23) and no call in this folder does.
+    // I11 (locked) makes the receiver's receive-done the only completion action
+    // and D7 keeps it to exactly one place — `receiveDone()`, not in this folder.
     for (const name of Object.keys(pickupApi)) {
       expect(name).not.toMatch(/complete(?!Pickup)|finish|close|receive/i);
     }
     expect(Object.keys(pickupApi).sort()).toEqual([
       'confirmHeadingBack',
-      'fetchCategories',
       // D20 — the donor list again, for the map link and the photo flag. A read,
       // like every other `fetch*` here.
       'fetchDonorPlaces',
@@ -219,10 +217,14 @@ describe('D1/I14 — nothing here closes a run, and nothing here writes a stop',
       'flagAdHocPickup',
       'resolveStop',
       'saveOrder',
-      'saveRunNote',
       'saveStopNote',
       'startRun',
     ]);
+    // Two calls went with D23 and D24 rather than being replaced. `saveRunNote`
+    // was the only way to edit the run note after the milestone, and the note now
+    // locks; `fetchCategories` fed a picker the driver no longer sees.
+    expect(pickupApi).not.toHaveProperty('saveRunNote');
+    expect(pickupApi).not.toHaveProperty('fetchCategories');
   });
 
   it('never puts a shift status on the wire', async () => {
@@ -230,11 +232,10 @@ describe('D1/I14 — nothing here closes a run, and nothing here writes a stop',
     await pickupApi.resolveStop('shift-1', 'stop-2', 'COLLECTED');
     await pickupApi.saveStopNote('shift-1', 'stop-2', 'x');
     await pickupApi.saveOrder('shift-1', ['stop-2']);
-    await pickupApi.saveRunNote('shift-1', 'x');
     await pickupApi.confirmHeadingBack('shift-1', 'x');
-    await pickupApi.flagAdHocPickup('shift-1', { categoryId: 'cat-2' });
+    await pickupApi.flagAdHocPickup('shift-1', { donorId: 'donor-7' });
 
-    expect(calls).toHaveLength(7);
+    expect(calls).toHaveLength(6);
     for (const call of calls) {
       const keys = Object.keys(call.body ?? {});
       // `disposition` is a ShiftStop's, not the shift's. Nothing this screen

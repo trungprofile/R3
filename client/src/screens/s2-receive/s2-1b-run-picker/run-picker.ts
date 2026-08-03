@@ -22,12 +22,19 @@
 // `report_day = shift.occurrence_date`), so showing the shift's own date is what
 // makes what the receiver sees agree with what the report will show.
 //
-// `app/pantry-day.ts` was checked and deliberately NOT used. It answers "what is
-// today for the pantry", and this screen must not ask: the moment a heading here
-// reads "Today" or "Yesterday" it is stating a fact about the device rather than
-// about the run, which is exactly the drift S2.1b forbids. Nor is it needed for the
-// fetch — `GET /receive/runs` takes no date bound at all (A162). So the pantry zone
-// is used for the CLOCK (a 9am run is 9am at the pantry) and never for the CALENDAR.
+// `app/pantry-day.ts` is used for ONE thing and one only: which band a run falls
+// into (`D38`). It answers "what is today for the pantry", which is a different
+// question from "when is this run" — the rule S2.1b states is that no LABEL may be
+// relative. So every date the receiver reads is still the run's own
+// `occurrenceDate`, spelled out ("Tuesday, April 21"), and the pantry's today is
+// never printed, only compared against. A band heading names what the group is
+// ("Still to weigh"), never when it is, so nothing on this screen states a fact
+// about a clock.
+//
+// It is `todayInZone(timezone)` and never `new Date()`: the device's date is simply
+// the wrong calendar near midnight, which is the case S2.1b was written for — a
+// Tuesday run received at 12:30am Wednesday must not fall out of the band the
+// receiver is working. The fetch still sends no date bound at all (A162).
 
 import { RECEIVE_RESOLVED_STATES } from '../../../api/shared.ts';
 import type {
@@ -91,6 +98,19 @@ export const COPY = {
 
   /** S2.1b: "[ Unscheduled donation ] (goes to S2.3, no run needed)". */
   unscheduled: 'Unscheduled donation',
+
+  /** `D38`'s three bands.
+   *
+   *  Each heading names what the group IS, never when it is. "Ready to finish" is
+   *  not "finished": those runs have every stop resolved and are still waiting on
+   *  the one tap that closes them (I11), and a heading reading "Finished" would
+   *  say a thing about the run that is not yet true. */
+  bandExpected: 'Still to weigh',
+  bandFinished: 'Ready to finish',
+  bandLater: 'Later this week',
+  /** The disclosure's own label. The count is on it because a closed disclosure
+   *  with nothing on the outside is a thing nobody opens. */
+  bandLaterCount: (count: number) => `Later this week (${count})`,
 
   /** Read out when a screen reader reaches the row, which it hears without the
    *  surrounding card. */
@@ -440,6 +460,62 @@ export function toCards(
   timeZone?: string | null,
 ): RunCardView[] {
   return orderRuns(runs).map((run) => toCard(run, timeZone));
+}
+
+// ---------------------------------------------------------------------------
+// The three bands (`D38`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Which of `D38`'s three groups a run belongs to.
+ *
+ *   `EXPECTED`  today or earlier, still has weighing left — the large cards, and
+ *               the visual centre of the screen.
+ *   `FINISHED`  today or earlier, every stop resolved: waiting only on the tap
+ *               that closes it. Still a row, still worth seeing.
+ *   `LATER`     dated after the pantry's today. Collapsed behind a disclosure.
+ *
+ * `today` is `todayInZone(timezone)` — the PANTRY's calendar day, not the device's
+ * (see the date rule at the top). Both are `YYYY-MM-DD`, and lexicographic order on
+ * that shape *is* calendar order, so the comparison needs no `Date` and therefore
+ * cannot pick up a zone on the way through.
+ *
+ * The cut is `<= today`, not `=== today`, and that is deliberate. A run left
+ * unclosed from last Tuesday is not "later this week" by any reading, and the list
+ * is not bounded to today (A162) so it is a real row — burying an overdue run in a
+ * disclosure that is closed by default is exactly how it stays unclosed, which is
+ * the same reason `compareRuns` leads with the oldest.
+ */
+export type RunBand = 'EXPECTED' | 'FINISHED' | 'LATER';
+
+export function bandFor(run: ReceiveRunSummary, today: string): RunBand {
+  if (run.occurrenceDate > today) return 'LATER';
+  // I12's gate, as the server answered it — not recomputed here (see `runAction`).
+  return run.readyForReceiveDone ? 'FINISHED' : 'EXPECTED';
+}
+
+export interface RunBands {
+  expected: RunCardView[];
+  finished: RunCardView[];
+  later: RunCardView[];
+}
+
+/** The list, split into `D38`'s bands, each one still in `compareRuns` order so
+ *  the oldest run leads inside its own group. */
+export function toBands(
+  runs: readonly ReceiveRunSummary[],
+  today: string,
+  timeZone?: string | null,
+): RunBands {
+  const bands: RunBands = { expected: [], finished: [], later: [] };
+  for (const run of orderRuns(runs)) {
+    const card = toCard(run, timeZone);
+    const band = bandFor(run, today);
+    if (band === 'LATER') bands.later.push(card);
+    else if (band === 'FINISHED') bands.finished.push(card);
+    else bands.expected.push(card);
+  }
+  return bands;
 }
 
 // ---------------------------------------------------------------------------

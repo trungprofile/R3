@@ -36,6 +36,19 @@ export interface DonorSummary {
   /** D20. Whether a photo exists, not the photo. Bytes live in their own table and
    *  come from `GET /donors/:id/photo`, so a donor list never carries images. */
   hasPhoto: boolean;
+  /** North Texas Food Bank's own number for this store, as Meal Connect's donor picker
+   *  shows it — the `(810)` in `H-E-B Food Stores (810)` (migration 0013). NTFB's to
+   *  issue, so `null` is normal. Operational, like `address`: it is what the reporter
+   *  types into the portal, so it is never trimmed. */
+  ntfbDonorCode: string | null;
+  /** D27 — this store's trash rates, as decimal strings so a `numeric(5,4)` never
+   *  round-trips through a float. `0.1000` is 10%. `null` means "use the pantry
+   *  default" from `app_config`, which is the normal state and is deliberately not
+   *  resolved here: a screen that cannot tell an inherited rate from a deliberate one
+   *  cannot show the admin which is which. */
+  trashRateBakery: string | null;
+  trashRateProduce: string | null;
+  trashRateDeli: string | null;
   /** I21 soft-delete: a deactivated donor is preserved everywhere it is referenced,
    *  so the flag travels with the record rather than the row vanishing. */
   active: boolean;
@@ -48,6 +61,15 @@ export interface CreateDonorRequest {
   contact?: string | null;
   note?: string | null;
   mapUrl?: string | null;
+  /** Until D27 this column had NO write path anywhere in the app — it was exported on
+   *  the report and could only be set with hand-written SQL. */
+  ntfbDonorCode?: string | null;
+  /** D27. A decimal fraction as a string (`'0.1'`, `'0.1000'`), 0..1 inclusive.
+   *  `null`/absent leaves the pantry default in force. Not a percentage: the screen
+   *  converts, the wire does not. */
+  trashRateBakery?: string | null;
+  trashRateProduce?: string | null;
+  trashRateDeli?: string | null;
 }
 
 /** I21: field edits are always allowed, including on a deactivated donor —
@@ -59,6 +81,14 @@ export interface UpdateDonorRequest {
   contact?: string | null;
   note?: string | null;
   mapUrl?: string | null;
+  ntfbDonorCode?: string | null;
+  /** D27. `null` clears the override and returns the store to the pantry default;
+   *  absent leaves whatever is there. The two are different edits and the PATCH
+   *  distinguishes them, which is why a blank field on the admin form has to send
+   *  `null` rather than omit the key. */
+  trashRateBakery?: string | null;
+  trashRateProduce?: string | null;
+  trashRateDeli?: string | null;
   active?: boolean;
 }
 

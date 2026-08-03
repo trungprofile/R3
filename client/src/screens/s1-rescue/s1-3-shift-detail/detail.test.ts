@@ -140,6 +140,41 @@ describe('release', () => {
     expect(capabilitiesFor(open, owner, NOW).canRelease).toBe(false);
   });
 
+  it('explains the missing button to the owner of a run that has started (A5)', () => {
+    // S1.3's rule is unchanged and the button stays hidden. What is new is that
+    // the absence is explained instead of hunted for, and the explanation names
+    // the way out (`COPY.releaseStarted`).
+    const past = Date.parse('2026-08-04T14:00:00Z');
+    for (const started of [
+      capabilitiesFor(shift({ status: 'IN_PROGRESS' }), owner, NOW),
+      capabilitiesFor(shift(), owner, past),
+    ]) {
+      expect(started.canRelease).toBe(false);
+      expect(started.showStartedNotice).toBe(true);
+    }
+  });
+
+  it('says nothing while the button is still there, or to anyone but the owner', () => {
+    // A sentence about a control that is on screen is noise (D21), and staff have
+    // their own path (unassign, S1.6) rather than a missing driver button.
+    expect(capabilitiesFor(shift(), owner, NOW).showStartedNotice).toBe(false);
+    expect(
+      capabilitiesFor(shift({ status: 'IN_PROGRESS' }), coordinator, NOW).showStartedNotice,
+    ).toBe(false);
+    expect(
+      capabilitiesFor(shift({ status: 'IN_PROGRESS' }), otherDriver, NOW).showStartedNotice,
+    ).toBe(false);
+  });
+
+  it('says nothing on a run that is already cancelled or done', () => {
+    // Those runs say what they are elsewhere on the screen; a second sentence
+    // about a button would be explaining the wrong thing.
+    const cancelled = shift({ status: 'CANCELLED' });
+    expect(capabilitiesFor(cancelled, owner, NOW).showStartedNotice).toBe(false);
+    const done = shift({ status: 'COMPLETED' });
+    expect(capabilitiesFor(done, owner, NOW).showStartedNotice).toBe(false);
+  });
+
   it('asks the scope question only when the run repeats', () => {
     expect(capabilitiesFor(shift(), owner, NOW).releaseRepeats).toBe(false);
     expect(

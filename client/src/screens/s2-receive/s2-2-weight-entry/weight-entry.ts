@@ -171,7 +171,7 @@ export function canSkipStop(detail: ReceiveStopDetail): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// The stop strip, and where "Mark stop weighed" goes
+// The stop strip, and where "Done" (`ui-ux-spec.md`'s "Mark stop weighed", D37) goes
 // ---------------------------------------------------------------------------
 
 export function orderedStops(stops: readonly ReceiveStopSummary[]): ReceiveStopSummary[] {
@@ -229,7 +229,7 @@ export function nextUnresolvedStop(
 }
 
 /**
- * Where "Mark stop weighed" (or "Next stop") lands.
+ * Where "Done" (or "Next stop") lands.
  *
  * The button resolves nothing — any non-voided weight has already resolved the
  * stop server-side (I12) — so this is purely navigation:
@@ -316,8 +316,8 @@ export function hasUnsavedEntry(raw: string): boolean {
 /**
  * S2.2's edge case: "switching stop mid-entry with unsaved weights warns."
  *
- * Applied to every way off this stop, not just the picker — "Mark stop weighed"
- * and the all-done banner leave just as completely, and a number typed but not
+ * Applied to every way off this stop, not just the picker — "Done" and the
+ * all-done banner leave just as completely, and a number typed but not
  * added is lost identically whichever one was tapped.
  */
 export type LeaveDecision = 'go' | 'warn';
@@ -416,10 +416,23 @@ export const COPY = {
   weightRemoved: 'Removed.',
 
   // --- resolving the stop -------------------------------------------------
-  markWeighed: 'Mark stop weighed',
+  //
+  // `D37` shortened both labels: "Mark stop weighed" and "Skip stop" sat side by
+  // side under the keypad, and at 18px on a tablet the pair read as a sentence to
+  // parse rather than as two buttons to hit. The words they lost were the ones the
+  // screen already says — the stop's name is in the header and its total is
+  // directly above — so what is left is the verb. Neither button's BEHAVIOUR moved:
+  // `Done` still only navigates (I12 derives `WEIGHED` from a non-voided weight),
+  // and `Skip` still opens the same confirm.
+  //
+  // The aria labels put the noun back for a screen reader, which meets a button
+  // without the header and the total around it.
+  markWeighed: 'Done',
+  markWeighedAria: 'Done with this stop',
   markWeighedHint: 'Add a weight first, or skip this stop.',
   nextStop: 'Next stop',
-  skipStop: 'Skip stop',
+  skipStop: 'Skip',
+  skipStopAria: 'Skip this stop',
   skipQuestion: 'Skip this stop?',
   skipConsequence:
     'It stays skipped. You cannot change it back here, and nothing from this store goes in the report.',

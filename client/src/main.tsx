@@ -21,6 +21,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './app/App.tsx';
 import type { ScreenRegistry } from './app/AppShell.tsx';
 import { linkManifest, watchForInstallPrompt } from './pwa/index.ts';
+import { HomeScreen } from './screens/s1-rescue/s1-0-home/index.ts';
 import { LoginScreen } from './screens/s1-rescue/s1-1-login/index.ts';
 import { BoardScreen } from './screens/s1-rescue/s1-2-board/index.ts';
 import { ShiftDetailScreen } from './screens/s1-rescue/s1-3-shift-detail/index.ts';
@@ -40,6 +41,9 @@ import './tokens/tokens.css';
 
 const SCREENS: ScreenRegistry = {
   login: LoginScreen, // S1.1
+  // The hub at `/` (D22). Not an S1.x screen — `ui-ux-spec.md §8` has no Home, and
+  // this is a flagged spec addition rather than an implementation of one.
+  home: HomeScreen,
   board: BoardScreen, // S1.2
   shift: ShiftDetailScreen, // S1.3 — the only route into S1.5 (4b, s1-3's Assumed 1)
   'my-shifts': MyShiftsScreen, // S1.4

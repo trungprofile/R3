@@ -11,9 +11,10 @@
 import { describe, expect, it } from 'vitest';
 import { atLeastTier, canSee, hasAnyDuty, hasDuty, tierRank } from './access.ts';
 import { idleTimerDelay } from './IdlePrompt.tsx';
-import { navItemsFor } from './nav.tsx';
+import { flattenNav, navItemsFor } from './nav.tsx';
 import { buildPath, HOME_PATH, homePathFor, matchPath, resolvePath, ROUTES } from './routes.ts';
 import type { CurrentUser } from '../api/session.ts';
+import { DUTIES, TIERS } from '../api/shared.ts';
 import type { Duty, Tier } from '../api/shared.ts';
 
 function user(tier: Tier, duties: Duty[]): CurrentUser {
@@ -94,39 +95,171 @@ describe('tier and duty comparison', () => {
   });
 });
 
-describe('navigation derived from tier and duty (UI §4)', () => {
+describe('navigation derived from tier and duty (UI §4, D22, D30)', () => {
   const ids = (u: CurrentUser, viewport: 'phone' | 'tablet' | 'desktop') =>
-    navItemsFor(u, viewport).map((item) => item.id);
+    flattenNav(navItemsFor(u, viewport)).map((item) => item.id);
+  const headings = (u: CurrentUser, viewport: 'phone' | 'tablet' | 'desktop') =>
+    navItemsFor(u, viewport).map((section) => section.heading);
 
-  it('gives the phone Board, My Shifts and Inbox for a driver', () => {
-    expect(ids(driver, 'phone')).toEqual(['board', 'my-shifts', 'inbox']);
+  /** Every tier crossed with every subset of duties. 3 x 8 = 24 people, which is
+   *  the whole space, so the bottom-bar cap is proved rather than sampled. */
+  const everyone: CurrentUser[] = TIERS.flatMap((tier) => {
+    const subsets: Duty[][] = [[]];
+    for (const duty of DUTIES) {
+      for (const subset of [...subsets]) subsets.push([...subset, duty]);
+    }
+    return subsets.map((duties) => user(tier, duties));
   });
 
-  it('never exceeds the 4-item bottom nav (§3)', () => {
-    for (const person of [driver, receiver, coordinator, admin]) {
-      expect(ids(person, 'phone').length).toBeLessThanOrEqual(4);
+  it('enumerates the whole tier/duty space', () => {
+    expect(everyone.length).toBe(24);
+  });
+
+  // --- the blocker (D22) -------------------------------------------------
+
+  it('gives the tablet a nav, for everybody', () => {
+    // This asserted the OPPOSITE until D22: §4 said "tablet: no nav" because it
+    // assumed the tablet IS the receive station. The 768-1023px band therefore had
+    // no links at all, on any device that happened to be that wide.
+    for (const person of everyone) {
+      expect(ids(person, 'tablet').length, `${person.tier}/${person.duties}`).toBeGreaterThan(1);
     }
   });
 
-  it('gives the tablet no nav at all (§4)', () => {
-    expect(ids(receiver, 'tablet')).toEqual([]);
-    expect(ids(admin, 'tablet')).toEqual([]);
+  it('puts Receive in the nav on every viewport for someone who receives', () => {
+    // Receiving had no nav entry ANYWHERE before D22, so `/receive` was reachable
+    // only by landing on it. That is why a receiver could not start weighing.
+    for (const viewport of ['phone', 'tablet', 'desktop'] as const) {
+      expect(ids(receiver, viewport), viewport).toContain('receive-runs');
+      expect(ids(user('VOLUNTEER', ['DRIVE', 'RECEIVE']), viewport), viewport).toContain(
+        'receive-runs',
+      );
+    }
   });
 
-  it('gives Staff Schedule and Board on the desktop', () => {
+  // --- the bottom bar (§3) -----------------------------------------------
+
+  it('never exceeds the 4-item bottom nav, for any tier and duty combination (§3)', () => {
+    for (const person of everyone) {
+      for (const viewport of ['phone', 'tablet'] as const) {
+        const bar = ids(person, viewport);
+        expect(bar.length, `${person.tier}/${person.duties} on ${viewport}`).toBeLessThanOrEqual(4);
+        expect(bar.length, `${person.tier}/${person.duties} on ${viewport}`).toBeGreaterThanOrEqual(
+          3,
+        );
+      }
+    }
+  });
+
+  it('draws the bar without headings — there is no room for one in 56px', () => {
+    for (const viewport of ['phone', 'tablet'] as const) {
+      expect(headings(admin, viewport)).toEqual([null]);
+    }
+  });
+
+  it('draws the sidebar without headings either, since D30', () => {
+    // D22 grouped the desktop list under PICKING UP / RECEIVING / OFFICE; D30 took
+    // the headings back out. One run, one entry per capability, on every viewport.
+    for (const person of everyone) {
+      expect(headings(person, 'desktop'), `${person.tier}/${person.duties}`).toEqual([null]);
+    }
+  });
+
+  it('gives the bar Home, the duty screens and Inbox', () => {
+    expect(ids(driver, 'phone')).toEqual(['home', 'board', 'inbox']);
+    expect(ids(receiver, 'phone')).toEqual(['home', 'receive-runs', 'inbox']);
+    expect(ids(user('VOLUNTEER', ['DRIVE', 'RECEIVE']), 'tablet')).toEqual([
+      'home',
+      'board',
+      'receive-runs',
+      'inbox',
+    ]);
+  });
+
+  it('fills the bar with the board when someone holds neither duty', () => {
+    // A two-item bar in 56px reads as broken, and the board is the one screen
+    // everyone can open.
+    expect(ids(coordinator, 'phone')).toEqual(['home', 'board', 'inbox']);
+    expect(ids(user('VOLUNTEER', []), 'phone')).toEqual(['home', 'board', 'inbox']);
+  });
+
+  it('keeps the office off the bar — it is reached through Home there (D22)', () => {
+    for (const viewport of ['phone', 'tablet'] as const) {
+      const bar = ids(admin, viewport);
+      expect(bar).not.toContain('admin');
+      expect(bar).not.toContain('schedule');
+      expect(bar).not.toContain('report');
+    }
+  });
+
+  // --- the desktop's flat list (D30) --------------------------------------
+
+  it('returns exactly one run, never an empty one', () => {
+    for (const person of everyone) {
+      const sections = navItemsFor(person, 'desktop');
+      expect(sections.length, `${person.tier}/${person.duties}`).toBe(1);
+      expect(sections[0]!.items.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('labels the board Pick up food in the sidebar, and Pick up in the bar', () => {
+    // Same destination, two lengths: 56px with the icon above the word will not take
+    // the longer one at four across (§3). The sidebar matches the Home card (D30).
+    const label = (u: CurrentUser, viewport: 'phone' | 'desktop') =>
+      flattenNav(navItemsFor(u, viewport)).find((item) => item.id === 'board')?.label;
+    expect(label(driver, 'desktop')).toBe('Pick up food');
+    expect(label(driver, 'phone')).toBe('Pick up');
+  });
+
+  it('gives Staff Schedule and the Board on the desktop', () => {
+    // §4: "Staff tier → Schedule …, Board". D22 moved the board under a heading; it
+    // did not take it away from a coordinator watching claims land.
     expect(ids(coordinator, 'desktop')).toContain('schedule');
     expect(ids(coordinator, 'desktop')).toContain('board');
     expect(ids(coordinator, 'desktop')).not.toContain('admin');
   });
 
-  it('gives Admin the admin section, and Staff sections too — tier is hierarchical', () => {
+  it('gives Admin the admin entry, and the Staff ones too — tier is hierarchical', () => {
     expect(ids(admin, 'desktop')).toContain('admin');
     expect(ids(admin, 'desktop')).toContain('schedule');
   });
 
-  it('offers no My Shifts to someone who does not drive', () => {
-    expect(ids(coordinator, 'desktop')).not.toContain('my-shifts');
-    expect(ids(receiver, 'phone')).not.toContain('my-shifts');
+  it('offers My shifts to nobody — D30 made it a tab of the Board', () => {
+    // A driver had it in the sidebar until D30. It is reachable from the Board now,
+    // and a nav entry plus a tab is two links to one screen.
+    for (const person of everyone) {
+      for (const viewport of ['phone', 'tablet', 'desktop'] as const) {
+        expect(ids(person, viewport), `${person.tier} on ${viewport}`).not.toContain('my-shifts');
+      }
+    }
+  });
+
+  it('offers Log a donation to nobody — it hangs off the receive run picker (D30)', () => {
+    // Same reason. A receiver reaches it from the screen they are already on, which
+    // is where the decision to log one gets made.
+    for (const person of everyone) {
+      for (const viewport of ['phone', 'tablet', 'desktop'] as const) {
+        expect(ids(person, viewport), `${person.tier} on ${viewport}`).not.toContain('donation');
+      }
+    }
+  });
+
+  it('keeps one entry per capability, so no destination is listed twice', () => {
+    for (const person of everyone) {
+      for (const viewport of ['phone', 'tablet', 'desktop'] as const) {
+        const list = ids(person, viewport);
+        expect(new Set(list).size, `${person.tier} on ${viewport}`).toBe(list.length);
+      }
+    }
+  });
+
+  it('never lists more than seven, which is what one capability each comes to', () => {
+    // Home, Pick up food, Receive a load, Report, Schedule, Admin, Inbox.
+    for (const person of everyone) {
+      expect(ids(person, 'desktop').length, `${person.tier}/${person.duties}`).toBeLessThanOrEqual(
+        7,
+      );
+    }
   });
 
   it('offers Report now that Phase 3 has shipped', () => {
@@ -143,30 +276,53 @@ describe('navigation derived from tier and duty (UI §4)', () => {
     expect(ids(admin, 'desktop')).not.toContain('metrics');
   });
 
-  it('puts the restricted entries before the ones everybody has', () => {
-    // The back office is what a desktop is for: a coordinator signs in to publish a
-    // week, not to open a board they could have opened on their phone.
-    expect(ids(admin, 'desktop')).toEqual(['admin', 'schedule', 'report', 'board', 'inbox']);
-    expect(ids(coordinator, 'desktop')).toEqual(['schedule', 'board', 'inbox']);
+  it('reads Home, then a week in the order it runs, then Inbox (D30)', () => {
+    // Pick the food up, receive it, report it — with the two everyone holds either
+    // side. Schedule and Admin follow Report because they are where a week is set up
+    // rather than where it happens.
+    expect(ids(admin, 'desktop')).toEqual(['home', 'board', 'report', 'schedule', 'admin', 'inbox']);
+    expect(ids(coordinator, 'desktop')).toEqual(['home', 'board', 'schedule', 'inbox']);
+    expect(ids(receiver, 'desktop')).toEqual(['home', 'receive-runs', 'inbox']);
+    expect(ids(user('ADMIN', ['DRIVE', 'RECEIVE', 'REPORT']), 'desktop')).toEqual([
+      'home',
+      'board',
+      'receive-runs',
+      'report',
+      'schedule',
+      'admin',
+      'inbox',
+    ]);
   });
 
-  it('still lands everyone on the board after sign-in', () => {
-    // Reordering the nav is not a change of front door: the board is the spec's
-    // adoption centerpiece and the one screen everyone can open.
-    expect(HOME_PATH).toBe('/board');
-    for (const person of [driver, coordinator, admin]) {
-      expect(homePathFor(person, 'desktop')).toBe('/board');
+  it('lands everyone on the hub after sign-in, on every viewport', () => {
+    // The front door is no longer the board: it is the one screen that adapts to
+    // the viewer, which is what lets the office reach a phone at all.
+    expect(HOME_PATH).toBe('/');
+    for (const person of everyone) {
+      for (const viewport of ['phone', 'tablet', 'desktop'] as const) {
+        expect(homePathFor(person, viewport)).toBe('/');
+      }
     }
   });
 
-  it('leaves the phone nav alone (§3 caps it at 4, and those users are volunteers)', () => {
-    expect(ids(driver, 'phone')).toEqual(['board', 'my-shifts', 'inbox']);
+  it('offers Home and the inbox to everyone, on every viewport', () => {
+    for (const person of everyone) {
+      for (const viewport of ['phone', 'tablet', 'desktop'] as const) {
+        expect(ids(person, viewport)).toContain('home');
+        expect(ids(person, viewport)).toContain('inbox');
+      }
+    }
   });
 
-  it('offers the inbox to everyone — it is the source of truth for events', () => {
-    for (const person of [driver, receiver, coordinator, admin]) {
-      expect(ids(person, 'phone')).toContain('inbox');
-      expect(ids(person, 'desktop')).toContain('inbox');
+  it('never offers a nav entry the viewer would be refused', () => {
+    for (const person of everyone) {
+      for (const viewport of ['phone', 'tablet', 'desktop'] as const) {
+        for (const item of flattenNav(navItemsFor(person, viewport))) {
+          const match = resolvePath(item.path);
+          expect(match, item.path).not.toBeNull();
+          expect(canSee(person, match!.route.requires), `${item.id} for ${person.tier}`).toBe(true);
+        }
+      }
     }
   });
 });
@@ -174,9 +330,8 @@ describe('navigation derived from tier and duty (UI §4)', () => {
 describe('the way out of a dead end (§3)', () => {
   // The shell's no-access state sends people to `homePathFor`. That escape hatch is
   // worthless if it points at another page they cannot see — they would land on the
-  // same message again, and on the tablet, which has no nav at all, that is the end
-  // of the road. Nothing renders here, so this covers the destination rather than
-  // the button.
+  // same message again. Nothing renders here, so this covers the destination rather
+  // than the button.
   const viewports = ['phone', 'tablet', 'desktop'] as const;
 
   it('always lands somewhere the viewer is allowed to be', () => {
@@ -189,11 +344,19 @@ describe('the way out of a dead end (§3)', () => {
     }
   });
 
-  it('sends a nav-less receiver to the one screen they can work', () => {
-    // The tablet has no nav (§4), so the board would strand them.
-    expect(homePathFor(receiver, 'tablet')).toBe('/receive');
-    // ...but the same person at the shared desktop has a nav and wants the board.
-    expect(homePathFor(receiver, 'desktop')).toBe(HOME_PATH);
+  it('sends a receiver to the hub, which carries their work as a card (D22)', () => {
+    // This used to send them to `/receive` on a tablet, because that surface had no
+    // nav and the run picker was the only screen they could reach from it. The hub
+    // reaches everything, so one destination now serves everybody.
+    for (const viewport of viewports) {
+      expect(homePathFor(receiver, viewport)).toBe(HOME_PATH);
+    }
+  });
+
+  it('resolves the hub itself, with no tier or duty to hold anyone out', () => {
+    const match = resolvePath(HOME_PATH);
+    expect(match?.route.id).toBe('home');
+    expect(match?.route.requires).toBeUndefined();
   });
 });
 

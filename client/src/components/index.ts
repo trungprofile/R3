@@ -40,7 +40,7 @@ export { TopBar } from './TopBar.tsx';
 export type { TopBarProps } from './TopBar.tsx';
 
 export { BottomNav, SideNav } from './Nav.tsx';
-export type { NavItemView, NavProps } from './Nav.tsx';
+export type { NavItemView, NavProps, NavSectionView, SideNavProps } from './Nav.tsx';
 
 export { InboxRow } from './InboxRow.tsx';
 export type { InboxRowProps } from './InboxRow.tsx';

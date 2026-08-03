@@ -12,8 +12,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   AT_RISK_LEAD_MS,
+  BOARD_TABS,
   COPY,
+  DEFAULT_BOARD_TAB,
   actionFor,
+  boardTabFromQuery,
   canEditRun,
   dayHeading,
   formatWeekRange,
@@ -348,6 +351,35 @@ describe('the staff Edit link (S1.6)', () => {
     const [group] = groupByDay([shift({ status: 'OPEN' })], coordinator, Date.now(), '2026-08-04');
     expect(group?.rows[0]?.canEdit).toBe(true);
     expect(group?.rows[0]?.action).toBe('DETAIL');
+  });
+});
+
+describe('the tabs (D30)', () => {
+  it('opens on the run board when the URL names no tab', () => {
+    expect(boardTabFromQuery(undefined, true)).toBe('board');
+    expect(boardTabFromQuery('', true)).toBe('board');
+  });
+
+  it('lands a stale or mistyped tab on the board rather than on nothing', () => {
+    expect(boardTabFromQuery('metrics', true)).toBe('board');
+    expect(boardTabFromQuery('MINE', true)).toBe('board');
+  });
+
+  it('honours a link to My shifts, which is the point of putting it in the URL', () => {
+    expect(boardTabFromQuery('mine', true)).toBe('mine');
+  });
+
+  it('collapses to the board for someone who does not drive (I2)', () => {
+    // Duty is set membership, so a Staff coordinator does not get the driver's tab
+    // by being senior. They are offered no tab row at all, and a `?tab=mine` link
+    // forwarded to them must not open a panel that is not theirs.
+    expect(boardTabFromQuery('mine', false)).toBe('board');
+    expect(boardTabFromQuery(undefined, false)).toBe('board');
+  });
+
+  it('offers two tabs, with the run board first', () => {
+    expect(BOARD_TABS.map((tab) => tab.value)).toEqual(['board', 'mine']);
+    expect(BOARD_TABS[0]?.value).toBe(DEFAULT_BOARD_TAB);
   });
 });
 

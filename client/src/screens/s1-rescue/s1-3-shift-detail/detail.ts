@@ -107,6 +107,11 @@ export const COPY = {
   // consequence — "it goes back to the board" — or the word would promise the run
   // is off, which is the opposite of what happens.
   release: 'Cancel this run',
+  /** A5: the button is correctly gone once the run has started, and a vanished
+   *  control has to be explained rather than hunted for. Names the way out, since
+   *  a coordinator really can move it (S1.3's staff reassign, S1.6). */
+  releaseStarted:
+    'This run has started, so you cannot cancel it here. Ask a coordinator if you need it covered by someone else.',
   /** §3's destructive-confirm pattern: name the consequence, never "Are you sure?". */
   releaseQuestion: 'Cancel this run?',
   releaseConsequence: 'It goes back to the board for others to pick up.',
@@ -291,6 +296,16 @@ export interface DetailCapabilities {
    * button is absent rather than refused.
    */
   canRelease: boolean;
+  /**
+   * The owner is looking at a run that has already started, so `canRelease` is
+   * false and the red button is not on screen.
+   *
+   * S1.3's rule is unchanged and stays: "Before-start only; in-progress/past hide
+   * it." What is added is a sentence explaining the absence (A5) — a driver who
+   * cancelled a run last week and cannot find the button today will otherwise
+   * hunt for it, and the honest answer is that this one now needs staff.
+   */
+  showStartedNotice: boolean;
   /** Staff add/edit the coordinator→driver note here; the driver sees it read-only. */
   canEditStaffNote: boolean;
   /** Staff-only, and only on an `IN_PROGRESS` run's unresolved stops (I30). */
@@ -320,6 +335,13 @@ export function capabilitiesFor(
     // claimed would otherwise be shown a run they cannot hand back at all — and
     // only staff could rescue it. The refusal is the honest answer there.
     canRelease: isOwner && shift.status === 'CLAIMED' && beforeStart,
+    // The two ways a run of mine stops being cancellable, and neither is an
+    // error: the clock passed its start time, or I started it. A `CANCELLED` or
+    // `COMPLETED` run says what it is elsewhere on the screen and does not need a
+    // second sentence about a button.
+    showStartedNotice:
+      isOwner &&
+      ((shift.status === 'CLAIMED' && !beforeStart) || shift.status === 'IN_PROGRESS'),
     canEditStaffNote: viewer.isStaff,
     canReassignStops: viewer.isStaff && shift.status === 'IN_PROGRESS',
     releaseRepeats: shift.recurrencePatternId !== null,

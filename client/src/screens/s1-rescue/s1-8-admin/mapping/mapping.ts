@@ -19,11 +19,16 @@
 // is master data, it sits beside the other master data, and the people who maintain
 // master data are admins.
 //
-// WHY THE FOOD BANK CATEGORY LIST STARTS EMPTY (D12). Those names are North Texas
-// Food Bank's, they appear in no foundation doc, and migration 0012 seeds nothing
-// rather than guessing. Inventing them would put fabricated values in the one column
-// that decides what the pantry reports, and every gate in this repo would pass while
-// it did.
+// THE FOOD BANK CATEGORY LIST NOW SHIPS SEEDED (D26, retiring D12). This comment used
+// to explain why it started empty: those names were North Texas Food Bank's, they
+// appeared in no foundation doc, and inventing them would have put fabricated values in
+// the one column that decides what the pantry reports, with every gate in the repo
+// passing while it did. The pantry supplied the real list on 2026-08-02, so migration
+// 0016 seeds all ten categories and all eleven mappings.
+//
+// The empty state below is therefore no longer the launch state. It is still reachable
+// and still correct, because an admin can archive or clear a mapping, and the export
+// still refuses on an unmapped category that carries weight.
 //
 // EVERYTHING HERE IS COMMUNICATION ONLY. `services/report.ts` owns the rules — which
 // categories block an export, what I21 does to a removal — and re-checks all of them.
@@ -36,34 +41,13 @@ import type {
   UnmappedCategory,
 } from '../../../../api/shared.ts';
 
-// ---------------------------------------------------------------------------
-// Weights — display only (A165)
-// ---------------------------------------------------------------------------
-
-/**
- * A weight as a person reads it: `"293.00"` → `"293"`, `"12.50"` → `"12.5"`.
- *
- * The same rule S3.1 renders weights by, kept here rather than imported so this
- * folder has no cross-screen dependency (no screen in this repo imports another).
- * Only the *display* rule is duplicated: nothing here adds weights up, so none of
- * the integer-cent arithmetic A165 exists to protect came with it.
- */
-export function formatWeight(value: string): string {
-  const trimmed = value.trim();
-  if (!/^\d+(\.\d+)?$/.test(trimmed)) return trimmed;
-
-  const [whole = '0', fraction] = trimmed.split('.');
-  const lead = whole.replace(/^0+(?=\d)/, '');
-  if (fraction === undefined) return lead;
-
-  const kept = fraction.replace(/0+$/, '');
-  return kept === '' ? lead : `${lead}.${kept}`;
-}
-
-/** §7: "Units always shown ('lb')." */
-export function weightWithUnit(value: string): string {
-  return `${formatWeight(value)} ${COPY.unit}`;
-}
+// D40 REMOVED THIS MODULE'S TWO WEIGHT HELPERS. `formatWeight` / `weightWithUnit`
+// existed to render `MappingRow.blockingWeight` on the row that was holding a
+// report up — a state only S3.1 could produce, and only while it owned this editor
+// (D11). D17 moved the editor to Admin, which has no report on screen, and D40
+// folded the row itself into the category's own editor, so nothing here has had a
+// weight to draw since. The ORDERING that reads `blockingWeight` stays: it is the
+// rule, and a caller with a blocked report is still what it is written for.
 
 // ---------------------------------------------------------------------------
 // The matching rows
@@ -245,24 +229,19 @@ export const FORBIDDEN_IN_COPY = [
 ] as const;
 
 export const COPY = {
-  unit: 'lb',
-
-  // --- our categories, and where each one reports --------------------------
-  mappingHeading: 'Which food bank category does each of ours report under?',
-  mappingIntro:
-    'Our categories are on the left. Point each one at the North Texas Food Bank category it belongs to, and say which storage it goes under. Two of ours can share one of theirs, under different storage if that is what they are.',
-  mappingLabel: 'Our categories',
-  mappingEmptyTitle: 'No categories of our own yet.',
-  /** Was a cross-screen pointer written from the Report screen ("an admin adds ours
-   *  under Admin → Categories"). Both halves live in Admin now, so it points at the
-   *  panel beside this one instead of at another screen and another tier. */
-  mappingEmptyBody: 'Add ours on the Categories tab first. Nothing can be reported until they are there.',
+  /* D40 CUT THE SENTENCES THAT DESCRIBED A LIST THAT IS NO LONGER HERE.
+     `mappingHeading`, `mappingIntro`, `mappingLabel`, `mappingEmptyTitle`,
+     `mappingEmptyBody`, `pickerLabel`, `pickerCurrent`, `back` and `blockingTail`
+     all belonged to "our categories, and where each one reports" — a list and a
+     full-screen picker that are now a field on the category's own editor
+     (`masters.ts`). What survives here is what the RULES still say: the words
+     `mappingTargetLabel`, `storageGapNote`, `pickerOptions` and `mappedCountLabel`
+     return, and everything the food bank's own list says about itself. */
   notMatched: 'Not matched yet',
   archivedCategory: 'Archived',
-  blockingTail: 'this week, with nowhere to report it',
-  pickerLabel: 'Report this under',
-  pickerCurrent: 'Chosen now',
   leaveUnmatched: 'Leave it unmatched',
+  /** The way out of the add/edit form below. §3 wants one way out of a screen,
+   *  and the form is still a screen even though the section around it is not. */
   back: 'Back',
 
   /** Storage is the other half of a Meal Connect line item (D15), so it is chosen in
@@ -271,7 +250,7 @@ export const COPY = {
    *  and the pantry's form is the authority on the rest (migration 0013). */
   storageField: 'Storage (optional)',
   storageHint:
-    'The Storage the food bank’s form asks for beside the category, usually Frozen, Dry or Refrigeration. Copy their wording.',
+    'The Storage the food bank’s form asks for beside the category, usually Frozen, Dry or Refrigerated. Copy their wording.',
   storageMissing: 'No storage set',
 
   /** A181, said out loud where the remapping happens. Every week is computed on

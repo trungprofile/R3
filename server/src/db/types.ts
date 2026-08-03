@@ -47,6 +47,9 @@ export interface AppConfig {
   session_idle_personal_volunteer_days: Generated<number>;
   session_idle_shared_minutes: Generated<number>;
   timezone: Generated<string>;
+  trash_rate_bakery: Generated<Numeric>;
+  trash_rate_deli: Generated<Numeric>;
+  trash_rate_produce: Generated<Numeric>;
   updated_at: Generated<Timestamp>;
 }
 
@@ -78,6 +81,7 @@ export interface Category {
   name: string;
   ntfb_category_id: string | null;
   ntfb_storage: string | null;
+  trash_rate_key: string | null;
 }
 
 export interface Device {
@@ -96,6 +100,9 @@ export interface Donor {
   name: string;
   note: string | null;
   ntfb_donor_code: string | null;
+  trash_rate_bakery: Numeric | null;
+  trash_rate_deli: Numeric | null;
+  trash_rate_produce: Numeric | null;
 }
 
 export interface DonorPhoto {
@@ -103,6 +110,13 @@ export interface DonorPhoto {
   donor_id: string;
   mime: string;
   updated_at: Generated<Timestamp>;
+}
+
+export interface MealConnectSubmission {
+  donor_id: string;
+  pickup_date: Timestamp;
+  submitted_at: Generated<Timestamp>;
+  submitted_by: string;
 }
 
 export interface Notification {
@@ -223,7 +237,7 @@ export interface Truck {
 }
 
 export interface UnscheduledDonation {
-  category_id: string;
+  category_id: string | null;
   created_at: Generated<Timestamp>;
   created_by: string;
   donor_id: string | null;
@@ -266,6 +280,7 @@ export interface DB {
   device: Device;
   donor: Donor;
   donor_photo: DonorPhoto;
+  meal_connect_submission: MealConnectSubmission;
   notification: Notification;
   ntfb_category: NtfbCategory;
   pgmigrations: Pgmigrations;

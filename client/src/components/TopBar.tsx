@@ -2,15 +2,16 @@
 // consistency." One instance, rendered by the shell, on every screen and every
 // device.
 //
-// Contents, left to right: the AGFP heart, the current user's name, the
-// notification bell with its unread count, the alerts chip, and Logout.
+// Contents, left to right: the product name, the current user's name, the
+// notification bell with its unread count, the alerts chip, and Logout. The AGFP
+// mark is NOT among them since D32 — see the comment on the brand below.
 //
 // LOGOUT IS ALWAYS VISIBLE (§5). On a shared tablet it is the only way a
 // volunteer ends their sign-in deliberately, and hiding it behind a menu on a
 // device used by a dozen people is how the next person inherits someone else's
 // account.
 
-import { BellIcon, HeartIcon } from './icons.tsx';
+import { BellIcon } from './icons.tsx';
 import { PushStateChip } from './StatusChip.tsx';
 
 export interface TopBarProps {
@@ -34,10 +35,13 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <header className="r3-topbar">
-      <span className="r3-topbar__brand">
-        <HeartIcon className="r3-topbar__heart" />
-        <span>R3</span>
-      </span>
+      {/* The product name, plain (D32). The AGFP mark is NOT here: it is dark type on
+          a white ground and §3 pins this bar to --structural-dark, so it can only
+          appear on a light plate, which reads as a sticker stuck to the bar. It sits
+          in the sidebar instead, on a ground it was drawn for. That leaves the mark
+          off the phone and tablet, which is the accepted cost — an unreadable mark
+          is worth less than none. */}
+      <span className="r3-topbar__brand">R3</span>
 
       <span className="r3-topbar__spacer" />
 

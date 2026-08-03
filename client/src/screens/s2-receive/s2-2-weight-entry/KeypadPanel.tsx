@@ -135,12 +135,27 @@ export function KeypadPanel({
 
         <div className="r3-pad__row">
           {/* Resolves nothing — any non-voided weight already made this stop
-              WEIGHED (I12). It is the way on to the next store. */}
-          <Button variant="secondary" onClick={onAdvance} disabled={busy || !weighed}>
+              WEIGHED (I12). It is the way on to the next store.
+
+              `D37` cut the label to the verb; the stop's name is in the header and
+              its total is directly above, so the button does not repeat them. The
+              aria label carries the noun for anyone who meets the button without
+              that context. */}
+          <Button
+            variant="secondary"
+            aria-label={COPY.markWeighedAria}
+            onClick={onAdvance}
+            disabled={busy || !weighed}
+          >
             {COPY.markWeighed}
           </Button>
           {canSkipStop(detail) ? (
-            <Button variant="secondary" onClick={onSkip} disabled={busy}>
+            <Button
+              variant="secondary"
+              aria-label={COPY.skipStopAria}
+              onClick={onSkip}
+              disabled={busy}
+            >
               {COPY.skipStop}
             </Button>
           ) : null}

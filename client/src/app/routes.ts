@@ -12,6 +12,7 @@ import type { Duty, Tier } from '../api/shared.ts';
 
 export type ScreenId =
   | 'login' // S1.1
+  | 'home' // The hub at `/` (D22). Not in `ui-ux-spec.md §8`; a spec addition.
   | 'board' // S1.2
   | 'shift' // S1.3
   | 'my-shifts' // S1.4
@@ -61,6 +62,9 @@ export const CURRENT_PHASE = 3;
 
 export const ROUTES: readonly RouteDef[] = [
   { id: 'login', path: '/login', spec: 'S1.1', phase: 1, fullScreen: true },
+  // The hub (D22). No `requires`: every signed-in user gets a front door, and the
+  // cards on it are derived from tier and duty the same way the nav is.
+  { id: 'home', path: '/', spec: 'Home', phase: 1 },
   { id: 'board', path: '/board', spec: 'S1.2', phase: 1 },
   { id: 'shift', path: '/shifts/:shiftId', spec: 'S1.3', phase: 1 },
   { id: 'my-shifts', path: '/my-shifts', spec: 'S1.4', phase: 1, requires: { anyDuty: ['DRIVE'] } },
@@ -129,33 +133,27 @@ export const ROUTES: readonly RouteDef[] = [
   { id: 'metrics', path: '/metrics', spec: 'S3.2', phase: 3, requires: { tier: 'ADMIN' } },
 ];
 
-/** Where a signed-in user lands by default. The board is the adoption centerpiece
- *  (S1.2) and the one screen everyone can open. */
-export const HOME_PATH = '/board';
+/** Where a signed-in user lands by default: the hub (D22). It is the one screen
+ *  that adapts to the viewer instead of being the same screen for everyone, so the
+ *  board no longer has to be the front door for people who never drive. */
+export const HOME_PATH = '/';
 
 /**
  * Where THIS user lands after signing in.
  *
- * `ui-ux-spec.md §4` is explicit about the tablet: "Login goes straight to weight
- * entry, Phase 2", and S2.1 says the receiver login "opens to S2.1b (run picker)".
- * That surface has no navigation at all (`nav.tsx` returns an empty list for it), so
- * the run picker is not merely a nicer default there — it is the only screen a
- * receiver could reach.
+ * One answer for everybody since D22. It used to branch on tablet + RECEIVE and send
+ * that person straight to the run picker, because the tablet had no navigation at all
+ * and the run picker was the only screen a receiver could reach from it. The tablet
+ * now has the bottom bar, and the hub carries a Receive card, so the branch bought
+ * nothing and cost a receiver every other screen.
  *
- * Which is also why this arrived one commit after the route table: pointing a
- * nav-less surface at a screen the registry did not yet hold would have replaced a
- * working board with a placeholder whose only affordance is Logout.
- *
- * Keyed on the duty AND the viewport, never either alone: a receiver who opens R3 on
- * the shared desktop still has a nav and still wants the board.
+ * Kept as a function rather than inlined: callers ask "where does this person go?",
+ * and that question is worth a name even while the answer is the same for all of them.
  */
 export function homePathFor(
-  user: { duties: readonly Duty[] },
-  viewport: 'phone' | 'tablet' | 'desktop',
+  _user: { duties: readonly Duty[] },
+  _viewport: 'phone' | 'tablet' | 'desktop',
 ): string {
-  if (viewport === 'tablet' && user.duties.includes('RECEIVE')) {
-    return routeById('receive-runs').path;
-  }
   return HOME_PATH;
 }
 

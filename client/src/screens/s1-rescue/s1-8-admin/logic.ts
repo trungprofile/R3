@@ -39,18 +39,27 @@ import type {
 // The sub-screens (S1.8 Layout)
 //
 // S1.8 names four — "Accounts, Donors, Trucks, Categories — selected by the §3
-// segmented control in its tabs behavior". Two more have joined them since:
+// segmented control in its tabs behavior". The list went to six and is back to
+// five, and both moves are worth having written down:
 //
-//   Metrics (D18)          — S3.2, which was its own route and its own left-nav
-//                            entry. It is a READ about the same records the other
-//                            tabs edit, and an admin opens R3 either to see how the
-//                            week went or to fix a record; one click apart beats
-//                            two places.
-//   Category matching (D12) — the NTFB category map. It is category master data by
-//                            another name, so it belongs beside Categories.
+//   Metrics (D18)           — S3.2, which was its own route and its own left-nav
+//                             entry. It is a READ about the same records the other
+//                             tabs edit, and an admin opens R3 either to see how
+//                             the week went or to fix a record; one click apart
+//                             beats two places.
+//   Category matching (D17) — the NTFB category map, added beside Categories as
+//                             category master data by another name.
+//   ...and RETIRED by D40   — because "beside" was the wrong answer. An admin
+//                             configuring a category had to finish, change tab,
+//                             find the same category again and say where it
+//                             reports. The two halves are now ONE tab: our
+//                             categories with their food bank target inline on
+//                             each row's editor, and the food bank's own list as
+//                             a reference section under them.
 //
-// Six is more than four, and §1 principle 5 still rules out hiding any of them
-// behind a dropdown, so all six stay visible in the tab row.
+// `?tab=mapping` still resolves, as a redirect to the merged tab — the same
+// courtesy D18 gave `/metrics`. §1 principle 5 still rules out hiding any of these
+// behind a dropdown, so all five stay visible in the tab row.
 // ---------------------------------------------------------------------------
 
 export type PanelId =
@@ -58,8 +67,7 @@ export type PanelId =
   | 'accounts'
   | 'donors'
   | 'trucks'
-  | 'categories'
-  | 'mapping';
+  | 'categories';
 
 export const PANELS: readonly { value: PanelId; label: string }[] = [
   { value: 'metrics', label: 'Metrics' },
@@ -67,23 +75,38 @@ export const PANELS: readonly { value: PanelId; label: string }[] = [
   { value: 'donors', label: 'Donors' },
   { value: 'trucks', label: 'Trucks' },
   { value: 'categories', label: 'Categories' },
-  { value: 'mapping', label: 'Category matching' },
 ];
 
 /** What `/admin` shows when the URL names no tab. D18 puts the read first: it is
  *  the tab an admin opens without a specific record in mind. */
 export const DEFAULT_PANEL: PanelId = 'metrics';
 
+/**
+ * Tabs that no longer exist, and where they went (D40).
+ *
+ * `?tab=mapping` was a real tab from D17 until D40 merged it into Categories, and
+ * a link to it is the kind of thing that gets pasted into a message and read a
+ * week later. Landing on the default would be silently wrong — the admin asked for
+ * the matching and would get Metrics — so it resolves to the tab that absorbed it,
+ * which is where the matching actually is.
+ */
+export const RETIRED_PANELS: Readonly<Record<string, PanelId>> = {
+  mapping: 'categories',
+};
+
 /** The query key the tab lives under, so a tab is a link someone can send.
  *  `?tab=` rather than a path segment: `ROUTES` stays a flat list of real paths
  *  instead of every screen's pattern growing an optional tail (`app/router.tsx`). */
 export const PANEL_QUERY_KEY = 'tab';
 
-/** Which panel a URL asks for. An unknown or absent value is the default rather
- *  than an error: a stale bookmark should land somewhere useful, not on a 404. */
+/** Which panel a URL asks for. A retired name lands on the tab that absorbed it;
+ *  an unknown or absent one is the default rather than an error, because a stale
+ *  bookmark should land somewhere useful and not on a 404. */
 export function panelFromQuery(value: string | undefined): PanelId {
   const known = PANELS.find((panel) => panel.value === value);
-  return known ? known.value : DEFAULT_PANEL;
+  if (known) return known.value;
+  if (value !== undefined && value in RETIRED_PANELS) return RETIRED_PANELS[value]!;
+  return DEFAULT_PANEL;
 }
 
 /** Which master list a panel edits. Accounts is not one of these: `app_user` is a
@@ -111,7 +134,7 @@ export type MasterEntity = 'donor' | 'truck' | 'category';
 
 export const COPY = {
   title: 'Admin',
-  tabsLabel: 'Metrics, accounts, donors, trucks, categories and category matching',
+  tabsLabel: 'Metrics, accounts, donors, trucks and categories',
 
   accounts: {
     heading: 'Accounts',
@@ -178,6 +201,21 @@ export const COPY = {
     writeItDown: "Write it down. R3 won't show it again.",
   },
 
+  /**
+   * D40 — the ONE new sentence the merge needed.
+   *
+   * Everything else the matching says is still in `mapping/mapping.ts` and is read
+   * from there: `remapNotice`, `storageField`, `storageHint`, `leaveUnmatched`,
+   * `notMatched`, `storageMissing` and the rest. What moved with D40 is where the
+   * controls are DRAWN, not what any of them means, so `masters.ts` imports that
+   * copy rather than restating it — a sentence in two places is two sentences to
+   * keep in step, and they do not stay in step (§6's own standing lesson).
+   */
+  mapping: {
+    sectionTitle: 'Where this reports to the food bank',
+    targetField: 'Food bank category',
+  },
+
   master: {
     save: 'Save',
     create: 'Add',
@@ -187,6 +225,30 @@ export const COPY = {
      *  removal — I21 allows it whatever the record's history. */
     status: 'In use',
     inUse: 'In use',
+  },
+
+  /**
+   * D27 — the per-store trash rates, and D21's "keep what the reader cannot see
+   * for themselves" at its strongest.
+   *
+   * This is the one screen in R3 where a number changes what the food bank is
+   * told without anyone seeing it happen: a rate typed here quietly moves a share
+   * of every future receipt out of Bakery, Produce or Deli and into Trash. So the
+   * group says what the number DOES, and each blank field says what the store will
+   * actually use, which a blank control cannot show on its own.
+   */
+  rates: {
+    sectionTitle: 'Trash deduction',
+    sectionBody:
+      'A share of this store’s bakery, produce and deli weight is reported to the food bank as Trash rather than as food. It is worked out, never weighed.',
+    /** Prefix for the effective value shown beside a blank field. The number
+     *  itself is appended, so the sentence stays one string in one place. */
+    usesDefault: 'Blank uses the pantry default,',
+    /** Kept apart from `usesDefault` so a store that genuinely wastes nothing
+     *  reads as a decision rather than as an empty field. */
+    explicitZero: 'Nothing is deducted for this store.',
+    badNumber: 'Use a number like 10, or leave it blank.',
+    outOfRange: 'Use a number between 0 and 100.',
   },
 
   /** D20 — the donor photo field. The words are entity-neutral because the field
@@ -655,7 +717,16 @@ export function statusChoices(
  * `'text'` when absent, so the three configs that predate this need no edit and no
  * field is a kind by accident of being written without one.
  */
-export type MasterFieldKind = 'text' | 'image';
+/**
+ * `choice` arrived with D40, which merged Category matching into Categories.
+ *
+ * An AGFP category's NTFB target is a pick from a short, seeded list (D26), so it
+ * is neither free text nor a picture — and it belongs INLINE on the category's own
+ * editor rather than on a second tab, so that an admin says where a category
+ * reports while they are configuring it instead of finishing and going somewhere
+ * else to finish again. `options` on the spec is what turns it into a control.
+ */
+export type MasterFieldKind = 'text' | 'image' | 'choice';
 
 export interface MasterFieldSpec {
   key: string;
@@ -666,7 +737,58 @@ export interface MasterFieldSpec {
   /** Text only. */
   multiline?: boolean;
   hint?: string;
+  /**
+   * A hint that depends on what is currently typed, overriding `hint` when it
+   * answers.
+   *
+   * Added for D27's trash rates, where a BLANK field is not an empty field: it
+   * means "use the pantry default", and the admin cannot see what that default is
+   * from a control that is showing nothing. Returning `undefined` falls back to
+   * `hint`, so a field that has no state-dependent thing to say keeps one sentence
+   * in one place.
+   */
+  hintFor?: (value: string) => string | undefined;
+  /**
+   * Communication only, like every client check (`CLAUDE.md`). The server refuses
+   * the same value again — `ck_donor_trash_rates` is real DDL — and this exists so
+   * an admin is told before the round trip rather than instead of it.
+   */
+  validate?: (value: string) => string | null;
+  /** A group heading rendered ABOVE this field, with one sentence under it. Set on
+   *  the first field of a group; the rest of the group leaves it absent. */
+  section?: { title: string; body: string };
+  /**
+   * `choice` only: what may be picked, in the order it is offered.
+   *
+   * A FUNCTION of what the panel has loaded rather than a fixed list, because the
+   * one choice field in the app is D40's NTFB target and its options are rows in
+   * `ntfb_category` — an admin can archive one in the section directly below the
+   * form. `context` is whatever the config's `load` put there.
+   */
+  options?: (context: MasterContext) => readonly MasterChoice[];
 }
+
+/** One option on a `choice` field. `value` is `''` for the explicit "none", which
+ *  keeps the control a plain string field like every other one here. */
+export interface MasterChoice {
+  value: string;
+  label: string;
+  /** Shown under the option where it needs saying. */
+  note?: string | undefined;
+}
+
+/**
+ * Whatever a master panel loaded alongside its records.
+ *
+ * D40's Categories tab needs the food bank's category list twice over: once to
+ * offer as choices on a category's editor, and once as the reference list below
+ * it. It is loaded once, by the config, and handed to both.
+ */
+export interface MasterContext {
+  ntfbCategories: readonly { id: string; name: string; code: string | null; active: boolean; mappedCount: number }[];
+}
+
+export const EMPTY_MASTER_CONTEXT: MasterContext = { ntfbCategories: [] };
 
 export function fieldKind(field: MasterFieldSpec): MasterFieldKind {
   return field.kind ?? 'text';
@@ -694,11 +816,122 @@ export function validateMaster(
 ): FieldErrors {
   const errors: Record<string, string> = {};
   for (const field of fields) {
-    if (field.required === true && (values[field.key] ?? '').trim() === '') {
+    const value = values[field.key] ?? '';
+    if (field.required === true && value.trim() === '') {
       errors[field.key] = COPY.requiredName;
+      continue;
     }
+    const own = field.validate?.(value) ?? null;
+    if (own !== null) errors[field.key] = own;
   }
   return errors;
+}
+
+/** The hint under a field right now: the state-dependent one where there is one,
+ *  the static one otherwise. */
+export function hintForField(
+  field: MasterFieldSpec,
+  value: string,
+): string | undefined {
+  return field.hintFor?.(value) ?? field.hint;
+}
+
+// ---------------------------------------------------------------------------
+// Trash rates — a percentage on screen, a decimal fraction on the wire (D27)
+//
+// THE ONE PLACE IN R3 WHERE A NUMBER SILENTLY CHANGES WHAT THE FOOD BANK IS TOLD.
+// A store's rate decides how much of its bakery, produce and deli weight is
+// reported as Trash instead of as food, per receipt, for as long as it stands.
+//
+// THREE THINGS THIS CONVERSION HAS TO GET RIGHT:
+//
+//   1. **Blank is not zero.** Blank means "use the pantry default"; `0` means this
+//      store genuinely wastes nothing. They are different rows in the database
+//      (`NULL` against `0.0000`), different edits on the wire (`UpdateDonorRequest`
+//      distinguishes absent from null on purpose), and they must stay different on
+//      screen — a blank that saved as 0 would silently stop a store's produce ever
+//      being deducted, and nothing would say so.
+//   2. **No float.** `numeric(5,4)` is exact and `10 / 100` in JavaScript is not
+//      reliably `0.1`. Both directions here are string surgery: shifting a decimal
+//      point two places, never dividing.
+//   3. **It round-trips.** What an admin typed comes back as what they typed:
+//      `10` → `0.1000` → `10`, and `''` → `null` → `''`.
+// ---------------------------------------------------------------------------
+
+/** `numeric(5,4)`: four decimals, so a percentage carries at most two. */
+const PERCENT_DECIMALS = 2;
+const PERCENT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+
+/** Move a plain decimal's point, in string form. Positive moves it right
+ *  (multiplies), negative moves it left (divides). Null for anything that is not a
+ *  plain decimal, which is shown as it arrived rather than guessed at. */
+function shiftPoint(value: string, places: number): string | null {
+  const trimmed = value.trim();
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  const [whole = '0', fraction = ''] = trimmed.split('.');
+  const digits = whole + fraction;
+  // Where the point lands, counted from the left of `digits`.
+  const point = whole.length + places;
+  const padded =
+    point < 0 ? '0'.repeat(-point) + digits : digits + '0'.repeat(Math.max(0, point - digits.length));
+  const at = Math.max(point, 0);
+  const left = padded.slice(0, at) || '0';
+  const right = padded.slice(at);
+  return right === '' ? left : `${left}.${right}`;
+}
+
+/** Drop leading and trailing zeros a person would not type: `010.00` → `10`. */
+function tidy(value: string): string {
+  const [whole = '0', fraction] = value.split('.');
+  const lead = whole.replace(/^0+(?=\d)/, '');
+  if (fraction === undefined) return lead;
+  const kept = fraction.replace(/0+$/, '');
+  return kept === '' ? lead : `${lead}.${kept}`;
+}
+
+/**
+ * The wire's decimal fraction as the percentage the field shows: `'0.1000'` →
+ * `'10'`, `'0.0000'` → `'0'`, `null` → `''`.
+ *
+ * `null` becomes BLANK and never `0`. That distinction is the whole point of the
+ * column being nullable.
+ */
+export function percentFromRate(rate: string | null): string {
+  if (rate === null) return '';
+  const shifted = shiftPoint(rate, PERCENT_DECIMALS);
+  // A figure that is not a plain decimal is shown exactly as it arrived rather
+  // than replaced by a guess — the same rule S3.1 applies to a weight.
+  return shifted === null ? rate.trim() : tidy(shifted);
+}
+
+/**
+ * The typed percentage as the wire's decimal fraction: `'10'` → `'0.1000'`,
+ * `'0'` → `'0.0000'`, `''` → `null`.
+ *
+ * `null` is an EXPLICIT clear, not an omission: `UpdateDonorRequest` distinguishes
+ * absent ("leave it") from null ("back to the pantry default"), and a blank field
+ * means the second.
+ */
+export function rateFromPercent(percent: string): string | null {
+  const trimmed = percent.trim();
+  if (trimmed === '') return null;
+  const shifted = shiftPoint(trimmed, -PERCENT_DECIMALS);
+  // Unparseable goes to the server as typed, which refuses it with its own
+  // sentence. Silently sending null instead would turn a typo into "use the
+  // default" and say nothing.
+  if (shifted === null) return trimmed;
+  const [whole = '0', fraction = ''] = shifted.split('.');
+  return `${whole}.${fraction.padEnd(4, '0').slice(0, 4)}`;
+}
+
+/** What an out-of-range or mistyped percentage says. Communication only; the
+ *  server's `ck_donor_trash_rates` is the rule. */
+export function percentError(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  if (!PERCENT_PATTERN.test(trimmed)) return COPY.rates.badNumber;
+  if (Number(trimmed) > 100) return COPY.rates.outOfRange;
+  return null;
 }
 
 /** A required field on its way to the wire: trimmed, never null — it is validated

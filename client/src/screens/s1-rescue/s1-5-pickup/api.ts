@@ -17,7 +17,6 @@
 
 import { api } from '../../../api/index.ts';
 import type {
-  CategorySummary,
   DonationSummary,
   DonorSummary,
   DriverResolution,
@@ -82,19 +81,19 @@ export function saveOrder(shiftId: string, stopIds: readonly string[]): Promise<
   });
 }
 
-/** The driver's whole-run note (cap 11, channel 3) on its own — used when the
- *  milestone is already set and the driver is only editing the note (A89/A90). */
-export function saveRunNote(shiftId: string, note: string | null): Promise<RunDetail> {
-  return api.patch<RunDetail>(`${runPath(shiftId)}/note`, { body: { note } });
-}
-
 /**
- * "Confirm — heading back" (I27). Sets `Shift.pickup_completed_at` and carries the
- * review screen's last edit of the run note in the same request.
+ * "Complete this run" (I27, D23). Sets `Shift.pickup_completed_at` and carries the
+ * confirm modal's run note in the same request.
  *
- * The body deliberately has no `status` field and there is nowhere to put one:
- * the milestone does not change the shift's state (I27), and in Phase 1 nothing
- * ever does after start (D1).
+ * UNCHANGED BY D23 — same endpoint, same body, same effect. What changed is the
+ * word on the button and what the screen does afterwards. The body deliberately
+ * has no `status` field and there is nowhere to put one: the milestone does not
+ * change the shift's state (I27), I11 (locked) makes the receiver's receive-done
+ * the only completion, and I12 holds `COMPLETED` behind every stop being WEIGHED.
+ *
+ * There is no `saveRunNote` beside it any more. The note is written once, with
+ * this request, and locks — so a second write path would be a way to edit
+ * something the summary says cannot be edited (D23).
  */
 export function confirmHeadingBack(shiftId: string, note: string | null): Promise<RunDetail> {
   return api.post<RunDetail>(`${runPath(shiftId)}/pickup-complete`, { body: { note } });
@@ -131,12 +130,6 @@ export function fetchDonorPlaces(signal: AbortSignal): Promise<DonorSummary[]> {
   });
 }
 
-/** The category list for the flag's picker. Active only, same reason, and the set
- *  is live admin data (S1.8) rather than the 11 seeded names hardcoded. */
-export function fetchCategories(signal: AbortSignal): Promise<CategorySummary[]> {
-  return api.get<CategorySummary[]>('/categories', { signal });
-}
-
 /**
  * Record an ad-hoc pickup mid-run: a `SUGGESTED` UnscheduledDonation that prefills
  * S2.3 for the receiver (PRD cap 12).
@@ -144,12 +137,12 @@ export function fetchCategories(signal: AbortSignal): Promise<CategorySummary[]>
  * **No weight.** The driver has no scale; the receiver weighs it later, and I16a
  * only requires a weight once the row is `CONFIRMED`.
  *
- * **A category, though** — `domain-modeling.md §2.3` (locked) makes `Category`
- * required on `UnscheduledDonation` with no `SUGGESTED` exemption, while
- * `ui-ux-spec.md:193` calls this control "just a donor picker … and an optional
- * note". The locked doc wins; build-plan D8 records the conflict and the human
- * escalation. The receiver may correct the pick at confirm time, which is what
- * makes it a prefill rather than a commitment.
+ * **And no category, since D24.** `domain-modeling.md §2.3` was amended under
+ * explicit human authorization so `Category` is required on `CONFIRMED` only, not
+ * at creation: a driver at a loading dock cannot know which category a mixed
+ * pallet reports under, and the receiver picks it at S2.3 where it is refused
+ * without one. This supersedes D8, and makes `ui-ux-spec.md:193`'s "just a donor
+ * picker … and an optional note" describe the screen accurately again.
  *
  * This NEVER creates a `ShiftStop` (I14) — there is no stop-shaped field to send —
  * and the server refuses a donor already on this run (I29) with
