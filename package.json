@@ -1,6 +1,7 @@
 {
   "name": "r3",
   "private": true,
+  "type": "module",
   "workspaces": [
     "shared",
     "server",

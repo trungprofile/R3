@@ -1,0 +1,27 @@
+{
+  "$comment": [
+    "Emit config for the production image. The root tsconfig.json is a CHECKING config",
+    "(noEmit, and it includes server/test); this is the only place that writes JavaScript.",
+    "",
+    "rootDir '.' is load-bearing. Server code imports shared by relative path",
+    "(../../shared/src/index.js), which gate.sh step 4b enforces over the @r3/shared alias,",
+    "so the emitted tree must keep shared/ and server/ as siblings or all 49 of those imports",
+    "break at runtime. The entrypoint therefore lands at dist/server/src/index.js.",
+    "",
+    "server/test is excluded: vitest runs the TypeScript directly, and the production image",
+    "has no reason to carry tests.",
+    "",
+    "scripts/ IS included, and that is a change: it was in no typecheck program before, so the",
+    "root gate never read it. It has to be here because seeding the box is a deploy step and",
+    "`tsx` is a devDependency the runtime image does not carry. Its imports are already",
+    "../server/src/*.js, so it lands at dist/scripts/qa-world.js and resolves without help."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "sourceMap": true
+  },
+  "include": ["shared/src", "server/src", "scripts"]
+}

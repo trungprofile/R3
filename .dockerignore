@@ -1,0 +1,53 @@
+# Everything the build context does not need. Without this file `COPY . .` ships
+# node_modules, the whole git history, and any local .env straight into the image.
+#
+# Ordering note: this is a denylist, so anything the Dockerfile COPYs must NOT be
+# matched here. The build compiles from source, so source stays.
+
+# Dependencies are installed in-image from the lockfile, never copied. Copying them
+# would also bake this machine's platform-specific binaries into a linux image.
+node_modules
+**/node_modules
+
+# Build output. Both halves are rebuilt in the build stage; copying a local build in
+# risks shipping something that does not match the source beside it.
+dist
+**/dist
+build
+
+# Secrets. .env is gitignored and must never reach an image layer either — layers are
+# readable by anyone who can pull the image, and deleting a file in a later layer does
+# not remove it from the earlier one.
+.env
+.env.*
+!.env.example
+
+# Version control and agent scratch space.
+.git
+.gitignore
+.github
+.claude
+archived
+
+# Docs, plans and QA records: read by people, never by the running app.
+docs
+*.md
+!README.md
+
+# Ops scripts that run on the host, not in the container. The SEED scripts are not
+# here — scripts/qa-world.ts and scripts/dev-seed.ts compile into the image because
+# seeding the box is a deploy step (see tsconfig.build.json).
+scripts/dev.sh
+scripts/gate.sh
+scripts/test-db.sh
+scripts/backup.sh
+scripts/rehearse-migration.sh
+scripts/build-icon.sh
+
+# Local noise.
+*.log
+.DS_Store
+**/.DS_Store
+coverage
+.vscode
+.idea

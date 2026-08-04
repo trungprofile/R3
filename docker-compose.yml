@@ -1,19 +1,34 @@
 # Runtime topology per architecture.md §4.5: Node/Express, Postgres, cloudflared.
 # No reverse proxy, no cache, no queue broker, no worker.
 #
-# NOTE: not yet exercised — the app image has no build to run until the scaffold
-# has real dependencies. The `test` profile below is independent and usable now.
+# Deploy sequence — the migration is a SEPARATE step and never runs on container
+# start, so a crash loop cannot leave a half-migrated database (§5.2):
+#
+#   docker compose build
+#   docker compose run --rm migrate          # forward-only, idempotent
+#   docker compose up -d app postgres
+#   docker compose run --rm seed             # QA world only. DESTRUCTIVE: truncates.
+#
+# INGRESS, and why it differs from §4.5 today: the designed topology is
+# cloudflared -> app, with nothing published to the host. The pantry box does not run
+# that yet — traffic arrives Cloudflare -> port-forward -> nginx, and nginx needs a
+# host port to proxy to. `app` therefore publishes one, bound to loopback so it is not
+# reachable from the LAN. The `tunnel` profile below is the designed path, ready for
+# the day the dashboard access exists; starting it is what retires nginx.
 
 services:
   app:
     build: .
     env_file: .env
+    # Loopback only. nginx on the box proxies here; 5050 is free and is the port the
+    # old pm2 backend used, so an existing proxy_pass may already point at it.
+    ports:
+      - "127.0.0.1:5050:3000"
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
     # Serves the API, the React build, and runs the in-process job scheduler.
-    # Not published to the host: cloudflared reaches it over the compose network.
 
   postgres:
     image: postgres:16
@@ -27,7 +42,35 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Same image as `app`, different command. A one-shot: `restart: no` and no profile
+  # membership in `up`, so it only ever runs when asked for by name.
+  migrate:
+    profiles: ["tasks"]
+    build: .
+    env_file: .env
+    command: ["npm", "run", "migrate:up", "--workspace", "@r3/server"]
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # The QA world (docs/features/test-plan.md §1.2). DESTRUCTIVE — it truncates every
+  # table first. Never point this at a database holding real pantry data.
+  seed:
+    profiles: ["tasks"]
+    build: .
+    env_file: .env
+    command: ["node", "dist/scripts/qa-world.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # The designed ingress (§4.5), not today's. Behind a profile because the box still
+  # reaches the app through nginx; `--profile tunnel up` is the cutover.
   cloudflared:
+    profiles: ["tunnel"]
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate run
     environment:

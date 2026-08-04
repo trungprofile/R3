@@ -22,6 +22,7 @@
   },
   "scripts": {
     "migrate:up": "node-pg-migrate up -m migrations --migration-file-language sql -j sql",
+    "build": "tsc -p ../tsconfig.build.json && node -e \"require('fs').writeFileSync('../dist/package.json','{ \\\"type\\\": \\\"module\\\" }\\n')\"",
     "codegen": "kysely-codegen --dialect postgres --out-file src/db/types.ts --log-level error",
     "test": "vitest run",
     "dev": "tsx watch src/index.ts",
