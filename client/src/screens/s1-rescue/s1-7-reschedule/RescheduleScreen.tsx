@@ -25,6 +25,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import {
+  BackLink,
   Button,
   Card,
   ConfirmModal,
@@ -175,21 +176,21 @@ function MoveRun({ run, timeZone, onStale, onDone }: MoveRunProps) {
 
   return (
     <div className="s17-screen">
+      {/* §3's one way out, at the top and before the heading (D43). It is here in
+          BOTH states on purpose. The refusal below is a dead end — a run that has
+          started, been cancelled or finished cannot be moved — and §3 says a dead
+          end must carry the way out as a CONTROL rather than as advice. This is
+          that control: `BackLink` renders a button, and putting it above the
+          heading rather than inside the empty state means a coordinator finds the
+          exit in the same place whichever of the two they land on. */}
+      <BackLink label={COPY.back} onBack={onDone} />
+
       <h1 className="s17-title">{COPY.header}</h1>
 
       <RunNow run={run} timeZone={timeZone} />
 
       {refusal ? (
-        <EmptyState
-          title={refusal.title}
-          action={
-            <Button variant="secondary" onClick={onDone}>
-              {COPY.cancel}
-            </Button>
-          }
-        >
-          {refusal.body}
-        </EmptyState>
+        <EmptyState title={refusal.title}>{refusal.body}</EmptyState>
       ) : (
         <section className="s17-form" aria-label={COPY.newHeading}>
           <h2 className="s17-heading">{COPY.newHeading}</h2>
@@ -241,10 +242,10 @@ function MoveRun({ run, timeZone, onStale, onDone }: MoveRunProps) {
           ) : null}
 
           <div className="s17-actions">
-            <Button variant="secondary" onClick={onDone}>
-              {COPY.cancel}
-            </Button>
-            {/* §1 principle 1: the screen's one high-emphasis button. */}
+            {/* §1 principle 1: the screen's one high-emphasis button, and since
+                D43 the only button here. The form IS the screen — its cancel went
+                to exactly where the BackLink above goes, so keeping both would be
+                one destination wearing two labels. */}
             <Button variant="primary" loading={saving} onClick={onConfirm}>
               {COPY.confirm}
             </Button>

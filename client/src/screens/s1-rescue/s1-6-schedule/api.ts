@@ -42,12 +42,24 @@ const withSignal = (signal?: AbortSignal) => (signal ? { signal } : {});
 // Runs (caps 4 and 9)
 // ---------------------------------------------------------------------------
 
-/** Runs from today forward. No `to`: how far ahead runs exist is already bounded
- *  by `app_config.horizon_days` at materialization. `CANCELLED` runs stay off the
- *  list — I10 makes the state terminal and there is nothing to schedule about one. */
-export function fetchRuns(fromDate: string, signal?: AbortSignal): Promise<ShiftSummary[]> {
+/**
+ * Runs in a window of pantry-local calendar days, both ends inclusive.
+ *
+ * `to` used to be omitted, which meant "every run that will ever exist" under a
+ * heading that said "coming up" (D71). It is now always sent: the list asks for
+ * this week and the calendar asks for whatever range it is showing, so one call
+ * serves both and neither can quietly grow without bound.
+ *
+ * `CANCELLED` runs stay off the list — I10 makes the state terminal and there is
+ * nothing to schedule about one.
+ */
+export function fetchRuns(
+  fromDate: string,
+  toDate: string,
+  signal?: AbortSignal,
+): Promise<ShiftSummary[]> {
   return api.get<ShiftSummary[]>('/shifts', {
-    query: { from: fromDate },
+    query: { from: fromDate, to: toDate },
     ...withSignal(signal),
   });
 }

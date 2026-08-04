@@ -17,7 +17,7 @@ import {
   DEFAULT_BOARD_TAB,
   actionFor,
   boardTabFromQuery,
-  canEditRun,
+  claimRefusal,
   dayHeading,
   formatWeekRange,
   groupByDay,
@@ -32,6 +32,8 @@ import {
   withOptimisticClaim,
 } from './board.ts';
 import type { BoardViewer } from './board.ts';
+import { statusChipLook } from '../../../components/StatusChip.tsx';
+import { ApiError } from '../../../api/index.ts';
 import type { ShiftStatus, ShiftSummary, SkippedShift } from '../../../api/shared.ts';
 
 const ME = 'driver-1';
@@ -326,35 +328,25 @@ describe('the week on screen', () => {
   });
 });
 
-describe('the staff Edit link (S1.6)', () => {
-  it('is offered to staff on a run that has not started', () => {
-    expect(canEditRun(shift({ status: 'OPEN' }), coordinator)).toBe(true);
-    expect(canEditRun(shift({ status: 'CLAIMED', ownerId: ME }), coordinator)).toBe(true);
-  });
-
-  it('is never offered to a driver, whatever the run', () => {
-    expect(canEditRun(shift({ status: 'OPEN' }), driver)).toBe(false);
-    expect(canEditRun(shift({ status: 'CLAIMED', ownerId: ME }), driver)).toBe(false);
-  });
-
-  it('is absent once the run has started — the server refuses to move it then', () => {
-    // "Only a run that has not started can be moved." (`services/schedule.ts`), and
-    // I5 has already frozen the stop list by then.
-    expect(canEditRun(shift({ status: 'IN_PROGRESS', ownerId: ME }), coordinator)).toBe(false);
-    // S1.2's "Done" row is `COMPLETED` (§3.1); the spec's word is not the status.
-    expect(canEditRun(shift({ status: 'COMPLETED', ownerId: ME }), coordinator)).toBe(false);
-  });
-
-  it('rides on the row, not on the row action', () => {
-    // A staff row that opens S1.3 is itself a button; Edit has to be a sibling of
-    // the row rather than the row's one action.
+describe('D63 — the board browses, Schedule manages', () => {
+  it('gives staff no per-row management control, whatever the run', () => {
+    // The Edit link into S1.6 is gone, and with it `canEditRun` and `COPY.edit`.
+    // A staff row's one action is still to open S1.3.
     const [group] = groupByDay([shift({ status: 'OPEN' })], coordinator, Date.now(), '2026-08-04');
-    expect(group?.rows[0]?.canEdit).toBe(true);
-    expect(group?.rows[0]?.action).toBe('DETAIL');
+    const row = group?.rows[0];
+    expect(row?.action).toBe('DETAIL');
+    expect(Object.keys(row ?? {})).not.toContain('canEdit');
+    expect(Object.keys(COPY)).not.toContain('edit');
+    expect(Object.keys(COPY)).not.toContain('editAria');
+  });
+
+  it('leaves the driver row untouched — it never had the control', () => {
+    const [group] = groupByDay([shift({ status: 'OPEN' })], driver, Date.now(), '2026-08-04');
+    expect(group?.rows[0]?.action).toBe('CLAIM');
   });
 });
 
-describe('the tabs (D30)', () => {
+describe('the tabs (D30, reshaped by D49)', () => {
   it('opens on the run board when the URL names no tab', () => {
     expect(boardTabFromQuery(undefined, true)).toBe('board');
     expect(boardTabFromQuery('', true)).toBe('board');
@@ -362,24 +354,111 @@ describe('the tabs (D30)', () => {
 
   it('lands a stale or mistyped tab on the board rather than on nothing', () => {
     expect(boardTabFromQuery('metrics', true)).toBe('board');
-    expect(boardTabFromQuery('MINE', true)).toBe('board');
+    expect(boardTabFromQuery('AWAY', true)).toBe('board');
   });
 
-  it('honours a link to My shifts, which is the point of putting it in the URL', () => {
-    expect(boardTabFromQuery('mine', true)).toBe('mine');
+  it("honours a link to When I'm away, which is the point of putting it in the URL", () => {
+    // The old inner `runs|away` row was local `useState`, so this link could not
+    // exist at all. That it does is the whole of D49's URL half.
+    expect(boardTabFromQuery('away', true)).toBe('away');
+  });
+
+  it('no longer answers the retired `mine` tab, which is a page of its own now (D49)', () => {
+    // `/board?tab=mine` was D30's driver runs panel. D49 moved that to `/my-shifts`,
+    // so an old link lands on the board rather than on a tab that is not there.
+    expect(boardTabFromQuery('mine', true)).toBe('board');
   });
 
   it('collapses to the board for someone who does not drive (I2)', () => {
     // Duty is set membership, so a Staff coordinator does not get the driver's tab
-    // by being senior. They are offered no tab row at all, and a `?tab=mine` link
+    // by being senior. They are offered no tab row at all, and a `?tab=away` link
     // forwarded to them must not open a panel that is not theirs.
-    expect(boardTabFromQuery('mine', false)).toBe('board');
+    expect(boardTabFromQuery('away', false)).toBe('board');
     expect(boardTabFromQuery(undefined, false)).toBe('board');
   });
 
   it('offers two tabs, with the run board first', () => {
-    expect(BOARD_TABS.map((tab) => tab.value)).toEqual(['board', 'mine']);
+    expect(BOARD_TABS.map((tab) => tab.value)).toEqual(['board', 'away']);
     expect(BOARD_TABS[0]?.value).toBe(DEFAULT_BOARD_TAB);
+    expect(BOARD_TABS[1]?.label).toBe("When I'm away");
+  });
+});
+
+describe('a refused claim sticks to its row (D52)', () => {
+  it("carries the server's own sentence, not a second wording of the rule", () => {
+    // I20's overlapping-claim gate. `services/coverage.ts` throws 409 NOT_ELIGIBLE
+    // with `claimRefusedMessage(reasons)` as the detail; the row shows that string
+    // and composes nothing.
+    const refused = new ApiError('conflict', {
+      status: 409,
+      code: 'NOT_ELIGIBLE',
+      detail: 'You already have a run at that time. Cancel it first.',
+    });
+    expect(claimRefusal(refused, 's1')).toEqual({
+      shiftId: 's1',
+      reason: 'You already have a run at that time. Cancel it first.',
+    });
+  });
+
+  it('names the row that was refused, so the reason cannot land on another run', () => {
+    expect(claimRefusal(new ApiError('conflict'), 'shift-9').shiftId).toBe('shift-9');
+  });
+
+  it("falls back to §6's plain line only when the payload carried none", () => {
+    // Same fallback the toast takes, so the two can never say different things.
+    expect(claimRefusal(new ApiError('conflict'), 's1').reason).toBe(
+      'Someone changed this just now. Try again.',
+    );
+    expect(claimRefusal(new Error('boom'), 's1').reason).toBe(
+      'Something went wrong. Tap to try again.',
+    );
+  });
+
+  it('never puts a correlation id on screen', () => {
+    const withId = new ApiError('server', { status: 500, correlationId: 'abc-123' });
+    expect(claimRefusal(withId, 's1').reason).not.toContain('abc-123');
+  });
+});
+
+describe('the status chip (D48, D53)', () => {
+  it('reads Returning once the driver has confirmed heading back', () => {
+    // I27 is a MILESTONE inside IN_PROGRESS: `services/execution.ts` deliberately
+    // leaves `status` alone, and there is no RETURNING status to add. The chip is
+    // the only thing that changes.
+    expect(
+      statusChipLook({ status: 'IN_PROGRESS', pickupCompletedAt: '2026-08-04T15:10:00.000Z' }),
+    ).toEqual({ label: 'Returning', modifier: 'in-progress' });
+  });
+
+  it('still reads In progress while the run is out', () => {
+    expect(statusChipLook({ status: 'IN_PROGRESS', pickupCompletedAt: null }).label).toBe(
+      'In progress',
+    );
+    expect(statusChipLook({ status: 'IN_PROGRESS' }).label).toBe('In progress');
+  });
+
+  it('does not let the milestone leak onto any other status', () => {
+    // Nothing but an IN_PROGRESS run can carry it, and a stale timestamp on a row
+    // that has moved on must not rewrite that row's word.
+    const at = '2026-08-04T15:10:00.000Z';
+    expect(statusChipLook({ status: 'CLAIMED', pickupCompletedAt: at }).label).toBe('Claimed');
+    expect(statusChipLook({ status: 'COMPLETED', pickupCompletedAt: at }).label).toBe('Done');
+    expect(statusChipLook({ status: 'OPEN', pickupCompletedAt: at }).label).toBe('Open');
+  });
+
+  it('keeps the overlays ahead of it, and each other', () => {
+    expect(statusChipLook({ status: 'CLAIMED', mine: true }).label).toBe('Mine');
+    expect(statusChipLook({ status: 'OPEN', atRisk: true }).label).toBe('At risk');
+    // The ownership overlay is only over CLAIMED (§3, stated explicitly).
+    expect(statusChipLook({ status: 'IN_PROGRESS', mine: true }).label).toBe('In progress');
+  });
+
+  it('keeps a chip on every row that has no Claim button (D53)', () => {
+    // D53 drops the CHIP, never the status: a row without a Claim button has only
+    // the chip to carry it, so every one of these still has a word.
+    for (const status of ['CLAIMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const) {
+      expect(statusChipLook({ status }).label.length).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -399,9 +478,9 @@ describe('microcopy (§7)', () => {
   const sentences: string[] = [
     ...Object.values(COPY).flatMap((value) => (typeof value === 'string' ? [value] : [])),
     COPY.claimAria('Riverside', '1:00 PM – 3:00 PM'),
-    COPY.editAria('Riverside', '1:00 PM – 3:00 PM'),
     COPY.scopeQuestion('Tuesday'),
     COPY.scopeSeries('Tuesday'),
+    COPY.scopeRun('Riverside', '1:00 PM – 3:00 PM'),
     COPY.skipReason(['NO_LONGER_OPEN']),
     COPY.skipReason(['AVAILABILITY_BLOCK']),
   ];
@@ -415,7 +494,7 @@ describe('microcopy (§7)', () => {
   });
 
   it('keeps S1.2 fixed copy verbatim', () => {
-    expect(COPY.header).toBe('Pickup runs');
+    expect(COPY.header).toBe('Shift board');
     expect(COPY.emptyAll).toBe('No runs scheduled yet.');
     expect(COPY.emptyOpen).toBe('No open runs right now.');
     expect(COPY.emptyOpenBody).toBe('Check back, or set your availability.');
@@ -443,9 +522,9 @@ describe('microcopy (§7)', () => {
     const own = [
       ...Object.values(COPY).flatMap((value) => (typeof value === 'string' ? [value] : [])),
       COPY.claimAria('Riverside', '1:00 PM – 3:00 PM'),
-      COPY.editAria('Riverside', '1:00 PM – 3:00 PM'),
       COPY.scopeQuestion('Tuesday'),
       COPY.scopeSeries('Tuesday'),
+      COPY.scopeRun('Riverside', '1:00 PM – 3:00 PM'),
     ];
     for (const sentence of own) {
       expect(sentence, sentence).not.toContain('—');

@@ -5,18 +5,26 @@
 // one of those two things: a vertical list of big rows grouped by day, and one
 // action — Claim — on the rows that have no owner.
 //
+// THE BOARD BROWSES; SCHEDULE MANAGES (D63). Staff used to get a per-row Edit that
+// deep-linked into S1.6. It was the one place the board addressed you as staff
+// rather than as someone looking for a run, and it is gone: S1.6 is one nav entry
+// away and is where a run's date, time and route are changed.
+//
 // The rules it renders are the SERVER's. `architecture.md §4.5`: a client-side
 // check is communication, so a driver is not offered a button that would be
 // refused; the refusal on `POST /shifts/:id/claim` is the rule itself. Nothing
 // below decides who may claim what.
 //
-// TWO TABS SINCE D30. S1.4 My shifts lost its nav entry — a driver was carrying two
-// entries for one job — and it is mounted here as the second tab instead, so
-// "what needs a driver" and "what I am on, and when I am away" are one tap apart.
+// TWO TABS, ONE LEVEL DEEP, SINCE D49. D30 mounted the whole of S1.4 here as a
+// `mine` tab, which meant a driver hit a second tab row inside the first. D49 splits
+// the two jobs into two sibling pages instead: `/my-shifts` ("Today's pickup", D64) is the
+// driver's own runs, and this screen is the claimable board plus the one part of
+// S1.4 that has no page of its own — "When I'm away", which §4 gives no nav entry.
 // A coordinator who does not drive gets no tab row at all: one tab is noise.
 //
 // The tab is in the URL (`?tab=`), the pattern S1.8 established: a tab is then a
-// link someone can send and a reload lands where it left off. It moves with
+// link someone can send and a reload lands where it left off — which the old inner
+// `runs|away` row, held in local `useState`, could never be. It moves with
 // `setQuery`, which replaces rather than pushes — a tab is not a place anyone should
 // have to press Back through. `board.ts` holds the values and the reasoning.
 //
@@ -53,13 +61,14 @@ import { atLeastTier, hasDuty, todayInZone } from '../../../app/index.ts';
 import { displayName } from '../../../api/index.ts';
 import { toApiError } from '../../../api/index.ts';
 import type { ClaimResult, ClaimScope, ShiftSummary } from '../../../api/shared.ts';
-import { MyShiftsScreen } from '../s1-4-my-shifts/index.ts';
+import { AwayPanel } from '../s1-4-my-shifts/index.ts';
 import { claimRun, fetchBoard } from './api.ts';
 import {
   BOARD_FILTERS,
   BOARD_TABS,
   BOARD_TAB_QUERY_KEY,
   boardTabFromQuery,
+  claimRefusal,
   COPY,
   formatWeekRange,
   groupByDay,
@@ -73,7 +82,7 @@ import {
   weekdayName,
   withOptimisticClaim,
 } from './board.ts';
-import type { BoardFilter, BoardRow, BoardTab, BoardViewer } from './board.ts';
+import type { BoardFilter, BoardRow, BoardTab, BoardViewer, ClaimRefusal } from './board.ts';
 import './board.css';
 
 const ID_PREFIX = 's12';
@@ -87,19 +96,22 @@ const FILTER_LABELS: Record<BoardFilter, string> = {
 const FILTER_OPTIONS = BOARD_FILTERS.map((value) => ({ value, label: FILTER_LABELS[value] }));
 
 /**
- * The screen: a title, the tab row, and whichever panel the URL names (D30).
+ * The screen: a title, the tab row, and whichever panel the URL names (D49).
  *
  * Thin on purpose. Everything the board itself does lives in `RunBoardPanel`, so
- * that a driver sitting on the My shifts tab is not also holding an open request for
- * a week of runs they are not looking at.
+ * that a driver sitting on the "When I'm away" tab is not also holding an open
+ * request for a week of runs they are not looking at.
+ *
+ * No `BackLink` (D43): this screen IS a nav entry — "Shift board" — and a nav
+ * destination has no parent to go back to.
  */
 export function BoardScreen(_props: ScreenProps) {
   const user = useCurrentUser();
   const { query, setQuery } = useRouter();
 
-  // Duty is set membership — a Staff coordinator who does not drive has no runs of
-  // their own and no availability to declare, so there is no second tab for them and
-  // therefore no tab row (I2).
+  // Duty is set membership — a Staff coordinator who does not drive has no
+  // availability to declare, so there is no second tab for them and therefore no tab
+  // row (I2).
   const canDrive = hasDuty(user, 'DRIVE');
   const tab = boardTabFromQuery(query[BOARD_TAB_QUERY_KEY], canDrive);
 
@@ -108,8 +120,7 @@ export function BoardScreen(_props: ScreenProps) {
 
   return (
     <div className="r3-board">
-      {/* S1.2's own header, verbatim, and the page's one `<h1>` — which is why the
-          My shifts panel drops its own when it is mounted here (D30). */}
+      {/* S1.2's own header, verbatim, and the page's one `<h1>`. */}
       <h1 className="r3-board__title r3-board__title--page">{COPY.header}</h1>
 
       {canDrive ? (
@@ -130,7 +141,7 @@ export function BoardScreen(_props: ScreenProps) {
           nobody rendered — the same failure `Segmented.tsx` warns about from the
           other end. A coordinator who does not drive just gets the board. */}
       <div {...(canDrive ? tabPanelProps(ID_PREFIX, tab) : {})}>
-        {tab === 'mine' ? <MyShiftsScreen embedded /> : <RunBoardPanel />}
+        {tab === 'away' ? <AwayPanel /> : <RunBoardPanel />}
       </div>
     </div>
   );
@@ -154,6 +165,10 @@ function RunBoardPanel() {
    *  toast being the only signal for something that mattered. */
   const [partial, setPartial] = useState<ClaimResult | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
+  /** D52: the last refusal, pinned to the row that caused it. A toast is transient
+   *  and the commonest refusal — I20's overlapping claim — is a standing fact about
+   *  that row, so the row keeps the server's sentence until something changes it. */
+  const [refusal, setRefusal] = useState<ClaimRefusal | null>(null);
 
   // The PANTRY's today, not the device's (A138). It decides which week the board
   // opens on, so a device that has rolled over past midnight would otherwise land on
@@ -183,10 +198,13 @@ function RunBoardPanel() {
   const state = useAsyncData<ShiftSummary[]>(load);
 
   // A partial-claim summary belongs to the week it happened in; carrying it across
-  // would leave a Monday's skipped dates sitting above a different week's runs.
+  // would leave a Monday's skipped dates sitting above a different week's runs. The
+  // same is true of a refusal (D52) — it names one row, and that row is not on
+  // screen any more.
   function goToWeek(next: string | null) {
     setPinnedWeek(next);
     setPartial(null);
+    setRefusal(null);
   }
 
   // The optimistic row stands until the server's own answer replaces it. Dropping
@@ -222,6 +240,10 @@ function RunBoardPanel() {
     setScopePrompt(null);
     setBusyId(shift.id);
     setClaimedNow(shift.id); // §6: "claiming a shift updates instantly"
+    // A fresh attempt clears the last refusal: the sentence on the row describes the
+    // answer to the PREVIOUS request, and leaving it up beside a spinner would say
+    // the new one had already failed.
+    setRefusal(null);
     try {
       const result = await claimRun(shift.id, scope);
       // Partial success IS success (PRD cap 6): the runs that conflicted were
@@ -240,11 +262,15 @@ function RunBoardPanel() {
     } catch (cause) {
       // The lost race, and every other refusal. The server already wrote the
       // sentence — "That run was just taken by Karen.", "You already have a run at
-      // that time — release it first." — so it is shown verbatim rather than
+      // that time. Cancel it first." — so it is shown verbatim rather than
       // re-worded here.
       const error = toApiError(cause);
       setClaimedNow(null); // §6: "revert with a clear toast"
       toast.error(error.detail ?? error.message);
+      // ...and D52: the same sentence stays on the row it belongs to. Both, not
+      // either — the toast is what a driver watching the button sees, and the row is
+      // what is still there when they scroll back to work out what happened.
+      setRefusal(claimRefusal(cause, shift.id));
     } finally {
       setBusyId(null);
       state.reload();
@@ -304,6 +330,7 @@ function RunBoardPanel() {
             onChange={(next) => {
               setFilter(next);
               setPartial(null);
+              setRefusal(null);
             }}
           />
         </div>
@@ -324,18 +351,16 @@ function RunBoardPanel() {
         error={state.error}
         onRetry={state.reload}
         busyId={busyId}
+        refusal={refusal}
         timeZone={timezone}
         onClaim={onClaim}
         onOpen={(shiftId) => go('shift', { shiftId })}
-        // S1.6 owns the editing; the board only says which run. The id rides in the
-        // query rather than the path so `ROUTES` stays a flat list of screens
-        // (`app/router.tsx`).
-        onEdit={(shiftId) => go('schedule', undefined, { edit: shiftId })}
       />
 
       {scopePrompt ? (
         <ClaimScopePrompt
           shift={scopePrompt}
+          timeZone={timezone}
           busy={busyId === scopePrompt.id}
           onCancel={() => setScopePrompt(null)}
           onChoose={(scope) => void runClaim(scopePrompt, scope)}
@@ -360,11 +385,12 @@ interface BoardBodyProps {
   error: unknown;
   onRetry: () => void;
   busyId: string | null;
+  /** D52: the one row, if any, carrying a refused claim. */
+  refusal: ClaimRefusal | null;
   /** Pantry zone from the session (A120); null until it loads. */
   timeZone: string | null;
   onClaim: (shift: ShiftSummary) => void;
   onOpen: (shiftId: string) => void;
-  onEdit: (shiftId: string) => void;
 }
 
 function BoardBody({
@@ -374,10 +400,10 @@ function BoardBody({
   error,
   onRetry,
   busyId,
+  refusal,
   timeZone,
   onClaim,
   onOpen,
-  onEdit,
 }: BoardBodyProps) {
   // Loading first, and only after 300ms (§6) — skeleton rows sized like the real
   // ones so the board does not jump when they are replaced.
@@ -398,10 +424,10 @@ function BoardBody({
                 <Row
                   row={row}
                   busy={busyId === row.shift.id}
+                  refusedReason={refusal?.shiftId === row.shift.id ? refusal.reason : null}
                   timeZone={timeZone}
                   onClaim={onClaim}
                   onOpen={onOpen}
-                  onEdit={onEdit}
                 />
               </ListItem>
             ))}
@@ -433,34 +459,38 @@ function BoardEmpty({ filter }: { filter: BoardFilter }) {
 interface RowProps {
   row: BoardRow;
   busy: boolean;
+  /** D52: the server's refusal sentence for THIS row, or null. */
+  refusedReason: string | null;
   /** The pantry's zone, so a row reads the same on any device (A120). */
   timeZone: string | null;
   onClaim: (shift: ShiftSummary) => void;
   onOpen: (shiftId: string) => void;
-  onEdit: (shiftId: string) => void;
 }
 
-function Row({ row, busy, timeZone, onClaim, onOpen, onEdit }: RowProps) {
+function Row({ row, busy, refusedReason, timeZone, onClaim, onOpen }: RowProps) {
   const { shift } = row;
   const when = timeRange(shift.startsAt, shift.endsAt, timeZone ?? undefined);
   const owner = shift.ownerName ?? COPY.unowned;
 
   const chip = (
-    <StatusChip status={shift.status} mine={row.mine} atRisk={row.atRisk} />
+    <StatusChip
+      status={shift.status}
+      mine={row.mine}
+      atRisk={row.atRisk}
+      // D48. `IN_PROGRESS` + this timestamp reads "Returning"; the status itself is
+      // untouched, because I27 is a milestone and not a state.
+      pickupCompletedAt={shift.pickupCompletedAt}
+    />
   );
 
-  // Under the row, never inside it: an open row already carries Claim in its side
-  // slot, and a row that opens S1.3 is itself a `<button>` that cannot nest one.
-  const edit = row.canEdit ? (
-    <div className="r3-board__row-actions">
-      <Button
-        variant="secondary"
-        onClick={() => onEdit(shift.id)}
-        aria-label={COPY.editAria(shift.routeName, when)}
-      >
-        {COPY.edit}
-      </Button>
-    </div>
+  // D52. Under the row, not inside it: a `<button>` cannot nest inside the
+  // `<button>` a tappable row is, and on an open row the side slot is already
+  // spoken for. `role="status"` so a screen reader hears the refusal arrive without
+  // the focus being moved off the Claim button the driver just pressed.
+  const refused = refusedReason ? (
+    <p className="r3-board__refused" role="status" aria-label={COPY.refusedLabel}>
+      {refusedReason}
+    </p>
   ) : null;
 
   const meta = (
@@ -474,6 +504,12 @@ function Row({ row, busy, timeZone, onClaim, onOpen, onEdit }: RowProps) {
   // A Claim button cannot live inside a row that is itself a button, so an open row
   // is a static row carrying its own action. That matches S1.2 anyway: an open
   // row's one action is Claim, not "open the detail".
+  //
+  // NO CHIP HERE (D53). The chip would read "Open", the button reads "Claim" and the
+  // meta line already reads "OPEN" — three statements of one fact in one row, and
+  // the one the round-4 pass reported as noise. The button is the strongest of the
+  // three and the only one that also says what to do about it. Every other row keeps
+  // its chip: there the chip is the only thing carrying the status.
   if (row.action === 'CLAIM') {
     return (
       <div className="r3-board__row">
@@ -483,7 +519,6 @@ function Row({ row, busy, timeZone, onClaim, onOpen, onEdit }: RowProps) {
           meta={meta}
           side={
             <span className="r3-board__side">
-              {chip}
               <Button
                 variant="primary"
                 loading={busy}
@@ -495,7 +530,7 @@ function Row({ row, busy, timeZone, onClaim, onOpen, onEdit }: RowProps) {
             </span>
           }
         />
-        {edit}
+        {refused}
       </div>
     );
   }
@@ -510,7 +545,7 @@ function Row({ row, busy, timeZone, onClaim, onOpen, onEdit }: RowProps) {
           side={chip}
           onClick={() => onOpen(shift.id)}
         />
-        {edit}
+        {refused}
       </div>
     );
   }
@@ -518,7 +553,7 @@ function Row({ row, busy, timeZone, onClaim, onOpen, onEdit }: RowProps) {
   return (
     <div className="r3-board__row">
       <ListRow title={shift.routeName} subtitle={when} meta={meta} side={chip} />
-      {edit}
+      {refused}
     </div>
   );
 }
@@ -529,12 +564,30 @@ function Row({ row, busy, timeZone, onClaim, onOpen, onEdit }: RowProps) {
 
 interface ClaimScopePromptProps {
   shift: ShiftSummary;
+  /** Pantry zone (A120) — the prompt names the run, and a run's window is a
+   *  pantry-local fact. */
+  timeZone: string | null;
   busy: boolean;
   onCancel: () => void;
   onChoose: (scope: ClaimScope) => void;
 }
 
-function ClaimScopePrompt({ shift, busy, onCancel, onChoose }: ClaimScopePromptProps) {
+/**
+ * A repeating run sends nothing on the first tap: it asks first, and the answer is
+ * what carries the scope. Correct — but round 4 read the same non-event ("I pressed
+ * Claim and nothing happened") as the broken button, so the prompt has to be
+ * impossible to take for a no-op. `Modal` already does most of that work: a scrim
+ * over the page, `role="dialog" aria-modal`, focus moved into it and Escape to
+ * leave. What it did not do is say WHICH run was tapped, so a driver who hit the
+ * wrong row had nothing to check it against. It does now.
+ */
+function ClaimScopePrompt({
+  shift,
+  timeZone,
+  busy,
+  onCancel,
+  onChoose,
+}: ClaimScopePromptProps) {
   // Named from this run's own calendar slot, which is the day S1.2's sentence is
   // about. A pattern repeating on several weekdays is described by the server's
   // own `summary` afterwards (`weekdayLabel`), so the two never contradict.
@@ -555,7 +608,13 @@ function ClaimScopePrompt({ shift, busy, onCancel, onChoose }: ClaimScopePromptP
         </>
       }
     >
-      {COPY.scopeConsequence}
+      <p className="r3-board__scope-run">
+        {COPY.scopeRun(
+          shift.routeName,
+          timeRange(shift.startsAt, shift.endsAt, timeZone ?? undefined),
+        )}
+      </p>
+      <p className="r3-board__scope-note">{COPY.scopeConsequence}</p>
     </Modal>
   );
 }

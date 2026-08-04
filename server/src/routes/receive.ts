@@ -15,6 +15,7 @@
 // method+path pair for Express to shadow (A108).
 
 import type {
+  ReceiveDonationSummary,
   ReceiveDoneSummary,
   ReceiveRunSummary,
   ReceiveStopDetail,
@@ -25,6 +26,7 @@ import { db } from '../db/index.js';
 import {
   addWeight,
   listReceivableRuns,
+  readDonationSummary,
   readReceiveDone,
   readRunStops,
   readStopSheet,
@@ -59,6 +61,27 @@ export const receiveRoutes = [
     access: RECEIVER,
     handler: async (_req, res) => {
       const payload: ReceiveRunSummary[] = await listReceivableRuns();
+      res.json(payload);
+    },
+  }),
+
+  /**
+   * S2.1b's unscheduled-donation panel — counts (`D67`) and, since `D76`, the two
+   * lists themselves. The path and the gate are unchanged; only the payload widened.
+   *
+   * Under `/receive` with the rest of the receiver's screens rather than under
+   * `/donations`, because it answers a question S2.1b asks — and since `D76` that
+   * question includes the rows, so the flat `GET /donations` list is gone and
+   * `GET /donations/:id` serves the one donation S2.3 now weighs. No
+   * `/receive/runs/:id` collision — `donations` is a fixed segment on a different
+   * branch (A108).
+   */
+  defineRoute({
+    method: 'get',
+    path: '/receive/donations/summary',
+    access: RECEIVER,
+    handler: async (_req, res) => {
+      const payload: ReceiveDonationSummary = await readDonationSummary();
       res.json(payload);
     },
   }),

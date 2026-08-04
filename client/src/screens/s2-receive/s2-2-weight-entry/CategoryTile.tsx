@@ -1,20 +1,32 @@
-// One category tile — a column of the paper sheet.
+// One category — a ROW of the paper sheet.
 //
-// S2.2: the tile is a big target that selects the category, carries the LIVE
-// subtotal (this is the hand arithmetic the screen exists to kill), and lists the
-// numbers under it "gapless, no line #s" — the log had no line numbers and the
-// receiver counts nothing.
+// S2.2: the target selects the category, carries the LIVE subtotal (this is the
+// hand arithmetic the screen exists to kill), and lists the numbers under it
+// "gapless, no line #s" — the log had no line numbers and the receiver counts
+// nothing.
 //
-// The tiles render from `detail.tiles`, which is live active-category data
-// (S1.8), never a list of the 11 AGFP names written into the client. A category
-// the admin adds appears here without a deploy; one they archive stops being
-// offered while its numbers keep showing.
+// `D44` turned this from a tile in a six-across grid into a row in one vertical
+// column. The reason is the property the pantry actually asked for: **every
+// category visible at once**, the way all eleven columns are visible on the sheet
+// of paper this replaces. A grid puts the busy categories and the empty ones on
+// different lines and pushes the keypad below the fold; a column does not. The
+// name and the subtotal share one line so eleven rows cost eleven target heights
+// and nothing more.
+//
+// `D45` caps the entered numbers at two rows and scrolls inside them, so one busy
+// category can no longer grow its neighbours or lengthen the page. The count beside
+// the subtotal is that scroll region's affordance — see `entryCountLabel`.
+//
+// The rows render from `detail.tiles`, which is live active-category data (S1.8),
+// never a list of the 11 AGFP names written into the client. A category the admin
+// adds appears here without a deploy; one they archive stops being offered while
+// its numbers keep showing.
 //
 // Tapping a number is the ✎ overwrite. It is a plain edit and says nothing about
 // how it is stored (I13 is the server's business, §6).
 
 import type { CategoryTile as CategoryTileData, WeightEntrySummary } from '../../../api/shared.ts';
-import { COPY, formatPounds, formatWeight } from './weight-entry.ts';
+import { COPY, entryCountLabel, formatPounds, formatWeight } from './weight-entry.ts';
 
 export interface CategoryTileProps {
   tile: CategoryTileData;
@@ -39,6 +51,8 @@ export function CategoryTile({
   if (selected) classes.push('r3-tile--selected');
   if (!open) classes.push('r3-tile--closed');
 
+  const count = entryCountLabel(tile.entries);
+
   return (
     <li className={classes.join(' ')}>
       <button
@@ -51,7 +65,13 @@ export function CategoryTile({
         onClick={onSelect}
       >
         <span className="r3-tile__name">{tile.categoryName}</span>
-        <span className="r3-tile__subtotal">{formatPounds(tile.subtotal)}</span>
+        <span className="r3-tile__figures">
+          {/* `D45`'s affordance. Muted and secondary — the subtotal is what the
+              receiver is reading, and this only exists because the list below can
+              be taller than the two rows it is allowed. */}
+          {count ? <span className="r3-tile__count">{count}</span> : null}
+          <span className="r3-tile__subtotal">{formatPounds(tile.subtotal)}</span>
+        </span>
       </button>
 
       {tile.entries.length > 0 ? (

@@ -24,12 +24,22 @@
 
 import { useState } from 'react';
 import { Button, Modal, TextInput } from '../../../components/index.ts';
-import type { RunDetail } from '../../../api/shared.ts';
+import type { DonationSummary, RunDetail } from '../../../api/shared.ts';
 import { StopStatusChip } from './StopStatusChip.tsx';
-import { COPY, reviewLines } from './logic.ts';
+import { COPY, flaggedLine, reviewLines } from './logic.ts';
 
 export interface CompleteRunModalProps {
   run: RunDetail;
+  /**
+   * D65: what the driver added on this run, so the review shows the whole of what
+   * they picked up rather than the route's half of it. A SECOND list under its own
+   * heading, never merged into the stops above: an `UnscheduledDonation` is not a
+   * `ShiftStop` (I14, I29) — no position, no disposition, nothing to check off.
+   *
+   * Client-only, and lost on reload by design (`COPY.flaggedListNote`). The rows
+   * themselves are already safe on the server; it is this in-memory list that goes.
+   */
+  extras: readonly DonationSummary[];
   busy: boolean;
   /** The note as typed. The caller trims it and nulls an empty one before it
    *  goes on the wire. */
@@ -37,7 +47,13 @@ export interface CompleteRunModalProps {
   onCancel: () => void;
 }
 
-export function CompleteRunModal({ run, busy, onConfirm, onCancel }: CompleteRunModalProps) {
+export function CompleteRunModal({
+  run,
+  extras,
+  busy,
+  onConfirm,
+  onCancel,
+}: CompleteRunModalProps) {
   const [draft, setDraft] = useState(run.note ?? '');
 
   return (
@@ -55,7 +71,8 @@ export function CompleteRunModal({ run, busy, onConfirm, onCancel }: CompleteRun
           one that matters here is that the note stops being editable. */}
       <p className="r3-complete__consequence">{COPY.completeConsequence}</p>
 
-      <ul className="r3-review" aria-label={COPY.stopsLabel}>
+      <p className="r3-review__label">{COPY.reviewStopsLabel}</p>
+      <ul className="r3-review" aria-label={COPY.reviewStopsLabel}>
         {reviewLines(run.stops).map((line) => (
           <li key={line.id} className="r3-review__line">
             <span className="r3-review__name">{line.name}</span>
@@ -64,6 +81,22 @@ export function CompleteRunModal({ run, busy, onConfirm, onCancel }: CompleteRun
           </li>
         ))}
       </ul>
+
+      {/* D65. Its own heading says which list this is, and there is no status chip
+          on these rows because there is no disposition to show (I14). Absent when
+          the driver added nothing — §1.7 keeps an empty block off the screen. */}
+      {extras.length > 0 ? (
+        <>
+          <p className="r3-review__label">{COPY.reviewExtrasLabel}</p>
+          <ul className="r3-review" aria-label={COPY.reviewExtrasLabel}>
+            {extras.map((donation) => (
+              <li key={donation.id} className="r3-review__line">
+                <span className="r3-review__name">{flaggedLine(donation)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
 
       {/* No hint under it (D21). "Note about the whole run" over an empty box says
           what to put in it, and the consequence above already says it locks. */}

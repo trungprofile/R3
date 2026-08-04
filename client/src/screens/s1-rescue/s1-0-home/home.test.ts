@@ -38,7 +38,7 @@ const admin = user('ADMIN', ['REPORT']);
 const ids = (person: CurrentUser) => homeCardsFor(person).map((card) => card.id);
 
 /** Every tier crossed with every subset of duties — 3 x 8 = 24 people, the whole
- *  space, so the six-card cap is proved rather than sampled. */
+ *  space, so the seven-card cap is proved rather than sampled. */
 const everyone: CurrentUser[] = TIERS.flatMap((tier) => {
   const subsets: Duty[][] = [[]];
   for (const duty of DUTIES) {
@@ -48,15 +48,19 @@ const everyone: CurrentUser[] = TIERS.flatMap((tier) => {
 });
 
 describe('cards derived from tier and duty (D22)', () => {
-  it('gives a driver the board', () => {
-    expect(ids(driver)).toEqual(['board', 'inbox']);
+  it('gives a driver their own runs and the board they claim from (D49)', () => {
+    // One card until D49. Driving is two jobs — the run you already own and the
+    // board new ones come from — and folding the first into the second as a tab is
+    // what grew two levels of tabs on the way to a driver's own morning.
+    expect(ids(driver)).toEqual(['my-shifts', 'board', 'inbox']);
   });
 
-  it('offers no My shifts card — D31 made it a tab of the Board', () => {
-    // It used to be here because the bottom bar is capped at four (§3) and the hub
-    // was the only route to availability on a phone. The Board is now that route,
-    // and two cards leading to one screen is a worse map than one.
-    for (const person of everyone) expect(ids(person)).not.toContain('my-shifts');
+  it('gives the My shifts card to drivers and to nobody else', () => {
+    for (const person of everyone) {
+      expect(ids(person).includes('my-shifts'), `${person.tier}/${person.duties}`).toBe(
+        person.duties.includes('DRIVE'),
+      );
+    }
   });
 
   it('gives a receiver the run picker — the entry that had no nav anywhere before', () => {
@@ -65,7 +69,7 @@ describe('cards derived from tier and duty (D22)', () => {
 
   it('gives someone holding two duties both, at once and unswitched', () => {
     // The hub is not a duty picker (§4): nothing is chosen, everything is shown.
-    expect(ids(bothDuties)).toEqual(['board', 'receive-runs', 'inbox']);
+    expect(ids(bothDuties)).toEqual(['receive-runs', 'my-shifts', 'board', 'inbox']);
   });
 
   it('treats duties as set membership, never a hierarchy (I2)', () => {
@@ -91,47 +95,50 @@ describe('cards derived from tier and duty (D22)', () => {
     expect(ids(coordinator)).not.toContain('report');
   });
 
-  it('puts the duty cards first, then the tier ones, inbox last', () => {
-    expect(ids(admin)).toEqual(['report', 'schedule', 'admin', 'inbox']);
-    // An admin who also drives gets the board card too, ahead of the office.
+  it('orders the cards by descending privilege, inbox last (D51)', () => {
+    // D30's order was the order a week runs, duty cards ahead of tier ones. D51
+    // supersedes it for the nav AND for the hub together, so a volunteer is not
+    // taught two orders for one set of destinations.
+    expect(ids(admin)).toEqual(['admin', 'schedule', 'report', 'inbox']);
     expect(ids(user('ADMIN', ['DRIVE', 'RECEIVE', 'REPORT']))).toEqual([
-      'board',
-      'receive-runs',
-      'report',
-      'schedule',
       'admin',
+      'schedule',
+      'report',
+      'receive-runs',
+      'my-shifts',
+      'board',
       'inbox',
     ]);
   });
 
-  it('gives a non-driving coordinator no Pick up card', () => {
+  it('gives a non-driving coordinator neither driver card', () => {
     // The board is not gone for them: §4 keeps it in the nav on every viewport, and
-    // the bottom bar falls back to it. The CARD is duty-derived, and "Pick up food"
-    // is not what a coordinator opens the board to do.
+    // the bottom bar falls back to it. Both driver CARDS are duty-derived, and
+    // claiming a run or booking a day off is not what a coordinator opens it to do.
     expect(ids(coordinator)).toEqual(['schedule', 'inbox']);
   });
 });
 
-describe('the six-card cap (D31)', () => {
-  // The cap is the reason D31 removed a card rather than reordering the grid: the
-  // hub exists for the phone, and a seventh card is what puts the last one under
-  // the fold on the surface that has no other route to it.
-  const MAX_CARDS = 6;
+describe('the seven-card cap (D31, raised by D50)', () => {
+  // The cap is the reason a new card is a decision rather than an addition: the hub
+  // exists for the phone, where it is the only route to the office screens, and one
+  // card past the cap is what puts the last one under the fold. D50 raised it by
+  // exactly one, which is what D49's second driver card costs and no more.
+  const MAX_CARDS = 7;
 
   it('enumerates the whole tier/duty space', () => {
     expect(everyone.length).toBe(24);
   });
 
-  it('gives the most-privileged account exactly six', () => {
+  it('gives the most-privileged account exactly seven', () => {
     expect(ids(user('ADMIN', ['DRIVE', 'RECEIVE', 'REPORT']))).toHaveLength(MAX_CARDS);
   });
 
-  it('never exceeds six, for any tier and duty combination', () => {
+  it('never exceeds seven, for any tier and duty combination', () => {
     for (const person of everyone) {
-      expect(
-        homeCardsFor(person).length,
-        `${person.tier}/${person.duties}`,
-      ).toBeLessThanOrEqual(MAX_CARDS);
+      expect(homeCardsFor(person).length, `${person.tier}/${person.duties}`).toBeLessThanOrEqual(
+        MAX_CARDS,
+      );
     }
   });
 
@@ -190,7 +197,8 @@ describe('the live-subtitle seam', () => {
   it('overrides one card without touching the others', () => {
     const cards = homeCardsFor(bothDuties, { 'receive-runs': '2 trucks waiting' });
     expect(cards.find((card) => card.id === 'receive-runs')?.subtitle).toBe('2 trucks waiting');
-    expect(cards.find((card) => card.id === 'board')?.subtitle).toBe(COPY.driveSubtitle);
+    expect(cards.find((card) => card.id === 'my-shifts')?.subtitle).toBe(COPY.driveSubtitle);
+    expect(cards.find((card) => card.id === 'board')?.subtitle).toBe(COPY.boardSubtitle);
   });
 });
 
@@ -236,7 +244,8 @@ describe('microcopy (§7)', () => {
   });
 
   it('never repeats a title in its own subtitle (D21)', () => {
-    for (const card of homeCardsFor(admin)) {
+    // The all-duty account, so the two driver cards are covered as well.
+    for (const card of homeCardsFor(user('ADMIN', ['DRIVE', 'RECEIVE', 'REPORT']))) {
       expect(card.subtitle.toLowerCase()).not.toBe(card.title.toLowerCase());
       expect(card.subtitle).not.toBe('');
     }

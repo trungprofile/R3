@@ -58,7 +58,11 @@ const SCREENS: ScreenRegistry = {
   'receive-runs': RunPickerScreen, // S2.1b
   'receive-stop': WeightEntryScreen, // S2.2
   'receive-done': ReceiveDoneScreen, // S2.2b
+  // S2.3, twice. One screen, two doors: a walk-in started from nothing and a
+  // driver's flag picked off S2.1b's list (`D76`). The screen tells them apart by
+  // whether the URL carried an id.
   donation: DonationScreen, // S2.3
+  'donation-weigh': DonationScreen, // S2.3
   // Phase 3. The registry is now complete: every screen in `ui-ux-spec.md §8` has
   // an entry, and `AppShell`'s Placeholder is unreachable through the nav.
   report: ReportScreen, // S3.1

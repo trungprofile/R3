@@ -703,6 +703,40 @@ describe('what a flagged pickup looks like afterwards', () => {
 });
 
 // ---------------------------------------------------------------------------
+// D65 — the completion review shows both halves of what was picked up
+// ---------------------------------------------------------------------------
+
+describe('D65 — the completion review', () => {
+  it('still builds the stop list from stops alone — the two are not merged', () => {
+    // I14 / I29: an UnscheduledDonation is not a ShiftStop. The modal renders two
+    // lists; `reviewLines` owns only the first and must never learn about the
+    // second, which is what keeps a driver-add off a route it was never on.
+    const lines = reviewLines(stops('COLLECTED', 'SKIPPED'));
+    expect(lines).toHaveLength(2);
+    expect(lines.map((line) => line.name)).not.toContain(donation().donorDisplay);
+  });
+
+  it('heads each list so the driver can tell which is which', () => {
+    expect(COPY.reviewStopsLabel.length).toBeGreaterThan(0);
+    expect(COPY.reviewExtrasLabel.length).toBeGreaterThan(0);
+    expect(COPY.reviewStopsLabel).not.toBe(COPY.reviewExtrasLabel);
+    // The extras heading says whose they are and that they were added, matching the
+    // vocabulary of the button that added them.
+    expect(COPY.reviewExtrasLabel.toLowerCase()).toContain('added');
+    expect(COPY.flagAdHoc.toLowerCase()).toContain('add');
+  });
+
+  it('renders an extra as a store line, with no disposition to show', () => {
+    // Same line the run screen shows, so a driver reads one spelling of the row in
+    // both places.
+    const line = flaggedLine(donation());
+    for (const disposition of SHIFTSTOP_DISPOSITIONS) {
+      expect(line).not.toContain(stopStatusLabel(disposition));
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 

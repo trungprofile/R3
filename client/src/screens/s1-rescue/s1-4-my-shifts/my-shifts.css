@@ -23,12 +23,58 @@
   margin: var(--space-5) 0 var(--space-3) 0;
 }
 
-.s14-panel {
-  margin-top: var(--space-4);
+/* `.s14-panel` went with the tab row it wrapped (D49). There is no tab row on this
+ * screen any more: "When I'm away" is a tab on the board, and its `Segmented`
+ * styling lives with the component. */
+
+/* --- Today (D49) ---------------------------------------------------------- */
+
+/* The band a driver is standing in front of. One card per run — usually one, and
+ * more than two would mean a very unusual day — stacked, never in a grid: a card
+ * beside another card is two things to choose between, and this is the job. */
+.s14-today-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
-/* The two tabs are `components/Segmented.tsx` in `mode="tabs"` (§3) — their
- * styling lives with the component, not here. */
+.s14-today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Route name and chip on one line, the chip pushed to the end — the same shape a
+ * `ListRow` has, so the card reads as a bigger version of the rows below it rather
+ * than as a different kind of object. */
+.s14-today__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.s14-today__route {
+  margin: 0;
+  font-size: var(--font-h2);
+}
+
+.s14-today__when {
+  margin: 0;
+  font-size: var(--font-h3);
+}
+
+.s14-today__truck {
+  margin: 0;
+  font-size: var(--font-body);
+  color: var(--text-muted);
+}
+
+/* The action is `Button block` (`--block` carries the full width); this only gives
+ * it room off the line above. */
+.s14-today .r3-btn {
+  margin-top: var(--space-2);
+}
 
 /* --- "When I'm away" ------------------------------------------------------ */
 

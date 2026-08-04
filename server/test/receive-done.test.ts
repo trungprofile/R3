@@ -257,6 +257,112 @@ describe('S2.2b — the summary', () => {
     expect(summary.runTotal).toBe('2192.00');
     expect(summary.readyForReceiveDone).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // `D47` — the receiver edit window, on the payload
+  // -------------------------------------------------------------------------
+
+  describe('the edit window the screen could not see (`D47`)', () => {
+    it('is open on a run that has just started', async () => {
+      const { shift } = await run(1);
+      expect((await readReceiveDone(shift.id)).editWindowOpen).toBe(true);
+    });
+
+    it('is closed once `receiver_edit_window_days` has passed since the start', async () => {
+      // The SAME predicate `requireWindowOpen` gates every receiver write on,
+      // surfaced rather than reimplemented. The run is still IN_PROGRESS — which
+      // is exactly the case that used to offer **Change a weight** and then have
+      // the write refused, because the client could see only that half.
+      const { shift } = await run(1);
+      await db
+        .updateTable('shift')
+        .set({ starts_at: new Date('2020-01-01T14:00:00Z') })
+        .where('id', '=', shift.id)
+        .execute();
+
+      const summary = await readReceiveDone(shift.id);
+      expect(summary.editWindowOpen).toBe(false);
+
+      // And the service still refuses the write, which is the actual rule — the
+      // payload field only stops the screen from walking someone into it.
+      const stop = (
+        await db.selectFrom('shift_stop').select('id').where('shift_id', '=', shift.id).execute()
+      )[0]!;
+      const { actor, category } = await run(1);
+      await expect(
+        addWeight(actor, shift.id, stop.id, { categoryId: category.id, weight: '10' }),
+      ).rejects.toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // `D46` — who signed off
+  // -------------------------------------------------------------------------
+
+  describe('the completion attribution (`D46`)', () => {
+    it('names nobody while the run is still open', async () => {
+      // `updated_by` on an open shift is merely the last person to touch it — a
+      // skip stamps it (see `skipStop`). Reporting that as "who finished the run"
+      // would name the wrong person for a run nobody has finished.
+      const { shift, stops, actor } = await run(2);
+      await skipStop(actor, shift.id, stops[0]!.id);
+
+      const summary = await readReceiveDone(shift.id);
+      expect(summary.completedBy).toBeNull();
+      expect(summary.completedAt).toBeNull();
+    });
+
+    it('names whoever confirmed receive-done, not whoever wrote last before it', async () => {
+      // The inference under test: on a COMPLETED shift the last writer IS the
+      // person who closed it, because I11 makes `receiveDone` the only writer of
+      // that transition and I10 makes COMPLETED terminal. Two different receivers
+      // here, so a summary that read `updated_by` at the wrong moment would name
+      // the first one.
+      const { shift, stops, category } = await run(2);
+      const first = await makeReceiver({ firstName: 'Ada', lastName: 'Skipper' });
+      const second = await makeReceiver({ firstName: 'Karen', lastName: 'Diaz' });
+
+      await skipStop(receiver(first.id), shift.id, stops[0]!.id);
+      await addWeight(receiver(first.id), shift.id, stops[1]!.id, {
+        categoryId: category.id,
+        weight: '100',
+      });
+      await receiveDone(receiver(second.id), shift.id);
+
+      const summary = await readReceiveDone(shift.id);
+      expect(summary.completedBy).toBe('Karen Diaz');
+      expect(summary.completedAt).not.toBeNull();
+      expect(Number.isNaN(Date.parse(summary.completedAt!))).toBe(false);
+    });
+
+    it('cannot be displaced afterwards, because COMPLETED is terminal (I10)', async () => {
+      // The load-bearing half. If any later write could land on this shift row,
+      // the name would silently become that writer's. I10 is what forbids it, and
+      // this pins the consequence rather than the invariant's wording.
+      const { shift, stops, actor, category } = await run(1);
+      await weighEverything(shift.id, stops, actor, category.id);
+      await receiveDone(actor, shift.id);
+
+      const before = await readReceiveDone(shift.id);
+
+      // Every receiver path there is, on a closed run.
+      const other = await makeReceiver({ firstName: 'Late', lastName: 'Comer' });
+      await expect(receiveDone(receiver(other.id), shift.id)).rejects.toThrow(/already finished/i);
+      await expect(
+        addWeight(receiver(other.id), shift.id, stops[0]!.id, {
+          categoryId: category.id,
+          weight: '1',
+        }),
+      ).rejects.toThrow(/already finished/i);
+      await expect(skipStop(receiver(other.id), shift.id, stops[0]!.id)).rejects.toThrow(
+        /already finished/i,
+      );
+
+      const after = await readReceiveDone(shift.id);
+      expect(after.completedBy).toBe(before.completedBy);
+      expect(after.completedAt).toBe(before.completedAt);
+    });
+  });
 });
 
 describe('the driver handoff still does not complete anything (I27)', () => {

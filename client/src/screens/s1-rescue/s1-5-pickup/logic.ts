@@ -514,7 +514,7 @@ export function truckLabel(truck: TruckSummary): string {
 }
 
 // ---------------------------------------------------------------------------
-// "Flag a stop not on my route" (cap 12, I14 / I17 / I29)
+// "Add an unscheduled stop not on my route" (cap 12, I14 / I17 / I29)
 // ---------------------------------------------------------------------------
 
 /**
@@ -791,8 +791,12 @@ export const COPY = {
   // Nothing here may promise anyone was told, for the same reason as above: the
   // flag writes a row the receiver finds on their own screen (S2.3). It sends no
   // alert of its own, and the truck-inbound one belongs to "Heading back".
-  flagAdHoc: 'Flag a stop not on my route',
-  flagTitle: 'A stop not on my route',
+  // D64-era vocabulary (D65's round): "flag" reads as reporting a problem, and this
+  // is not one — it is a store the driver picked up from. The verb is "add"
+  // everywhere the driver reads it. The COPY keys keep their `flag` names, which
+  // match `flagAdHocPickup` and the route behind it.
+  flagAdHoc: 'Add an unscheduled stop not on my route',
+  flagTitle: 'An unscheduled stop not on my route',
   flagStoreLabel: 'Which store?',
   // Kept: a driver looking for a store that is missing from the list cannot
   // otherwise tell whether it is absent or already handled.
@@ -801,19 +805,24 @@ export const COPY = {
   flagOtherStoreLabel: 'Store name',
   /** D24 took the anonymous option away, so "Other" cannot be finished without a
    *  name. Shown where the empty box is, not as a hint under the label. */
-  flagOtherStoreRequired: 'Type the store name to flag this pickup.',
+  flagOtherStoreRequired: 'Type the store name to add this pickup.',
   flagNoteLabel: 'Note for the pantry',
-  flagSubmit: 'Flag this pickup',
-  flagSuccess: 'Flagged. The pantry weighs it when you get back.',
+  flagSubmit: 'Add this pickup',
+  flagSuccess: 'Added. The pantry weighs it when you get back.',
   flagNoDonors: 'No stores to pick from.',
   flagNoDonorsNext: 'Type the store name instead, or ask an admin to add the store.',
   // I14: a driver-add writes no ShiftStop, so the label has to keep these apart
   // from the route above it. It is the label doing that job now, not a hint under
   // the list repeating it (D21).
-  flaggedListLabel: 'Extra pickups you flagged, not stops on your route',
+  flaggedListLabel: 'Extra pickups you added, not stops on your route',
+  /** D65: the same rows in the completion review, where the block above them is
+   *  the route's stops. Two headed lists, never one merged one — an
+   *  `UnscheduledDonation` is not a `ShiftStop` (I14, I29). */
+  reviewStopsLabel: 'Stops on your route',
+  reviewExtrasLabel: 'Extra pickups you added',
   // Kept: the list really does vanish on reload, and nothing on screen says the
   // rows are safe on the server.
-  flaggedListNote: 'This list clears if you reload. The pantry keeps what you flagged.',
+  flaggedListNote: 'This list clears if you reload. The pantry keeps what you added.',
 
   // --- nothing to do here -------------------------------------------------
   notClaimed: 'Nobody has claimed this run yet.',

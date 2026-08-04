@@ -246,46 +246,13 @@ export function confirmBody(draft: DonationDraft): ConfirmDonationRequest {
 }
 
 // ---------------------------------------------------------------------------
-// The worklist
+// Describing a row
 // ---------------------------------------------------------------------------
-
-export interface Worklist {
-  /** `SUGGESTED` — a driver flagged it mid-run and it is waiting for weights.
-   *  Shown first: these are the reason someone is on this screen. */
-  pending: DonationSummary[];
-  /** `CONFIRMED` and recent, so a correction is reachable without hunting. */
-  recorded: DonationSummary[];
-}
-
-/** Newest first in both halves — the same ordering the inbox uses, and the one
- *  that puts the row a driver just flagged at the top of the list. */
-function newestFirst(a: DonationSummary, b: DonationSummary): number {
-  return b.createdAt.localeCompare(a.createdAt);
-}
-
-export function splitWorklist(rows: readonly DonationSummary[]): Worklist {
-  return {
-    pending: rows.filter((row) => row.status === 'SUGGESTED').sort(newestFirst),
-    recorded: rows.filter((row) => row.status === 'CONFIRMED').sort(newestFirst),
-  };
-}
-
-/** Replace one row in place, or prepend it if it is new. Every write returns the
- *  updated row, so the list stays right without a second round trip. */
-export function upsertRow(
-  rows: readonly DonationSummary[],
-  row: DonationSummary,
-): DonationSummary[] {
-  const index = rows.findIndex((candidate) => candidate.id === row.id);
-  if (index < 0) return [row, ...rows];
-  const next = [...rows];
-  next[index] = row;
-  return next;
-}
-
-export function removeRow(rows: readonly DonationSummary[], id: string): DonationSummary[] {
-  return rows.filter((row) => row.id !== id);
-}
+//
+// `D76` moved the two lists to S2.1b, and the splitting and in-place row surgery
+// that fed them went with them — the picker re-reads instead, because it holds no
+// donation state of its own. What is left here is the one function BOTH screens
+// use to say what a row is, kept in this file so the sentence cannot fork.
 
 /** One line describing a row, for a list that has no room for a form. */
 export function describeRow(row: DonationSummary): string {
@@ -383,18 +350,29 @@ export const FORBIDDEN_IN_COPY = [
  * because the server refuses with the same words and a second copy would drift.
  */
 export const COPY = {
-  title: 'Unscheduled donation',
-  lede: 'Food that arrived outside a planned pickup. One weight per kind of food.',
-  loading: 'Loading donations',
+  loading: 'Loading this donation',
 
-  // --- the driver's prefills ---------------------------------------------
-  pendingHeading: 'Waiting for weights',
-  pendingHint: 'A driver flagged these on a run. Tap one to weigh it.',
-  pendingLabel: 'Donations waiting for weights',
+  // --- the header ---------------------------------------------------------
+  /** Which of the two doors this is, above the name. The pair mirrors S2.2's
+   *  `weighingLabel`, because it is the same act on the same layout (`D76`). */
+  weighingLabel: 'Weighing',
+  newLabel: 'Unscheduled donation',
+  /** There is no store yet on a walk-in — the picker below is where it is
+   *  chosen — so the heading names the KIND of arrival instead of leaving the
+   *  biggest text on the screen blank. */
+  newTitle: 'Walk-in donation',
+  /** The driver speaking, not a field label (`D68`). */
+  noteFrom: (name: string) => `${name}:`,
+  noteFromDriver: 'Driver:',
+
+  // --- the driver's row ---------------------------------------------------
   noWeightYet: 'no weight yet',
   /** D24: a driver's prefill carries no category, so the row has to say so rather
    *  than render an empty gap the receiver cannot interpret. */
   noCategoryYet: 'no kind of food yet',
+  /** On the weighing page, not on the list (`D76`): throwing a suggestion away is
+   *  a judgement about food that was or was not there, and the place to make it
+   *  is after opening the row, not while scanning past it. */
   discard: 'Discard',
   discardQuestion: 'Throw this one away?',
   discardConsequence:
@@ -403,10 +381,9 @@ export const COPY = {
   discarded: 'Thrown away.',
 
   // --- the form -----------------------------------------------------------
-  newHeading: 'Record a donation',
-  editHeading: 'Weigh this donation',
-  editHint: 'A driver started this one. Correct anything that looks wrong.',
-  startOver: 'Start a new one',
+  /** The left pane's accessible name — "what this is", as against the right
+   *  pane's "how much" (see `DonationForm.tsx`). */
+  aboutLabel: 'About this donation',
   categoryLabel: 'What kind of food?',
   categoryRequired: 'Pick what kind of food this is.',
   noCategories: 'No kinds of food are set up yet.',
@@ -441,16 +418,9 @@ export const COPY = {
   noDonorsHint: 'Type a name instead, or ask an admin to add the store.',
   archivedDonor: 'This store was removed from the list.',
 
-  // --- what has been recorded --------------------------------------------
-  recordedHeading: 'Recorded today',
-  recordedLabel: 'Donations already recorded',
-  reportedChip: 'Reported',
-  notReportedChip: 'Ours only',
-  stopReporting: 'Stop reporting it',
-  startReporting: 'Report it',
-  reportableSaved: 'Saved.',
-  nothingYet: 'Nothing recorded yet.',
-
   // --- leaving ------------------------------------------------------------
-  backToRuns: 'Back to the runs',
+  /** The BackLink's label (D43). A destination noun, not a sentence — the
+   *  chevron already says "back", and S2.1b is where this screen was opened
+   *  from. */
+  back: 'Runs',
 } as const;

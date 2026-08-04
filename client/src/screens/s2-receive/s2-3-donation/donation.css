@@ -17,29 +17,14 @@
  * `components/`, and two screens must never fight over a name.
  */
 
-.s23 {
-  max-width: 72rem;
-  margin: 0 auto;
-}
-
-.s23-head {
-  margin-bottom: var(--space-5);
-}
-
-.s23-title {
-  font-size: var(--font-h1);
-  margin: 0 0 var(--space-2) 0;
-}
-
-.s23-lede {
-  font-size: var(--font-body);
-  color: var(--text);
+/* The driver speaking, under the store name in the sheet header (`D68`). One
+ * paragraph, muted, wrapping to the full width of the head — it is context for
+ * the number about to be typed, not a field. */
+.s23-driver-note {
+  flex-basis: 100%;
   margin: 0;
-}
-
-.s23-heading {
-  font-size: var(--font-h2);
-  margin: 0 0 var(--space-2) 0;
+  font-size: var(--font-label);
+  color: var(--text-muted);
 }
 
 .s23-hint {
@@ -54,60 +39,10 @@
   margin: var(--space-2) 0 0 0;
 }
 
-/* --- the driver's prefills ------------------------------------------------ */
-
-.s23-prefills {
-  margin-bottom: var(--space-6);
-  background: var(--surface-paper);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  padding: var(--space-4);
-}
-
-/* Row + Discard side by side. The row itself is the target that loads the
- * prefill into the form (§3: the full row is the target), and Discard sits
- * outside it so a mis-tap cannot destroy anything. */
-.s23-prefill {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.s23-prefill > :first-child {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.s23-prefill.is-active {
-  outline: var(--focus-width) solid var(--brand-orange);
-  outline-offset: var(--focus-offset);
-  border-radius: var(--radius-control);
-}
-
-/* --- the form ------------------------------------------------------------- */
-
-.s23-form__head {
-  margin-bottom: var(--space-4);
-}
-
-/* Landscape tablet: the choices on the left, the number and the one action on
- * the right, so the keypad sits under the receiver's dominant hand and nothing
- * scrolls between picking a tile and typing a weight. */
-.s23-columns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-6);
-  align-items: flex-start;
-}
-
-.s23-column {
-  flex: 1 1 22rem;
-  min-width: 0;
-}
-
-.s23-column--entry {
-  flex: 0 1 24rem;
-}
+/* The prefill and recorded lists moved to S2.1b (`D76`), and the two-column grid
+ * went with them: the panes are `components/sheet.css`'s now, shared with S2.2, so
+ * this file styles the CONTENTS of the two columns and no longer their shape.
+ */
 
 .s23-field {
   margin-bottom: var(--space-5);
@@ -242,51 +177,36 @@
   color: var(--text-muted);
 }
 
-/* --- what has been recorded ---------------------------------------------- */
+/* --- the entry column (`D76`, mirroring S2.2's `.r3-pad`) ------------------- */
 
-.s23-recorded {
-  margin-top: var(--space-6);
+/* Keypad right, actions left. The row is DEFINITE — four keys and their three
+ * gaps — for the reason S2.2 records at `.r3-pad`: an `auto` row is as tall as its
+ * tallest item, so anything in the actions column that grows would grow the row
+ * rather than fill it, and the page would scroll by exactly the overflow. Written
+ * from the tokens rather than as 280px so it follows `--key-min` if §3's floor
+ * ever rises. */
+.s23-pad {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 17rem);
+  grid-template-rows: calc(var(--key-min) * 4 + var(--space-2) * 3);
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
 }
 
-.s23-recorded__row {
+.s23-pad__actions {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-3);
-  flex-wrap: wrap;
+  align-self: stretch;
+  min-height: 0;
 }
 
-.s23-recorded__row > :first-child {
-  flex: 1 1 18rem;
-  min-width: 0;
-}
-
-.s23-chip {
-  display: inline-block;
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-pill);
-  font-size: var(--font-label);
-  white-space: nowrap;
-}
-
-/* §2: white text passes on --success. */
-.s23-chip--reported {
-  background: var(--success);
-  color: var(--text-on-fill);
-}
-
-.s23-chip--ours {
-  background: var(--surface-paper);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-}
-
-.s23-closed {
-  flex: 1 1 14rem;
-  font-size: var(--font-label);
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.s23-foot {
-  margin-top: var(--space-6);
+/* Below the two-pane breakpoint the panes stack, and so does this: a keypad beside
+ * a Submit button in half a phone-width column would squeeze both. Same rule the
+ * panes above it use, at the same width. */
+@media (max-width: 55.99rem) {
+  .s23-pad {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
 }

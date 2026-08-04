@@ -37,7 +37,15 @@
 // receiver is working. The fetch still sends no date bound at all (A162).
 
 import { RECEIVE_RESOLVED_STATES } from '../../../api/shared.ts';
+// S2.3's own weight formatter (`145.00` → "145 lb", §7's units-always-shown), used
+// rather than copied: this card counts the rows that screen lists, and two
+// formatters would eventually print one number two ways.
+// `describeRow` and `canEdit` come with it for the same reason (`D76`): the rows
+// this panel lists are S2.3's rows, and a second way of describing them would drift.
+import { canEdit, describeRow, weightWithUnit } from '../s2-3-donation/donation.ts';
 import type {
+  DonationSummary,
+  ReceiveDonationSummary,
   ReceiveRunSummary,
   ReceiveStopState,
   ReceiveStopSummary,
@@ -92,9 +100,16 @@ export const COPY = {
 
   /** What the tap does, said on the card so it is not a guess. */
   nextStop: (donorName: string) => `Next: ${donorName}`,
-  /** S2.2b's name, verbatim — the same words on the button that leads there. */
-  receiveDone: 'Receive done',
-  receiveDoneHint: 'All stops done',
+  /**
+   * The label on the tap that leads to S2.2b.
+   *
+   * It used to be composed as "All stops done, Receive done" — a completed FACT
+   * followed by a screen name, which reads as "this run is closed" and made the
+   * receiver wonder why the tap still worked. This is a label on an ACTION and now
+   * says the action. The band it sits in ("Ready to finish") is what states the
+   * fact, once, in the place that is allowed to.
+   */
+  finishRun: 'Finish this run',
 
   /** S2.1b: "[ Unscheduled donation ] (goes to S2.3, no run needed)". */
   unscheduled: 'Unscheduled donation',
@@ -112,6 +127,32 @@ export const COPY = {
    *  with nothing on the outside is a thing nobody opens. */
   bandLaterCount: (count: number) => `Later this week (${count})`,
 
+  /** `D66`'s fourth band. Named for what the group IS, like the other three: these
+   *  runs are past the receiver's edit window, so no weight can go on them any
+   *  more, and the one thing left to do is close them. */
+  bandLapsed: 'Too late to weigh',
+  bandLapsedCount: (count: number) => `Too late to weigh (${count})`,
+
+  /** Runs closed today, kept on the screen read-only.
+   *
+   *  Names what the group IS, like every other heading, and does not say "today"
+   *  — the band's membership is the pantry's current day but its heading is not a
+   *  statement about a clock (the date rule at the top of this file). "Weighed"
+   *  rather than "finished" because what the receiver is looking back at is their
+   *  own work, not the run's status. */
+  bandClosed: 'Weighed and closed',
+  bandClosedCount: (count: number) => `Weighed and closed (${count})`,
+  /** On the card, so a row with no action says why it has none. */
+  closedNotice: 'This run is finished. These are the weights the report will use.',
+  /** Why the run is in that band, on the card, in the words a receiver would use.
+   *  The second sentence is the important half: the run is not stuck. */
+  lapsedNotice: 'The weighing window has closed. You can still finish this run.',
+
+  /** `D48`, on the picker. The driver has confirmed heading back, which is a
+   *  milestone inside the run (I27) and not a status — so this replaces the
+   *  progress line on the card and changes nothing else. */
+  returning: 'Driver is returning to the pantry',
+
   /** Read out when a screen reader reaches the row, which it hears without the
    *  surrounding card. */
   runAria: (label: string, when: string, count: string, action: string) =>
@@ -120,6 +161,56 @@ export const COPY = {
   loading: 'Loading runs',
   /** The list's own name, for a screen reader counting rows. */
   listLabel: 'Runs waiting to be weighed',
+
+  /** `D67`, widened to a panel by `D76` — the unscheduled donations.
+   *
+   *  NOT "recorded today" any more, and the change is not cosmetic. A driver's
+   *  flag carries its RUN's date, so a suggestion weighed off a Wednesday run is
+   *  not recorded today — and while this said "today" it vanished from the panel
+   *  at the moment it was weighed. Both lists are the receiver's edit window now
+   *  (`D77`), and the words say what the panel actually holds. It also means this
+   *  screen no longer has a string exempt from the never-say-today rule at the top
+   *  of this file. */
+  donationRecorded: (count: number, weight: string) => `${count} weighed · ${weight}`,
+  donationNone: 'Nothing weighed yet.',
+  donationLabel: 'Donations with no run',
+
+  /** The two lists, separated (`D76`), and named as a pair: one is work waiting,
+   *  the other is the same work done. A suggestion is somebody else's unfinished
+   *  business and a recorded row is finished business, and running them together
+   *  was the thing that made neither legible. */
+  suggestedHeading: 'Waiting for weights',
+  /** Why these rows exist, in the words of the person who made them. Kept from
+   *  S2.3 verbatim: the sentence was never wrong, only in the wrong place. */
+  suggestedHint: 'A driver flagged these on a run. Tap one to weigh it.',
+  suggestedCount: (count: number) => `Waiting for weights (${count})`,
+  recordedHeading: 'Already weighed',
+  recordedNone: 'Nothing weighed yet.',
+
+  /** Who flagged it, so a receiver can ask them. `D68` settled this shape on the
+   *  weighing sheet — a note reads as a person speaking, not as a field. */
+  flaggedBy: (name: string) => `${name} flagged this`,
+  flaggedByNote: (name: string, note: string) => `${name}: ${note}`,
+
+  /** The walk-in path, moved off S2.3 (`D76`). It says WALK-IN rather than S2.3's
+   *  old "Record a donation": on a screen that now lists donations, a button
+   *  reading "Record a donation" beside them reads as an instruction about the
+   *  list. This one names the kind of donation only this button can start —
+   *  the other kind arrives from a driver. */
+  addWalkIn: 'Add walk-in donation',
+
+  /** On a recorded row. Same words S2.3 used, because it is the same switch. */
+  reportedChip: 'Reported',
+  notReportedChip: 'Ours only',
+  stopReporting: 'Stop reporting it',
+  startReporting: 'Report it',
+  discard: 'Discard',
+
+  /** The affordance on a suggested row — an ACTION, the way `finishRun` is. The
+   *  heading beside it states the fact; this states what the tap does. */
+  weighGo: 'Weigh it',
+
+  suggestedAria: (donor: string, detail: string) => `${donor}, ${detail}. Tap to weigh it.`,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -326,10 +417,21 @@ export function doneLabel(run: ReceiveRunSummary): string {
  *   - `WEIGH` while any stop is unresolved.
  *   - `NONE` for a run with no stops at all: it can be neither weighed nor closed,
  *     so the card offers no target rather than a tap that leads nowhere.
+ *
+ * `D66` adds one term ahead of all of them: once the edit window has closed there
+ * is no weighing left to offer, whatever the stops say, because every receiver
+ * write is refused past it. Closing the run is not an edit and is not gated, so
+ * that is what the card offers instead — which is the whole reason a lapsed run
+ * stays on this list at all (A162).
  */
 export type RunAction = 'WEIGH' | 'RECEIVE_DONE' | 'NONE';
 
 export function runAction(run: ReceiveRunSummary): RunAction {
+  // A run closed today is on the list to be READ, not worked. `COMPLETED` is
+  // terminal (I10), so every action below is already impossible; saying so here
+  // keeps the card from offering one the server would refuse.
+  if (run.closed) return 'NONE';
+  if (!run.editWindowOpen) return run.stops.length > 0 ? 'RECEIVE_DONE' : 'NONE';
   if (run.readyForReceiveDone) return 'RECEIVE_DONE';
   return firstUnresolvedStop(run.stops) ? 'WEIGH' : 'NONE';
 }
@@ -343,7 +445,13 @@ export interface RunTarget {
 }
 
 export function runTarget(run: ReceiveRunSummary): RunTarget | null {
-  if (run.readyForReceiveDone) {
+  // Closed: S2.2b, which is its read-only summary — who signed off, and the
+  // weights the report will use (`D46`). It is a look, not a step.
+  if (run.closed) return { screen: 'receive-done', params: { shiftId: run.shiftId } };
+  if (run.readyForReceiveDone || (!run.editWindowOpen && run.stops.length > 0)) {
+    // A lapsed run goes to S2.2b even when a stop is still unresolved: that screen
+    // is where the outstanding stops are named, and it refuses the close itself
+    // (I12) rather than this screen guessing at the gate.
     return { screen: 'receive-done', params: { shiftId: run.shiftId } };
   }
   const next = firstUnresolvedStop(run.stops);
@@ -363,7 +471,13 @@ export function runTarget(run: ReceiveRunSummary): RunTarget | null {
 export function targetForStops(
   shiftId: string,
   stops: readonly ReceiveStopSummary[],
+  /** `D66` — false once the edit window has closed, in which case a freshly-read
+   *  unresolved stop changes nothing: there is still no weighing to offer. */
+  editWindowOpen = true,
 ): RunTarget | null {
+  if (!editWindowOpen) {
+    return stops.length > 0 ? { screen: 'receive-done', params: { shiftId } } : null;
+  }
   const next = firstUnresolvedStop(stops);
   if (next) return { screen: 'receive-stop', params: { shiftId, stopId: next.id } };
   return stops.length > 0 ? { screen: 'receive-done', params: { shiftId } } : null;
@@ -384,11 +498,15 @@ export interface RunCardView {
   /** "Riverside · Tuesday, April 23 · 9:00 AM – 11:00 AM". */
   subtitle: string;
   stops: StopDotView[];
-  /** "2 of 3 done", or the no-stops sentence. */
+  /** "2 of 3 done", the no-stops sentence, or — once the driver has confirmed
+   *  heading back — `COPY.returning` in place of all of it (`D48`, I27). */
   count: string;
   action: RunAction;
-  /** What the tap does, in words: "Next: Kroger" / "Receive done". */
+  /** What the tap does, in words: "Next: Kroger" / "Finish this run". */
   actionLabel: string;
+  /** Why this run is where it is, when that needs saying. Only `D66`'s lapsed
+   *  runs have one; null everywhere else. */
+  notice: string | null;
   target: RunTarget | null;
   ariaLabel: string;
 }
@@ -398,18 +516,38 @@ export function toCard(run: ReceiveRunSummary, timeZone?: string | null): RunCar
   const next = firstUnresolvedStop(run.stops);
   const label = runLabel(run, timeZone);
   const subtitle = runSubtitle(run, timeZone);
-  const count = run.totalCount === 0 ? COPY.noStops : doneLabel(run);
+  // `pickupCompletedAt` LEADS, ahead of the progress count: a driver on the way
+  // back with the food is the thing the receiver at the counter needs to know, and
+  // it is presentation only — the run is still IN_PROGRESS (I27).
+  //
+  // But only while there is still something to arrive. `pickup_completed_at` is
+  // set once and never cleared, so on its own it says "returning" forever — QA
+  // found a run from a fortnight earlier, every stop weighed, announcing that its
+  // driver was on the way back. They got back; the receiver weighed what they
+  // brought. Once every stop is resolved the food is in the building, and the
+  // sentence is not merely stale but false. Tied to the stops rather than to a
+  // clock, because that is the thing that actually makes it untrue.
+  const count =
+    run.pickupCompletedAt !== null && !run.readyForReceiveDone
+      ? COPY.returning
+      : run.totalCount === 0
+        ? COPY.noStops
+        : doneLabel(run);
   const actionLabel =
     action === 'RECEIVE_DONE'
-      ? COPY.receiveDone
+      ? COPY.finishRun
       : action === 'WEIGH' && next
         ? COPY.nextStop(next.donorName)
         : '';
+  // Closed wins: a run closed today is also past nothing in particular, and
+  // "the weighing window has closed" would be the less useful of two true things.
+  const notice = run.closed ? COPY.closedNotice : run.editWindowOpen ? null : COPY.lapsedNotice;
 
   return {
     run,
     label,
     subtitle,
+    notice,
     stops: orderStops(run.stops).map((stop) => ({
       id: stop.id,
       donorName: stop.donorName,
@@ -420,7 +558,14 @@ export function toCard(run: ReceiveRunSummary, timeZone?: string | null): RunCar
     action,
     actionLabel,
     target: runTarget(run),
-    ariaLabel: COPY.runAria(label, subtitle, count, actionLabel),
+    // The notice is read out too: a screen reader hears the row without the band
+    // heading around it, so "too late to weigh" would otherwise be lost.
+    ariaLabel: COPY.runAria(
+      label,
+      subtitle,
+      count,
+      notice === null ? actionLabel : `${notice} ${actionLabel}`.trim(),
+    ),
   };
 }
 
@@ -486,18 +631,48 @@ export function toCards(
  * disclosure that is closed by default is exactly how it stays unclosed, which is
  * the same reason `compareRuns` leads with the oldest.
  */
-export type RunBand = 'EXPECTED' | 'FINISHED' | 'LATER';
+export type RunBand = 'EXPECTED' | 'FINISHED' | 'LATER' | 'LAPSED' | 'CLOSED';
 
 export function bandFor(run: ReceiveRunSummary, today: string): RunBand {
+  // `D66`'s band is decided FIRST and by the window alone, never by the calendar.
+  // A run is lapsed because `starts_at + receiver_edit_window_days` has passed —
+  // the server's own predicate, arriving as `editWindowOpen` — and NOT because its
+  // date is behind today. Those are different questions, and answering this one
+  // with a `today` comparison would put a run received at 12:30am the next morning
+  // in the wrong band, which is exactly the case A162 exists for.
+  //
+  // Readiness is asked FIRST, though, because a run with every stop resolved has
+  // nothing left to weigh and so cannot be too late to weigh it. The window costs
+  // such a run nothing: its only remaining action is receive-done, which is not
+  // window-gated. QA saw a fully-weighed run filed under "Too late to weigh",
+  // which told the receiver they had missed something when nothing had been
+  // missed and one tap would close it.
+  //
+  // What that leaves in the lapsed band is exact and worth knowing: only runs the
+  // window actually took something from — runs with an unresolved stop, which are
+  // precisely the ones nobody can resolve or close (`phases-1-3.md §3.4`). The
+  // band is now a list of the stuck, not a list of the old.
+  // Closed today: its own band, below the work and above nothing. Asked first
+  // because a closed run is not a state of the job any more — it is the record of
+  // one, and every question below it is about what is still to do.
+  if (run.closed) return 'CLOSED';
+  if (run.readyForReceiveDone && run.occurrenceDate <= today) return 'FINISHED';
+  if (!run.editWindowOpen) return 'LAPSED';
   if (run.occurrenceDate > today) return 'LATER';
   // I12's gate, as the server answered it — not recomputed here (see `runAction`).
-  return run.readyForReceiveDone ? 'FINISHED' : 'EXPECTED';
+  return 'EXPECTED';
 }
 
 export interface RunBands {
   expected: RunCardView[];
   finished: RunCardView[];
   later: RunCardView[];
+  /** `D66` — past the edit window. Collapsed by default like `later`, and never
+   *  dropped: this band is the only route to receive-done for these runs. */
+  lapsed: RunCardView[];
+  /** Closed today — read-only, so the receiver can look back at their own shift
+   *  instead of watching a run vanish the moment they confirmed it. */
+  closed: RunCardView[];
 }
 
 /** The list, split into `D38`'s bands, each one still in `compareRuns` order so
@@ -507,15 +682,119 @@ export function toBands(
   today: string,
   timeZone?: string | null,
 ): RunBands {
-  const bands: RunBands = { expected: [], finished: [], later: [] };
+  const bands: RunBands = { expected: [], finished: [], later: [], lapsed: [], closed: [] };
   for (const run of orderRuns(runs)) {
     const card = toCard(run, timeZone);
     const band = bandFor(run, today);
-    if (band === 'LATER') bands.later.push(card);
+    if (band === 'CLOSED') bands.closed.push(card);
+    else if (band === 'LAPSED') bands.lapsed.push(card);
+    else if (band === 'LATER') bands.later.push(card);
     else if (band === 'FINISHED') bands.finished.push(card);
     else bands.expected.push(card);
   }
   return bands;
+}
+
+// ---------------------------------------------------------------------------
+// The unscheduled-donation panel (`D67`, widened to rows by `D76`)
+// ---------------------------------------------------------------------------
+
+/**
+ * One driver-flagged donation still waiting for its weight.
+ *
+ * `detail` is S2.3's own `describeRow`, so the row says the same thing here as on
+ * the screen it opens. For a `SUGGESTED` row that is "no kind of food yet · no
+ * weight yet" — which reads as an empty form rather than as missing data, and is
+ * exactly what the receiver is about to fill in (D24, I16a).
+ *
+ * `attribution` is the driver, and their note when they left one. It is the whole
+ * reason this list is on the picker rather than behind a tap: a suggestion is
+ * somebody else's message about food that is already in the building.
+ */
+export interface SuggestedRowView {
+  id: string;
+  donor: string;
+  detail: string;
+  attribution: string | null;
+  ariaLabel: string;
+}
+
+/** One donation already weighed today. */
+export interface RecordedRowView {
+  id: string;
+  donor: string;
+  detail: string;
+  /** "Reported" / "Ours only" — I15's flag, as a chip. */
+  chip: string;
+  reported: boolean;
+  /**
+   * The label on the switch, or null once the receiver's window has shut on that
+   * row. Null means the row is read-only HERE, not that the flag is frozen: after
+   * the window closes the Reporter still owns it from S3.1 (PRD cap 15).
+   */
+  toggleLabel: string | null;
+}
+
+/**
+ * Everything the panel draws, from one fetch.
+ *
+ * Read-only shaping of rows and counts the server already decided. Nothing here
+ * chooses what is reportable, what is still weighable (`D77`'s window bound is the
+ * server's), or what a walk-in weighs. The weight arrives as a decimal string and
+ * is printed as one (§7: units always shown).
+ */
+export interface DonationPanelView {
+  title: string;
+  /** "2 recorded today · 145 lb", or the nothing-yet sentence. */
+  summary: string;
+  suggested: SuggestedRowView[];
+  recorded: RecordedRowView[];
+  /** Heading carrying its own count, so a full list announces itself. */
+  suggestedHeading: string;
+  addLabel: string;
+}
+
+function attributionFor(row: DonationSummary): string | null {
+  if (!row.createdByName) return null;
+  return row.note ? COPY.flaggedByNote(row.createdByName, row.note) : COPY.flaggedBy(row.createdByName);
+}
+
+export function toDonationPanel(summary: ReceiveDonationSummary | null): DonationPanelView {
+  // Null while the fetch is in flight, or after it failed. The panel still renders:
+  // it carries the only route to S2.3 (the nav entry is gone), and "Add walk-in
+  // donation" must not wait on a count to become tappable.
+  const suggested = (summary?.suggested ?? []).map((row) => {
+    const detail = describeRow(row);
+    return {
+      id: row.id,
+      donor: row.donorDisplay,
+      detail,
+      attribution: attributionFor(row),
+      ariaLabel: COPY.suggestedAria(row.donorDisplay, detail),
+    };
+  });
+
+  const recorded = (summary?.recorded ?? []).map((row) => ({
+    id: row.id,
+    donor: row.donorDisplay,
+    detail: describeRow(row),
+    chip: row.reportable ? COPY.reportedChip : COPY.notReportedChip,
+    reported: row.reportable,
+    toggleLabel: canEdit(row) ? (row.reportable ? COPY.stopReporting : COPY.startReporting) : null,
+  }));
+
+  return {
+    title: COPY.unscheduled,
+    summary:
+      summary === null || summary.recordedCount === 0
+        ? COPY.donationNone
+        : COPY.donationRecorded(summary.recordedCount, weightWithUnit(summary.recordedTotal)),
+    suggested,
+    recorded,
+    suggestedHeading:
+      suggested.length > 0 ? COPY.suggestedCount(suggested.length) : COPY.suggestedHeading,
+    addLabel: COPY.addWalkIn,
+  };
 }
 
 // ---------------------------------------------------------------------------

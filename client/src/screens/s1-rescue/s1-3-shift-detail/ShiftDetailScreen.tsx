@@ -10,6 +10,11 @@
 //                stops (I30). No release: releasing is the driver's own capability
 //                (cap 8), and staff clearing an owner is `unassign`, on S1.6.
 //
+// D59: those two faces are decided per PERSON, not per capability. A staff member
+// who owns the run is the driver it is about, so the screen drops what describes
+// them to themselves — the Driver row and the note editor — and keeps the note
+// itself, read-only, because it was written to them.
+//
 // A viewer who is neither still reads the run. `GET /shifts/:id` is declared at
 // VOLUNTEER because the board is a shared surface (cap 5) and this screen is where a
 // row opens; every action on it is authorized again server-side.
@@ -238,8 +243,14 @@ export function ShiftDetailScreen({ params }: ScreenProps) {
 
       <Card ariaLabel={COPY.whenLabel}>
         <dl className="s13__facts">
-          <dt>{COPY.driverLabel}</dt>
-          <dd>{shift.ownerName ?? COPY.noDriver}</dd>
+          {/* D59: not shown to the driver themselves — a screen does not name you
+              back to you. Staff and anyone else reading someone's run still get it. */}
+          {capabilities.showDriverRow ? (
+            <>
+              <dt>{COPY.driverLabel}</dt>
+              <dd>{shift.ownerName ?? COPY.noDriver}</dd>
+            </>
+          ) : null}
           <dt>{COPY.truckLabel}</dt>
           {/* I8: no truck until the driver picks one at the start. */}
           <dd>{shift.truckName ?? COPY.unset}</dd>

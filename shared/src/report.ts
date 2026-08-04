@@ -223,6 +223,17 @@ export interface ReportEntry {
   kind: 'WEIGHT' | 'DONATION';
   /** `YYYY-MM-DD` — `report_day`, not `created_at` (`data-model.md §8`). */
   day: string;
+  /**
+   * The store's own id, null for a free-text walk-in label or the anonymous bucket.
+   *
+   * On the payload since `D55` for one reason: `(day, donorId)` is the RECEIPT's key,
+   * so this is what lets S3.1 put an entry under the receipt it belongs to without
+   * matching on a display name. The server groups its receipts on exactly this pair
+   * (`receiptKey`, `services/report.ts`), falling back to the label when the id is
+   * null — and the screen has to key the same way or a correction lands on the wrong
+   * card.
+   */
+  donorId: string | null;
   donorName: string;
   /** NTFB's own number for this store, as its donor picker shows it — `810` for
    *  `H-E-B Food Stores (810)`. Null for a store nobody has recorded one for, and
@@ -381,6 +392,19 @@ export interface Receipt {
    * store Meal Connect's own picker cannot be pointed at.
    */
   submitted: ReceiptSubmission | null;
+  /**
+   * The confirmed walk-in donations behind a LABEL-ONLY receipt — the ones a receiver
+   * typed a store name into rather than picking a store (`D72`).
+   *
+   * Empty for every receipt that already has a store, and empty for a receipt built
+   * only from scheduled stops. It exists so the reporter can point the whole card at a
+   * real store in one action: the receipt is keyed `(pickup date, donor)` and merging
+   * it into a store's card means re-pointing every donation that formed it, together.
+   *
+   * `donor_label` is KEPT when that happens — it records what the receiver actually
+   * typed, and `I16(b)` is satisfied either way (source non-null → source non-null).
+   */
+  labelDonationIds: string[];
 }
 
 /** One receipt's check-off (`D35`). Un-ticking DELETES the row, which is what makes
@@ -402,6 +426,84 @@ export interface ReceiptSubmissionRequest {
   donorId: string;
 }
 
+/**
+ * Point a label-only walk-in at a real store (`D72`).
+ *
+ * A whole receipt at a time, because that is the unit the reporter is looking at: the
+ * card is `(pickup date, label)` and half of it moving to a store while the other half
+ * stayed behind would be two cards where there was one. All of them or none.
+ *
+ * `donor_label` is not sent. The service clears it — `ck_ud_source_exclusive`
+ * (migration 0011) is `donor_id IS NULL OR donor_label IS NULL`, and `data-model.md
+ * §7` derives the source discriminator from which of the two is set, so a row holding
+ * both is a state nothing reads. The typed name is folded into the donation's note
+ * instead, where it reaches the receipt as a `DONATION` note and the reporter can
+ * still see what the receiver wrote down.
+ */
+export interface AttachDonorRequest {
+  /** Every donation behind the card, from `Receipt.labelDonationIds`. */
+  donationIds: string[];
+  /** An ACTIVE store. Donors are admin master data (I21); a reporter picks, never adds. */
+  donorId: string;
+}
+
+/** How the typed-in store name is kept once `donor_label` has to be cleared. Shared so
+ *  the note the server writes and anything that reads it back cannot drift. */
+export const ATTACH_LABEL_NOTE_PREFIX = 'Written down as';
+
+/** `I16(b)` is not the obstacle here — an anonymous row has no name to re-point, and
+ *  inventing a store for food nobody attributed is the one thing this action must not
+ *  do. Refused with this rather than with a constraint error. */
+export const ATTACH_ANONYMOUS_MESSAGE =
+  'Nobody wrote down where this came from, so there is nothing to file under a store.';
+
+/** The row already has a store. Re-pointing one store at another is a different
+ *  question, and not one the report answers. */
+export const ATTACH_ALREADY_MESSAGE = 'That pickup already has a store.';
+
+/**
+ * One confirmed walk-in the pantry decided NOT to report (`D56`).
+ *
+ * **It is not a receipt and must never be turned into one.** The report union is
+ * `WeightEntry[!voided] ∪ UnscheduledDonation[CONFIRMED ∧ reportable]`
+ * (`domain-modeling.md §6`, locked), so a donation with the switch off contributes
+ * nothing to any line, any total or any card — which is exactly why it needed its own
+ * list. Before `D56` there was no row on S3.1 for the reporter to flip, and "move the
+ * unreported donation to a reported one" was a thing the screen simply could not do.
+ *
+ * Merging these into `receipts` would break the conservation property `D27` rests on
+ * and put unreported weight on a submission to the food bank. So they travel beside
+ * the receipts, clearly marked, and flipping one on moves it into the reported union
+ * on the NEXT read rather than by anything this list does.
+ *
+ * `weight` is the raw `numeric(8,2)` string, NOT whole pounds: `D28`'s rounding is a
+ * property of a receipt line, and this is outside the reported set by definition.
+ */
+export interface UnreportedDonation {
+  id: string;
+  /** `YYYY-MM-DD` — `received_date`, the walk-in's own report day. */
+  receivedDate: string;
+  /** The master donor's name, the free-text label, or the "Unattributed" bucket. */
+  donorName: string;
+  categoryName: string;
+  weight: string;
+  /** Who logged it (I26), so an unfamiliar row has somebody to ask about. */
+  receiverName: string;
+  note: string | null;
+  /**
+   * Whether this row can be turned on at all — `I16(b)`: `CONFIRMED ∧ reportable=true
+   * ⇒ source non-null`.
+   *
+   * False only for an ANONYMOUS walk-in: no donor and no label, so there is nothing
+   * for the food bank to attribute the food to. Sent rather than re-derived on the
+   * screen because the rule is enforced in `setReportable` and a second copy of it in
+   * the browser would be free to disagree; the screen uses this to SAY WHY instead of
+   * offering a control that fails, the same courtesy `D35` gives a receipt with no
+   * store to file it under.
+   */
+  canReport: boolean;
+}
+
 /** The range's receipts, in the order they are typed: date, then store. */
 export interface ReportExport {
   /** `YYYY-MM-DD`, inclusive, pantry-local — the same window `WeeklyReport` carries
@@ -409,6 +511,10 @@ export interface ReportExport {
   from: string;
   to: string;
   receipts: Receipt[];
+  /** Confirmed walk-ins with the report switch OFF (`D56`). Outside the reported
+   *  union, and outside every total on this payload — material for S3.1's second
+   *  section, not for a submission. */
+  notReported: UnreportedDonation[];
 }
 
 /**

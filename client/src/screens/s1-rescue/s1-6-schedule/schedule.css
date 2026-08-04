@@ -155,6 +155,12 @@
   padding-left: var(--space-3);
 }
 
+/* The way out sits at the top of an open editor (D43) and carries no bottom
+ * margin of its own, so the editor supplies the gap under it. */
+.s16-list-editor > .r3-back {
+  margin-bottom: var(--space-2);
+}
+
 /* The scope control: this run, or the rule it came from (I23/I24). */
 .s16-scope {
   margin-bottom: var(--space-4);
@@ -448,3 +454,109 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+/* --- The calendar view (D73) ---------------------------------------------- */
+
+.s16-cal > * + * {
+  margin-top: var(--space-4);
+}
+
+.s16-cal__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.s16-cal__label {
+  font-size: var(--font-h3);
+}
+
+/* One column per weekday, matching the grid under it. Both are Monday-first
+ * (A178), because the Runs list beside them cuts the week there too. */
+.s16-cal__weekdays,
+.s16-cal__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1);
+}
+
+/* The header row and the grid are one thing; the panel's own rhythm sits above
+ * the pair rather than between them. */
+.s16-cal__weekdays + .s16-cal__grid {
+  margin-top: var(--space-1);
+}
+
+/* A cell is at least a target tall even when empty, so the grid keeps its shape
+ * on a quiet week; runs stack inside it and the cell grows to fit them. */
+.s16-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: calc(var(--target-min) * 1.6);
+  padding: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+/* The neighbouring month's days in a six-week grid. Faint, still a target: a run
+ * really is scheduled on them. */
+.s16-cell--outside {
+  background: transparent;
+}
+
+.s16-cell--outside .s16-cell__day {
+  color: var(--text-muted);
+}
+
+.s16-cell__day {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.s16-cell__runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Route and driver, and nothing else (D73). Two lines at most, then it clips —
+ * a cell that grows with the name stops the grid reading as a calendar. */
+.s16-cell__run,
+.s16-cal__row {
+  display: block;
+  width: 100%;
+  min-height: var(--target-min);
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  font-size: var(--font-label);
+  text-align: left;
+  color: var(--text);
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand-orange);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.s16-cal__row {
+  font-size: var(--font-body);
+  min-height: var(--row-min);
+}
+
+/* The open run, in two channels rather than colour alone (§2). */
+.s16-cell__run--open,
+.s16-cal__row--open {
+  border-color: var(--brand-orange);
+  border-left-width: 4px;
+  font-weight: 700;
+}
+
+/* Below the tablet breakpoint the grid is gone entirely (`RunCalendar.tsx`) and
+ * the range reads as a day-grouped list, so there is nothing here to squeeze:
+ * seven columns at 375px is unreadable and S1.6 is a desk screen (§8). */

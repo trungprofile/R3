@@ -16,6 +16,8 @@
 
 import { api } from '../../../api/index.ts';
 import type {
+  AttachDonorRequest,
+  DonorSummary,
   ReceiptSubmissionRequest,
   ReportEntry,
   ReportExport,
@@ -45,21 +47,25 @@ export function fetchReport(range: RangeQuery | null, signal: AbortSignal): Prom
 }
 
 /**
- * The drill-in — Success Metric 4's "100% of line items resolve to a
- * store-category-day", narrowed to one AGFP category.
+ * Every entry in the range — Success Metric 4's "100% of line items resolve to a
+ * store-category-day".
  *
- * Narrowed by AGFP category and not by NTFB category because that is the grain
- * the route offers, and it is also the grain that answers the question: two AGFP
- * categories can share one NTFB bucket, so "which entries made this number" is
- * only well-posed one level down.
+ * ASKED ONCE FOR THE WHOLE RANGE (D55), not once per card. The drill-in narrowed
+ * this to one AGFP category because it WAS one category; the receipt is a
+ * `(pickup date, donor)` and its entries are sifted on the client
+ * (`entriesForReceipt`), which keeps a request out from between a reporter and the
+ * number they came to fix. A fortnight is a few hundred rows.
+ *
+ * `categoryId` stays on the signature because the ROUTE still offers it and this is
+ * the only caller; nothing on S3.1 passes it today.
  */
 export function fetchEntries(
   range: RangeQuery | null,
-  categoryId: string,
   signal: AbortSignal,
+  categoryId?: string,
 ): Promise<ReportEntry[]> {
   return api.get<ReportEntry[]>('/report/entries', {
-    query: { ...rangeQuery(range), categoryId },
+    query: { ...rangeQuery(range), ...(categoryId === undefined ? {} : { categoryId }) },
     signal,
   });
 }
@@ -69,18 +75,21 @@ export function fetchEntries(
  * a plain overwrite on screen.
  *
  * Deliberately not gated on the receiver's edit window (D14): after that window
- * closes this is the only remaining way to fix a bad number (PRD cap 15). Returns
- * the category's entries as they now stand, so the drill-in re-renders from the
- * server's answer rather than from a guess about what the write did.
+ * closes this is the only remaining way to fix a bad number (PRD cap 15).
+ *
+ * IT ANSWERS WITH THE CATEGORY'S ENTRIES AND S3.1 NO LONGER READS THEM (D54). The
+ * response was the drill-in's own re-render, back when the panel was one category;
+ * a receipt spans several, so the screen re-reads the range and the receipt sheet
+ * together instead — a revised weight moves a receipt line, its total and possibly
+ * the trash deduction (D27), and only the server settles all three. The route is
+ * unchanged: this is what the screen does with the answer, not what the service
+ * sends.
  */
 export function reviseWeight(
   id: string,
   body: ReviseEntryRequest,
   range: RangeQuery | null,
 ): Promise<ReportEntry[]> {
-  // The range rides along so the entries that come back are the panel the Reporter
-  // is standing in front of, narrowed to the category they have open — it used to
-  // answer with a whole week across every category (D41).
   return api.put<ReportEntry[]>(`/report/weights/${encodeURIComponent(id)}`, {
     body,
     query: rangeQuery(range),
@@ -144,4 +153,33 @@ export function markSubmitted(body: ReceiptSubmissionRequest): Promise<void> {
 
 export function clearSubmitted(body: ReceiptSubmissionRequest): Promise<void> {
   return api.delete<void>('/report/submissions', { body });
+}
+
+// ---------------------------------------------------------------------------
+// Pointing a label-only walk-in at a real store (D72)
+// ---------------------------------------------------------------------------
+
+/**
+ * The stores a walk-in can be filed under: ACTIVE donors, which is what `GET /donors`
+ * answers with by default.
+ *
+ * Not a report route and deliberately not a new one — donors are master data, the
+ * endpoint already exists at `tier: 'VOLUNTEER'`, and a Reporter is at least that
+ * (I2, hierarchical). A second list built for this screen would be a second thing to
+ * keep in step with the admin's own.
+ */
+export function fetchDonors(signal?: AbortSignal): Promise<DonorSummary[]> {
+  return api.get<DonorSummary[]>('/donors', { ...(signal ? { signal } : {}) });
+}
+
+/**
+ * File a label-only receipt under a real store.
+ *
+ * A whole card at a time, because that is what the reporter is looking at. Answers
+ * with nothing: the range is re-read afterwards, since the attach moves the row onto
+ * another receipt, changes that receipt's trash deduction (D27, the rates are the
+ * store's) and makes the card tickable — and only the server settles all three.
+ */
+export function attachDonor(body: AttachDonorRequest): Promise<void> {
+  return api.post<void>('/report/donations/attach-donor', { body });
 }

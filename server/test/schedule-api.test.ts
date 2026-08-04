@@ -289,6 +289,41 @@ describe('GET /shifts', () => {
       })).status,
     ).toBe(404);
   });
+
+  /**
+   * D48 — the board's "Returning" chip, and the reason it is a timestamp on the
+   * board payload rather than a status.
+   *
+   * There is no `RETURNING` state and there must not be one: I27 makes heading back
+   * a MILESTONE INSIDE `IN_PROGRESS`, and `services/execution.ts` deliberately leaves
+   * `status` alone when it sets `pickup_completed_at`. So the board is handed both
+   * facts and the chip reads them together; a client that had only `status` could not
+   * tell a truck on the road from a truck on its way back.
+   */
+  it('carries the heading-back milestone without moving the run out of IN_PROGRESS (I27, D48)', async () => {
+    const driver = await makeDriver();
+    const out = await makeShift({ status: 'IN_PROGRESS', ownerId: driver.id });
+    const returning = await makeShift({ status: 'IN_PROGRESS', ownerId: driver.id });
+    const at = new Date('2026-08-04T15:10:00Z');
+    await db
+      .updateTable('shift')
+      .set({ pickup_completed_at: at })
+      .where('id', '=', returning.id)
+      .execute();
+
+    const board = await call('GET', '/api/shifts', { as: driver.id });
+    const byId = Object.fromEntries(
+      (board.body as { id: string; status: string; pickupCompletedAt: string | null }[]).map(
+        (shift) => [shift.id, shift],
+      ),
+    );
+
+    expect(byId[out.id]).toMatchObject({ status: 'IN_PROGRESS', pickupCompletedAt: null });
+    expect(byId[returning.id]).toMatchObject({
+      status: 'IN_PROGRESS', // NOT a state change — I27, and the whole point
+      pickupCompletedAt: at.toISOString(),
+    });
+  });
 });
 
 describe('POST /shifts/:id/reschedule (cap 9)', () => {

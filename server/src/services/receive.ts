@@ -39,6 +39,7 @@ import {
   RECEIVE_INCOMPLETE_MESSAGE,
   receiveStopState,
   type CategoryTile,
+  type ReceiveDonationSummary,
   type ReceiveDoneSummary,
   type ReceiveRunSummary,
   type ReceiveStopDetail,
@@ -48,6 +49,13 @@ import {
 } from '../../../shared/src/receive.js';
 import { DONATION_WINDOW_CLOSED_MESSAGE } from '../../../shared/src/donation.js';
 import { db } from '../db/index.js';
+// `donation.ts` owns the unscheduled-donation rows and the window predicate that
+// bounds them; this file owns the receiver's screens. Service-to-service calls are
+// the established pattern here (`schedule.ts` → `notification.ts`, and `donation.ts`
+// → `parseWeight` in this file), and reaching in for the rows beats re-writing the
+// same SQL twice. Only function bodies touch the import, so the cycle it completes
+// with `donation.ts` is resolved before either is called.
+import { listReceiveWorklist } from './donation.js';
 import { writeTransaction, type Tx } from '../db/transaction.js';
 import { badRequest, conflict, forbidden, notFound } from '../middleware/error.js';
 import type { Reader } from './eligibility.js';
@@ -96,15 +104,21 @@ function sum(value: string | null): string {
  * window lapsed permanently unclosable — there is no other transition into
  * `COMPLETED` to rescue it.
  */
+/**
+ * The predicate itself, as SQL over an already-joined `shift` and `app_config`.
+ *
+ * One implementation, two readers: the gate below and the picker's per-row
+ * `editWindowOpen` (`D66`). A second copy in the list query is a second thing to
+ * keep in step with `app_config`, and the two would answer differently the day the
+ * window changes.
+ */
+const WINDOW_OPEN_SQL = sql<boolean>`shift.starts_at + (app_config.receiver_edit_window_days * interval '1 day') > now()`;
+
 async function receiverWindowOpen(reader: Reader, shiftId: string): Promise<boolean> {
   const row = await reader
     .selectFrom('shift')
     .innerJoin('app_config', (join) => join.onTrue())
-    .select(
-      sql<boolean>`shift.starts_at + (app_config.receiver_edit_window_days * interval '1 day') > now()`.as(
-        'open',
-      ),
-    )
+    .select(WINDOW_OPEN_SQL.as('open'))
     .where('shift.id', '=', shiftId)
     .executeTakeFirst();
 
@@ -204,11 +218,26 @@ function allResolved(stops: ReceiveStopSummary[]): boolean {
  * Tuesday run received at 12:30am Wednesday must still be reachable. At ~15 pickups a
  * week (PRD §6) an unclosed run from last week is a short list entry, not noise —
  * and hiding it would strand it permanently (A162).
+ *
+ * A run CLOSED TODAY is listed as well, read-only. Receive-done used to make a run
+ * disappear the moment it was confirmed — the one moment a receiver is most likely
+ * to want another look at what they just weighed. It is bounded to the PANTRY's
+ * today (`app_config.timezone`, never the server or device clock), because that is
+ * the span of one receiver's shift; anything older is the report's job. Being
+ * COMPLETED is terminal (I10), so nothing on such a row is offered as an action.
+ *
+ * `D66` adds the edit window as a per-row FLAG and deliberately not as a `WHERE`.
+ * Filtering lapsed runs out would strand them for the same reason a `today` bound
+ * would, and worse: `receiveDone` is not window-gated (closing a run is the
+ * completion action I11, not an edit) and this list is its only route, so a run
+ * dropped from here can never reach `COMPLETED`. The client bands them separately
+ * instead — still listed, no longer offered as something to weigh.
  */
 export async function listReceivableRuns(): Promise<ReceiveRunSummary[]> {
   const shifts = await db
     .selectFrom('shift')
     .innerJoin('route', 'route.id', 'shift.route_id')
+    .innerJoin('app_config', (join) => join.onTrue())
     .leftJoin('app_user as owner', 'owner.id', 'shift.owner_id')
     .select([
       'shift.id as shiftId',
@@ -217,8 +246,31 @@ export async function listReceivableRuns(): Promise<ReceiveRunSummary[]> {
       sql<string>`to_char(shift.occurrence_date, 'YYYY-MM-DD')`.as('occurrenceDate'),
       'shift.starts_at as startsAt',
       'shift.ends_at as endsAt',
+      // I27 — a milestone inside IN_PROGRESS, never a status. Read, never written
+      // here; the picker turns it into one line of copy (`D48`).
+      'shift.pickup_completed_at as pickupCompletedAt',
+      'shift.status as status',
+      WINDOW_OPEN_SQL.as('editWindowOpen'),
     ])
-    .where('shift.status', '=', 'IN_PROGRESS')
+    // IN_PROGRESS is the working set. A run CLOSED TODAY joins it too — read-only,
+    // and only for the pantry's current day — so the receiver can still see what
+    // they weighed this shift. Receive-done used to make a run vanish the instant
+    // it was confirmed, which is the one moment a receiver most wants to look back
+    // at it. Bounded to today because that is the span of a receiver's own memory
+    // of the work; yesterday's numbers are the report's job, not this screen's.
+    .where((eb) =>
+      eb.or([
+        eb('shift.status', '=', 'IN_PROGRESS'),
+        eb.and([
+          eb('shift.status', '=', 'COMPLETED'),
+          eb(
+            'shift.occurrence_date',
+            '=',
+            sql<Date>`(now() at time zone app_config.timezone)::date`,
+          ),
+        ]),
+      ]),
+    )
     .orderBy('shift.starts_at')
     .execute();
 
@@ -241,10 +293,51 @@ export async function listReceivableRuns(): Promise<ReceiveRunSummary[]> {
       doneCount,
       totalCount: stops.length,
       readyForReceiveDone: stops.length > 0 && allResolved(stops),
+      editWindowOpen: Boolean(shift.editWindowOpen),
+      pickupCompletedAt: shift.pickupCompletedAt?.toISOString() ?? null,
+      // Terminal (I10), so the client shows the numbers and offers nothing.
+      closed: shift.status === 'COMPLETED',
     });
   }
 
   return runs;
+}
+
+/**
+ * S2.1b's unscheduled-donation panel (`D67`, widened from counts to rows by `D76`).
+ *
+ * Its own function rather than a widening of `listReceivableRuns`: a walk-in has no
+ * shift, so it is not a row of that list and joining it in would make the list's
+ * membership rule (A162) answer two questions at once.
+ *
+ * "Today" is the PANTRY's calendar day, taken from `app_config.timezone` — the same
+ * zone `createDonation` stamps `received_date` from, so this count and the rows it
+ * describes agree. Never the server's clock and never the device's.
+ *
+ * `app_config` leads the join so the aggregate still returns a row when no donation
+ * exists at all; the panel is shown in every state, including that one.
+ *
+ * The rows come from `listReceiveWorklist` rather than being re-queried here, and
+ * `pendingCount` is `suggested.length` rather than a second `count(*)` — the contract
+ * says the two agree, so the only way to keep them agreeing under a concurrent flag
+ * is to derive one from the other. That also carries `D77`'s window bound onto the
+ * count for free: a lapsed suggestion is neither listed nor counted.
+ */
+export async function readDonationSummary(): Promise<ReceiveDonationSummary> {
+  const { suggested, recorded, recordedTotal } = await listReceiveWorklist();
+
+  // Both counts are the lengths of the lists they head, not a separate aggregate.
+  // A count that disagrees with the rows under it is worse than no count, and two
+  // round trips against a non-serializable reader is exactly how they come to
+  // disagree — a walk-in recorded between the two queries would have been counted
+  // and not listed.
+  return {
+    recordedCount: recorded.length,
+    recordedTotal: sum(recordedTotal),
+    pendingCount: suggested.length,
+    suggested,
+    recorded,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +352,7 @@ interface StopContext {
   donorNote: string | null;
   stopNote: string | null;
   runNote: string | null;
+  driverName: string | null;
   status: string;
   disposition: 'PENDING' | 'COLLECTED' | 'SKIPPED' | 'REASSIGNED';
 }
@@ -268,6 +362,9 @@ async function loadStop(reader: Reader, shiftId: string, stopId: string): Promis
     .selectFrom('shift_stop')
     .innerJoin('donor', 'donor.id', 'shift_stop.donor_id')
     .innerJoin('shift', 'shift.id', 'shift_stop.shift_id')
+    // LEFT: a stop can be read on a run with no owner. Both notes below then fall
+    // back to naming the role instead of a person, rather than disappearing.
+    .leftJoin('app_user as owner', 'owner.id', 'shift.owner_id')
     .select([
       'shift_stop.id as stopId',
       'shift_stop.shift_id as shiftId',
@@ -278,6 +375,10 @@ async function loadStop(reader: Reader, shiftId: string, stopId: string): Promis
       'donor.note as donorNote',
       'shift_stop.note as stopNote',
       'shift.note as runNote',
+      // Who wrote the two driver-authored notes. A name, not PII: `pii.ts` gates
+      // phone and address, and the receiver already sees this driver's name on the
+      // run they picked. It is here so a note can say whose it is on one line.
+      sql<string | null>`concat_ws(' ', owner.first_name, owner.last_name)`.as('driverName'),
       'shift.status as status',
       'shift_stop.disposition as disposition',
     ])
@@ -368,6 +469,7 @@ export async function readStopSheet(
     stopNote: stop.stopNote,
     donorNote: stop.donorNote,
     runNote: stop.runNote,
+    driverName: stop.driverName === null || stop.driverName === '' ? null : stop.driverName,
     tiles,
     stopTotal: addAll(entries.map((e) => e.weight)),
   };
@@ -630,16 +732,28 @@ export async function skipStop(
 // S2.2b — receive done (I11 / I12)
 // ---------------------------------------------------------------------------
 
-/** The summary S2.2b renders before the one irreversible tap. */
+/**
+ * The summary S2.2b renders before the one irreversible tap.
+ *
+ * Two fields here are read-only surfacings of things the write paths in this file
+ * already decide, added by `D46` and `D47` so the screen stops offering a control
+ * the server would refuse and stops going silent about who finished a run.
+ */
 export async function readReceiveDone(shiftId: string): Promise<ReceiveDoneSummary> {
   const shift = await db
     .selectFrom('shift')
     .innerJoin('route', 'route.id', 'shift.route_id')
     .leftJoin('app_user as owner', 'owner.id', 'shift.owner_id')
+    // The shift's last writer (I26). On a COMPLETED run this is the person who
+    // confirmed receive-done — see the assumption below.
+    .leftJoin('app_user as writer', 'writer.id', 'shift.updated_by')
     .select([
       'shift.id as shiftId',
       'route.name as routeName',
       sql<string | null>`concat_ws(' ', owner.first_name, owner.last_name)`.as('ownerName'),
+      'shift.status as status',
+      sql<string | null>`concat_ws(' ', writer.first_name, writer.last_name)`.as('writerName'),
+      'shift.updated_at as updatedAt',
     ])
     .where('shift.id', '=', shiftId)
     .executeTakeFirst();
@@ -658,10 +772,39 @@ export async function readReceiveDone(shiftId: string): Promise<ReceiveDoneSumma
 
   const byDonor = new Map(totals.map((t) => [t.donorId, sum(t.total)]));
 
+  // `D47`. The SAME predicate every receiver write is gated on, evaluated once for
+  // the screen instead of a second time in different words. Not a new rule and not
+  // a second implementation of one — `requireWindowOpen` still runs on the write.
+  const editWindowOpen = await receiverWindowOpen(db, shiftId);
+
+  // `D46`. ASSUMED: on a COMPLETED shift, `updated_by`/`updated_at` name whoever
+  // confirmed receive-done. There is no `completed_by` column and this adds none.
+  // The inference rests on TWO invariants together and is only sound while both
+  // hold:
+  //   I10  COMPLETED is TERMINAL — nothing transitions out of it, so no later
+  //        write can land on this row and displace the name.
+  //   I11  `receiveDone()` below is the ONLY writer of IN_PROGRESS → COMPLETED,
+  //        and it stamps `updated_by` with its actor in the same UPDATE.
+  // Together those make "the last writer of a completed shift" and "the person who
+  // closed it" the same person. If I10 ever stops being terminal — a reopen path, an
+  // admin correction that touches `shift` — this silently starts naming the wrong
+  // volunteer on a screen whose whole job is attribution. Store the attribution
+  // properly at that point rather than patching here.
+  //
+  // Null while the run is open, deliberately: `updated_by` there is merely the last
+  // person to touch the shift (a skip stamps it, see `skipStop`), which is a
+  // different fact and must not be printed as this one.
+  const completed = shift.status === 'COMPLETED';
+  const writerName =
+    shift.writerName === null || shift.writerName === '' ? null : shift.writerName;
+
   return {
     shiftId: shift.shiftId,
     routeName: shift.routeName,
     ownerName: shift.ownerName === null || shift.ownerName === '' ? null : shift.ownerName,
+    editWindowOpen,
+    completedBy: completed ? writerName : null,
+    completedAt: completed ? shift.updatedAt.toISOString() : null,
     lines: stops.map((s) => ({
       donorName: s.donorName,
       state: s.state,

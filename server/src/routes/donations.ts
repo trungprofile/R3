@@ -21,7 +21,7 @@ import {
   discardSuggestion,
   flagAdHoc,
   listDonationsForShift,
-  listOpenDonations,
+  readDonation,
   setReportable,
   type DonationActor,
 } from '../services/donation.js';
@@ -115,14 +115,21 @@ export const donationRoutes = [
     },
   }),
 
-  /** S2.3's worklist: everything awaiting confirmation, plus the recent confirmed
-   *  rows so a correction is reachable without hunting for it. */
+  /**
+   * One donation — S2.3 since `D76`, which weighs a single donation rather than
+   * holding the worklist. The worklist moved to S2.1b and is served by
+   * `GET /receive/donations/summary`; this is what makes the weighing page
+   * addressable, so it survives a reload instead of depending on list state.
+   *
+   * Same RECEIVER gate as the read above — set membership on RECEIVE (I2), not a
+   * rank. A route declaring no requirement would be rejected, not open (§4.3).
+   */
   defineRoute({
     method: 'get',
-    path: '/donations',
+    path: '/donations/:id',
     access: RECEIVER,
-    handler: async (_req, res) => {
-      const payload: DonationSummary[] = await listOpenDonations();
+    handler: async (req, res) => {
+      const payload: DonationSummary = await readDonation(String(req.params['id']));
       res.json(payload);
     },
   }),

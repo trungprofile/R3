@@ -19,7 +19,24 @@
 // Intake
 // ---------------------------------------------------------------------------
 
-/** One store's row in S3.2's per-store table. */
+/**
+ * One store's row in S3.2's per-store table.
+ *
+ * **TWO FIGURES, NOT FOUR (`D58`).** The row used to carry `unreported` and
+ * `previousIntake` as well, for a "Not reported" column and a "Change" column. The
+ * table is now `Store · Total rescued · To the food bank`, and both of those fields
+ * lost their only reader:
+ *
+ *   - `unreported` was `intake − reported`, a subtraction the client never re-did and
+ *     could always read off the two figures that remain (the same argument `D34` made
+ *     when S3.1 dropped its third total).
+ *   - `previousIntake` cost a whole second query over a comparison window
+ *     (`services/metrics.ts` ran `intakeRows` twice). Leaving a period computed that
+ *     nothing renders is work, not a safeguard.
+ *
+ * PRD §3's key data boundary is unaffected: intake and NTFB-reported are still two
+ * distinct, clearly labelled numbers, per store and in the totals.
+ */
 export interface StoreIntake {
   /** Null for donations that carry a free-text label or no source at all. */
   donorId: string | null;
@@ -30,12 +47,6 @@ export interface StoreIntake {
   intake: string;
   /** The part that flows to NTFB. */
   reported: string;
-  /** `intake − reported`. Stated rather than left to be worked out — PRD §3 wants
-   *  these kept as two distinct, clearly labelled numbers everywhere. */
-  unreported: string;
-  /** Same store, previous period of equal length. Null when there is no prior data,
-   *  which is different from zero and must not render as a 100% drop. */
-  previousIntake: string | null;
 }
 
 export interface IntakeMetrics {
@@ -45,10 +56,15 @@ export interface IntakeMetrics {
   stores: StoreIntake[];
   totalIntake: string;
   totalReported: string;
+  /**
+   * `totalIntake − totalReported` — PRD cap 16's "unreported donation volume".
+   *
+   * Kept when the per-store column went (`D58`) because it is the capability's own
+   * named figure and it costs one subtraction of two numbers already in hand, not a
+   * second query. The screen states the boundary with the two headline figures above
+   * the table and does not print this third one, exactly as `D34` decided for S3.1.
+   */
   totalUnreported: string;
-  /** The comparison period `previousIntake` is measured against. */
-  previousFrom: string;
-  previousTo: string;
 }
 
 // ---------------------------------------------------------------------------

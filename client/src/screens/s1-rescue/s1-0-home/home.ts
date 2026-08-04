@@ -37,8 +37,14 @@ export const COPY = {
    *  rather than "Hi " with a hole after it. */
   greeting: (firstName: string) => `Hi ${firstName}`.trim(),
 
-  driveTitle: 'Pick up food',
-  driveSubtitle: 'Claim a run, or open the one you already have.',
+  // DRIVE is two cards since D49, so the two subtitles have to divide the job
+  // between them rather than both describing "driving". One is the runs you already
+  // own; the other is where new ones come from.
+  driveTitle: "Today's pickup",
+  driveSubtitle: 'Your run today, and the rest of your week.',
+
+  boardTitle: 'Shift board',
+  boardSubtitle: 'Claim an open run, or say when you are away.',
 
   receiveTitle: 'Receive a load',
   receiveSubtitle: 'Weigh what a driver brought in.',
@@ -92,12 +98,18 @@ function card(id: ScreenId, title: string, subtitle: string, live: LiveSubtitles
 }
 
 /**
- * What this person can do, in the order the nav lists it.
+ * What this person can do, in the order the nav lists it (D51): descending by
+ * privilege, so the two surfaces cannot teach a volunteer different vocabulary or a
+ * different order.
  *
- * SIX at most, since D31 sent My shifts back to the Board as a tab: Pick up food,
- * Receive a load, Report, Schedule, Admin, Inbox. Nobody holds more than that, so
- * the grid never needs a second screenful and the hub never needs a scroll on the
- * phone it exists for.
+ *   Admin · Schedule · Report · Receive a load · Today's pickup · Shift board · Inbox
+ *
+ * SEVEN at most since D50 raised D31's cap by one, which is exactly what D49's
+ * second driver card costs. Home is not a card on itself, so seven is the whole nav
+ * minus its own entry, and only an Admin holding all three duties sees all of them.
+ * The cap is the reason a new card is a decision rather than an addition: the hub
+ * exists for the phone, where it is the only route to the office screens, and an
+ * eighth card is what puts one under the fold.
  *
  * Duty is set membership and tier is hierarchical (I1, I2) — `atLeastTier` and
  * `hasDuty` are imported rather than re-expressed, because a hub that disagrees
@@ -110,20 +122,24 @@ function card(id: ScreenId, title: string, subtitle: string, live: LiveSubtitles
 export function homeCardsFor(user: CurrentUser, live: LiveSubtitles = {}): HomeCard[] {
   const cards: HomeCard[] = [];
 
-  if (hasDuty(user, 'DRIVE')) {
-    cards.push(card('board', COPY.driveTitle, COPY.driveSubtitle, live));
-  }
-  if (hasDuty(user, 'RECEIVE') && shipped('receive-runs')) {
-    cards.push(card('receive-runs', COPY.receiveTitle, COPY.receiveSubtitle, live));
-  }
-  if (hasDuty(user, 'REPORT') && shipped('report')) {
-    cards.push(card('report', COPY.reportTitle, COPY.reportSubtitle, live));
+  if (atLeastTier(user, 'ADMIN')) {
+    cards.push(card('admin', COPY.adminTitle, COPY.adminSubtitle, live));
   }
   if (atLeastTier(user, 'STAFF')) {
     cards.push(card('schedule', COPY.scheduleTitle, COPY.scheduleSubtitle, live));
   }
-  if (atLeastTier(user, 'ADMIN')) {
-    cards.push(card('admin', COPY.adminTitle, COPY.adminSubtitle, live));
+  if (hasDuty(user, 'REPORT') && shipped('report')) {
+    cards.push(card('report', COPY.reportTitle, COPY.reportSubtitle, live));
+  }
+  if (hasDuty(user, 'RECEIVE') && shipped('receive-runs')) {
+    cards.push(card('receive-runs', COPY.receiveTitle, COPY.receiveSubtitle, live));
+  }
+  // DRIVE's two entries (D49). Both on the duty alone: the board card is named for
+  // claiming and being away, which is a driver's business, and a non-driving
+  // coordinator still reaches the board from the nav on every viewport.
+  if (hasDuty(user, 'DRIVE')) {
+    cards.push(card('my-shifts', COPY.driveTitle, COPY.driveSubtitle, live));
+    cards.push(card('board', COPY.boardTitle, COPY.boardSubtitle, live));
   }
 
   cards.push(card('inbox', COPY.inboxTitle, COPY.inboxSubtitle, live));

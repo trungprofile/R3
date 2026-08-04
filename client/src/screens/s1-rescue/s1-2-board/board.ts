@@ -10,6 +10,7 @@
 // server's rules so a volunteer is not offered an action that would be refused,
 // and the server checks each of them again on the request that matters.
 
+import { toApiError } from '../../../api/index.ts';
 import { claimRefusedMessage, weekdayLabel } from '../../../api/shared.ts';
 import type {
   ClaimSkipReason,
@@ -37,14 +38,19 @@ export { isCurrentWeek, nextWeek, previousWeek, weekEndOf, weekStartOf } from '.
 // ---------------------------------------------------------------------------
 
 export const COPY = {
-  /** S1.2, verbatim: header "Pickup runs". */
-  header: 'Pickup runs',
+  /** S1.2. Was verbatim "Pickup runs" until `D49` split the driver's two pages:
+   *  this one is the shared board, and `/my-shifts` is the driver's own runs.
+   *  Two pages both headed "Pickup runs" would be the confusion `D49` set out
+   *  to remove, so the heading takes the nav entry's own words — the same
+   *  "the heading matches the entry that led here" rule S1.4 follows. */
+  header: 'Shift board',
 
-  /** D30's tab row. "Board" is the word the nav and the notification copy already
-   *  use ("Tap to see it on the board."), so the tab is not new vocabulary. */
-  tabsLabel: 'The board and my own runs',
+  /** D49's tab row. "Board" is the word the nav and the notification copy already
+   *  use ("Tap to see it on the board."), so the tab is not new vocabulary, and
+   *  "When I'm away" is S1.4's own label carried across unchanged. */
+  tabsLabel: 'The board and my time away',
   tabBoard: 'Board',
-  tabMine: 'My shifts',
+  tabAway: "When I'm away",
 
   /** The segmented control — S1.2: "a simple segmented control: All · Open · Mine". */
   filterLabel: 'Which runs',
@@ -80,15 +86,19 @@ export const COPY = {
   /** Named for a screen reader, which hears the button out of its row's context. */
   claimAria: (routeName: string, when: string) => `Claim ${routeName}, ${when}`,
 
-  /** Staff only. The board is where staff SEE a run; S1.6 is where its date, time
-   *  and route are changed, so this is a link there and not an editor. */
-  edit: 'Edit',
-  editAria: (routeName: string, when: string) => `Edit ${routeName}, ${when}`,
+  /** D52. The refusal sentence is the SERVER's — `claimRefusedMessage` already
+   *  composes it — so the row prefixes it with nothing and invents nothing. This
+   *  label is only the accessible name of the block that carries it. */
+  refusedLabel: 'Why that claim did not go through',
 
   /** S1.2's scope prompt, verbatim: "Claim every Tuesday run, or just this one?" */
   scopeQuestion: (weekday: string) => `Claim every ${weekday} run, or just this one?`,
   scopeConsequence:
     'Claiming every one puts you on the runs that fit your schedule, now and in future.',
+  /** Which run was tapped. The prompt is the reason a repeating run sends nothing on
+   *  the first tap, so it has to name what it is asking about — "I pressed Claim and
+   *  nothing happened" was round 4's reading of a prompt that did not. */
+  scopeRun: (routeName: string, when: string) => `${routeName}, ${when}`,
   scopeOne: 'Just this one',
   scopeSeries: (weekday: string) => `Every ${weekday}`,
 
@@ -111,25 +121,34 @@ export const COPY = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// The tabs (D30)
+// The tabs (D30, reshaped by D49)
 //
-// S1.4 My shifts had exactly one way in — its nav entry — and D30 takes that entry
-// away rather than let a driver carry two nav items for one job. So the board grows
-// the second half: the run board a driver opens to find work, and their own runs and
-// time away, one tap apart instead of in two places. Its own route survives
-// (`app/routes.ts`), because a bookmark and the Home card both still point at it.
+// D30 mounted the whole of S1.4 here as a `mine` tab, which left a driver meeting
+// TWO nested tab rows: `?tab=board|mine` out here, and `runs|away` inside S1.4. The
+// inner row was local `useState`, so it reset on every remount and `?tab=mine` could
+// never link to "When I'm away" at all. That nesting was the top complaint of the
+// round-4 pass.
+//
+// D49 flattens it into two sibling pages, each with at most ONE tab row:
+//
+//   /my-shifts  "Today's pickup" (D64) — today, then the rest of this week. No tabs.
+//   /board      "Shift board"          — this row: the claimable board, and time away.
+//
+// So the `mine` tab is gone, not renamed: a driver's own runs are the other PAGE
+// now, and the half of S1.4 that has nowhere else to live — the availability
+// declaration, which §4 gives no nav entry of its own — is the second tab here.
 //
 // SAME PATTERN AS S1.8, deliberately: the tab lives in the URL under `?tab=`, so
-// "your runs are under My shifts" is a link someone can send and a reload lands
-// where it left off. `logic.ts` in `s1-8-admin/` is where that reasoning was first
-// written down; this is the second screen to need it and not a second answer to it.
+// "set your time away" is a link someone can send and a reload lands where it left
+// off. `logic.ts` in `s1-8-admin/` is where that reasoning was first written down;
+// this is the second screen to need it and not a second answer to it.
 // ---------------------------------------------------------------------------
 
-export type BoardTab = 'board' | 'mine';
+export type BoardTab = 'board' | 'away';
 
 export const BOARD_TABS: readonly { value: BoardTab; label: string }[] = [
   { value: 'board', label: COPY.tabBoard },
-  { value: 'mine', label: COPY.tabMine },
+  { value: 'away', label: COPY.tabAway },
 ];
 
 /** What `/board` shows when the URL names no tab: the run board. It is what a
@@ -148,7 +167,7 @@ export const BOARD_TAB_QUERY_KEY = 'tab';
  * should land somewhere useful, not on a 404 (S1.8's rule, unchanged).
  *
  * `canDrive` collapses it. A staff coordinator who does not drive is offered no tab
- * row at all — one tab is noise — so a `?tab=mine` link forwarded to them resolves
+ * row at all — one tab is noise — so a `?tab=away` link forwarded to them resolves
  * to the board rather than to a panel with nothing in it. Duty is set membership,
  * never implied by a tier (I2), and the server refuses S1.4's own routes again; this
  * is communication (`architecture.md §4.5`).
@@ -303,10 +322,6 @@ export interface BoardRow {
   atRisk: boolean;
   action: RowAction;
   repeats: boolean;
-  /** Staff's link to S1.6 for this run. Separate from `action`, which is the ONE
-   *  thing the row itself does — a row that opens S1.3 is a `<button>`, and an Edit
-   *  button cannot live inside one. */
-  canEdit: boolean;
 }
 
 export interface DayGroup {
@@ -351,18 +366,10 @@ export function actionFor(shift: ShiftSummary, viewer: BoardViewer, mine: boolea
   return viewer.isStaff ? 'DETAIL' : 'NONE';
 }
 
-/**
- * Staff's Edit link, and only where S1.6 could act on it.
- *
- * `rescheduleShift` refuses anything past `CLAIMED` — "Only a run that has not
- * started can be moved." — and I5 freezes a started run's stop list, so a started or
- * finished run has nothing S1.6 can change. Hiding the link is the courtesy; the
- * refusal is still the rule (`architecture.md §4.5`).
- */
-export function canEditRun(shift: ShiftSummary, viewer: BoardViewer): boolean {
-  if (!viewer.isStaff) return false;
-  return shift.status === 'OPEN' || shift.status === 'CLAIMED';
-}
+/* D63: `canEditRun` used to live here, gating a per-row Edit link into S1.6. The
+ * board browses and Schedule manages, so the link is gone — with it the one control
+ * on this screen that addressed the viewer as staff rather than as someone looking
+ * for a run. Nothing replaced it: S1.6 is a nav entry away. */
 
 export function toRow(shift: ShiftSummary, viewer: BoardViewer, nowMs: number): BoardRow {
   const mine = shift.ownerId !== null && shift.ownerId === viewer.id;
@@ -372,7 +379,6 @@ export function toRow(shift: ShiftSummary, viewer: BoardViewer, nowMs: number): 
     atRisk: isAtRisk(shift, viewer, nowMs),
     action: actionFor(shift, viewer, mine),
     repeats: shift.recurrencePatternId !== null,
-    canEdit: canEditRun(shift, viewer),
   };
 }
 
@@ -440,6 +446,41 @@ export function withOptimisticClaim(
       ? { ...shift, status: 'CLAIMED' as const, ownerId: viewer.id, ownerName: viewer.name }
       : shift,
   );
+}
+
+// ---------------------------------------------------------------------------
+// A refused claim (D52)
+//
+// The optimistic overlay above is only half of §6: "revert with a clear toast". A
+// toast is a transient signal, and the refusal a driver actually meets is I20's
+// overlapping-claim gate — 409 `NOT_ELIGIBLE`, "You already have a run at that
+// time. Cancel it first." — which is a fact ABOUT THAT ROW that stays true until
+// they do something about it. Round 4 found the toast scrolling past and the driver
+// reading the outcome as "the Claim button is broken".
+//
+// So the row keeps the reason as well. The sentence is never written here: the
+// server composes it (`shared/src/coverage.ts`'s `claimRefusedMessage`, thrown by
+// `services/coverage.ts`) and it arrives in `detail`. A second wording on the client
+// is a second rule to keep in step with the first.
+// ---------------------------------------------------------------------------
+
+export interface ClaimRefusal {
+  shiftId: string;
+  /** The server's own sentence, or §6's plain fallback when it sent none. */
+  reason: string;
+}
+
+/**
+ * What a refused claim leaves on the row.
+ *
+ * `detail` is the server's sentence; `message` is the plain, code-free §6 line the
+ * error shape already carries per kind. Falling back to `message` rather than to a
+ * new string is what stops this from becoming a third place refusal copy lives — it
+ * is exactly what the toast shows, so row and toast can never disagree.
+ */
+export function claimRefusal(error: unknown, shiftId: string): ClaimRefusal {
+  const apiError = toApiError(error);
+  return { shiftId, reason: apiError.detail ?? apiError.message };
 }
 
 /** One line of the "which dates were skipped" list (S1.2's partial-success link). */

@@ -13,7 +13,6 @@
 
 import { StopDots } from './RunCard.tsx';
 import type { RunCardProps } from './RunCard.tsx';
-import { COPY } from './run-picker.ts';
 
 export function RunTile({ card, busy, onOpen }: RunCardProps) {
   const body = (
@@ -28,10 +27,7 @@ export function RunTile({ card, busy, onOpen }: RunCardProps) {
       <span className="s21b-tile__foot">
         <span className="s21b-tile__count">{card.count}</span>
         {card.actionLabel === '' ? null : (
-          <span className="s21b-tile__go">
-            {card.action === 'RECEIVE_DONE' ? `${COPY.receiveDoneHint}, ` : ''}
-            {card.actionLabel}
-          </span>
+          <span className="s21b-tile__go">{card.actionLabel}</span>
         )}
       </span>
     </>

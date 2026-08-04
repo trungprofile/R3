@@ -132,6 +132,36 @@ export function orderedTiles(tiles: readonly CategoryTile[]): CategoryTile[] {
   return [...tiles].sort((a, b) => a.categoryName.localeCompare(b.categoryName));
 }
 
+/**
+ * How many entries a capped category row admits before it starts scrolling (`D45`).
+ *
+ * `.r3-tile__entries` is capped at two chip rows so one busy category cannot grow
+ * its neighbours or lengthen the page. How many chips actually fit on those two
+ * rows is not knowable here: a chip's width is the number of digits typed into it,
+ * and the pane's width is whatever the device gives it. So the count is NOT a
+ * measurement — it is the floor. Two is the fewest chips two rows can ever hold
+ * (one per row, worst case a six-digit weight in a narrow pane), so at three or
+ * more the receiver may be looking at fewer numbers than the category has, and
+ * that is exactly when the row has to say so.
+ *
+ * Erring toward showing it: a scroll region with no visible affordance is a trap,
+ * and a count that is occasionally redundant costs a word.
+ */
+export const ENTRIES_ALWAYS_VISIBLE = 2;
+
+/**
+ * "5 entries" beside a category's subtotal, or null when nothing can be hidden.
+ *
+ * This is the affordance for the capped, scrolling entry list (`D45`) — it tells
+ * the receiver the row holds more than they can see. Singular is unreachable by
+ * construction (the threshold is 2) but written out anyway, because a future
+ * threshold change should not silently produce "1 entries".
+ */
+export function entryCountLabel(entries: readonly WeightEntrySummary[]): string | null {
+  if (entries.length <= ENTRIES_ALWAYS_VISIBLE) return null;
+  return `${entries.length} ${entries.length === 1 ? COPY.entryCountOne : COPY.entryCountMany}`;
+}
+
 /** Whether anything has been weighed at this stop yet. Drives both the primary
  *  action and whether Skip is offered. */
 export function hasWeights(detail: ReceiveStopDetail): boolean {
@@ -202,6 +232,38 @@ export function progressOf(stops: readonly ReceiveStopSummary[]): Progress {
 export function progressLabel(stops: readonly ReceiveStopSummary[]): string {
   const { done, total } = progressOf(stops);
   return `${done} of ${total} done`;
+}
+
+/**
+ * The stops still holding the run open — what **Submit run** names when it
+ * refuses to leave (`D62`).
+ *
+ * The same reading as S2.2b's `outstandingLines`, over the strip this screen
+ * already has rather than over the completion summary it does not fetch. Both are
+ * `isResolved` negated, which is I12's list and nothing else, so the two screens
+ * cannot disagree about which stop is missing.
+ */
+export function outstandingStops(
+  stops: readonly ReceiveStopSummary[],
+): ReceiveStopSummary[] {
+  return orderedStops(stops).filter((stop) => !isResolved(stop.state));
+}
+
+/**
+ * What **Submit run** does.
+ *
+ * `go` when every stop is resolved — Receive done (S2.2b) is the run's next step
+ * and the one completion action (I11). `blocked` otherwise, which opens the modal
+ * naming what is left and navigates nowhere.
+ *
+ * Communication only. `receiveDone()` re-checks the same gate inside its
+ * transaction and refuses with `RECEIVE_INCOMPLETE_MESSAGE` regardless of what
+ * this returns.
+ */
+export type SubmitDecision = 'go' | 'blocked';
+
+export function submitDecision(stops: readonly ReceiveStopSummary[]): SubmitDecision {
+  return allStopsResolved(stops) ? 'go' : 'blocked';
 }
 
 /**
@@ -393,6 +455,13 @@ export const COPY = {
   loadingSheet: 'Loading the sheet',
   noCategories: 'No categories are set up yet.',
   noCategoriesNext: 'Ask an admin to add them, then come back and weigh this stop.',
+  /** `D44`: the two panes are labelled, because they are the two halves of the
+   *  sheet and a screen reader meets them without the layout. */
+  categoriesLabel: 'Categories',
+  workLabel: 'Weighing this stop',
+  /** `D45`: the count that says a category row holds more numbers than it shows. */
+  entryCountOne: 'entry',
+  entryCountMany: 'entries',
 
   // --- keypad panel -------------------------------------------------------
   selectedLabel: 'Selected',
@@ -445,10 +514,24 @@ export const COPY = {
   leaveConfirm: 'Leave without adding',
 
   // --- notes the receiver reads and never writes ---------------------------
-  stopNoteLabel: 'From the driver',
-  donorNoteLabel: 'Store note',
-  runNotesToggle: 'Run notes',
-  runNoteLabel: 'About the whole run',
+  //
+  // `D68`: all three are labelled text now, not a disclosure. The toggle it
+  // replaced cost a 44px target and a tap to read one line, and QA found the run
+  // note was simply never opened. `noRunNote` stays defined and unrendered — an
+  // absent note is absent, not announced.
+  // ONE LINE EACH. A label stacked over its body spent two lines of the entry
+  // column to say something the receiver already knew, on the screen with the
+  // least room to spare. The label names WHO wrote it, because that is the part
+  // they cannot see: two of the three come from the driver and one from an admin,
+  // and which is which changes how much the note is worth acting on.
+  //
+  // The possessive is always `'s`, including after an s. It is a label, not prose,
+  // and one rule that is occasionally unfashionable beats two rules that disagree
+  // about "Chris". A run with no owner names the role instead of a person.
+  stopNoteLabel: (driver: string | null) => (driver === null ? 'Driver note:' : `${driver}'s note:`),
+  runNoteLabel: (driver: string | null) =>
+    driver === null ? 'Driver note on the run:' : `${driver}'s note on the run:`,
+  donorNoteLabel: 'Store note:',
   noRunNote: 'The driver left no note about this run.',
 
   // --- states -------------------------------------------------------------
@@ -460,8 +543,24 @@ export const COPY = {
   skippedNext: 'Nothing came from this store. Pick another stop to keep weighing.',
   movedTitle: 'This stop moved to another run.',
   movedNext: 'Another driver has it now. Pick another stop to keep weighing.',
-  allDoneBanner: 'All stops done. Receive done is available.',
-  goToReceiveDone: 'Go to Receive done',
+
+  // --- submitting the run (`D62`) -------------------------------------------
+  //
+  // Replaces the all-done banner, which only appeared once every stop was
+  // resolved — a control that arrives late is a control nobody expects, and until
+  // it arrived the screen offered no way on to S2.2b at all. Submit is in the
+  // progress row always, and asking early costs a modal rather than a dead end.
+  //
+  // It closes nothing. Receive done (S2.2b) is still the one completion action
+  // (I11); this is the way to it.
+  submitRun: 'Submit run',
+  backToRuns: 'Runs',
+  /** The modal, worded as S2.2b's BLOCKED stage words it — the sentence itself is
+   *  `RECEIVE_INCOMPLETE_MESSAGE` in `shared/src/receive.ts` and is not restated
+   *  here, because a second copy of it would drift. */
+  notReady: 'This run is not finished yet',
+  outstandingLabel: 'Still to do',
+  keepWeighing: 'Keep weighing',
   noStopTitle: 'No stop picked yet.',
   noStopNext: 'Pick the run and the store you are weighing.',
   pickRun: 'Pick a run',

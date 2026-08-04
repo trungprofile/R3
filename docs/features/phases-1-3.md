@@ -60,7 +60,7 @@ over the merged diff, both mandatory, **the gate deciding pass/fail rather than 
 
 ---
 
-## 2. Standing decisions (D1–D41)
+## 2. Standing decisions (D1–D78)
 
 Numbering is one series across all three phases. Decisions are *settled*; they are not
 re-litigated. Where one supersedes another, both are kept.
@@ -450,6 +450,397 @@ so this widened one function's window rather than touching two paths. A receipt 
 holds over any window** because both `D28`'s rounding and `D27`'s deduction key on the receipt, not
 on the range. A backwards range is refused, not silently swapped. `?week=` still resolves.
 
+### Round 4 (`D42`–`D58`, 2026-08-03)
+
+*A hands-on pass over the `D30`–`D41` build. Three of the items were reported as bugs and were not:
+see §6. The theme is that two screens were shaped for the wrong body — the receiver's for a desk
+rather than a dock, the reporter's for an analyst rather than a data-entry volunteer.*
+
+**D42 — the shell's chrome is sticky.** `.r3-app` was `min-height: 100%` with the document
+scrolling and nothing pinned, so on any screen taller than the viewport the nav bar sat at the
+bottom of the **content**: reaching navigation meant scrolling to the true page bottom. That is why
+several screens had grown their own bottom "Back to…" button — they were routing around the shell.
+Sticky, deliberately, rather than a fixed-height shell with an inner scroller: a fixed shell would
+break every screen-local `position: sticky` and scroll region at once. The chrome sits **below** the
+existing overlay ladder so a picker opened near a bar is never clipped.
+
+**D43 — one way out, at the top.** `BackLink` already existed and four screens used it; **eight
+hand-rolled a bottom button instead**, each with its own words. They converge. The label is a noun
+naming the destination — the chevron already says "back". Two things deliberately do **not**
+converge: a form's *cancel* belongs beside its submit, and a screen that is itself a nav entry has
+no parent to go back to. `D42` is what makes this safe; before it, the bottom button was the only
+reachable exit.
+
+**D44 — S2.2 becomes two panes and the page stops scrolling.** The category tiles sat in a
+six-across grid **above** the keypad, so the sheet was always taller than the tablet it is for. The
+pantry's own framing was the useful one: the paper log showed every category at once and this did
+not. Categories become a single vertical column; everything else — stop strip, keypad, Add weight,
+total, Done/Skip — shares the other column. **The keypad floor did not move**: §3 fixes it at 64px,
+a previous round tried to shrink it and was correctly overruled, and the space came from the layout
+instead. **Honest limit:** on the canonical 1024×768 tablet an empty sheet fits and the category
+column starts scrolling once a couple of categories carry entries. The page and the nav still do
+not move, which was the actual ask.
+
+**D45 — a busy category stops resizing the screen.** `.r3-tile__entries` had no `max-height` and no
+`overflow`, and the tiles were a **stretch** grid — so one category with many entries grew every
+sibling tile in its row and lengthened the whole page. Capped at two rows with an internal scroll,
+and a count on the row when there is more than fits, because a scroll region with no visible
+affordance is a trap.
+
+**D46 — the closed run names who signed off.** *No migration.* There is no `completed_by` on
+`shift`, only `updated_by` (`I26`) — but `I10` makes `COMPLETED` terminal, so the last writer of a
+completed shift **is** whoever confirmed receive-done. Populated only when the shift is `COMPLETED`;
+null on an open run rather than naming the last person to touch a weight, which would be confidently
+wrong. **The inference is load-bearing**: if `COMPLETED` ever stops being terminal this silently
+starts lying, so it is commented at the code rather than left to be rediscovered.
+
+**D47 — "Change a weight" is hidden once the edit window has lapsed.** The client could see only
+half the rule: a closed run leaves `GET /receive/runs`, but `receiver_edit_window_days` was exposed
+nowhere, so the button could appear on an open run whose day window had passed and lead to a sheet
+where the server refused. The payload now carries `editWindowOpen` from **the same predicate the
+service already gated on** — surfaced, not re-implemented. The refusal is unchanged and is still the
+guard; what went away is the wasted tap.
+
+**D48 — a returning run says so.** There is no `RETURNING` status and there must not be: heading
+back is `pickup_completed_at`, a milestone **inside** `IN_PROGRESS` (`I27`), and the service's
+UPDATE deliberately does not touch `status`. So this is presentation only, and it reuses the
+in-progress colour — a second colour would claim a state change the domain refuses to make. The
+server half turned out to be **already built**: `pickupCompletedAt` was already on `ShiftSummary`
+and already selected.
+
+**D49 — DRIVE gets two nav entries.** *Softens `D30` for one duty; every other capability still
+gets exactly one.* `D30` folded My shifts into the board, which put **its** two tabs inside the
+board's two tabs — and the nested rows are what QA reported as confusing. Two sibling pages with one
+tab level between them: **Pick up food** (`/my-shifts`, the driver's own runs, today then this week,
+their default landing) and **Shift board** (`/board`, the shared board, with *When I'm away* as its
+second tab). The board's heading moved off "Pickup runs" for the same reason — two pages under one
+title is the confusion `D49` set out to remove. `?tab=mine` still resolves.
+
+**D50 — Home's cap rises six to seven.** `D31`'s six was every capability a single account could
+hold; `D49` adds a destination, so the cap moves with it rather than silently dropping a card.
+
+**D51 — nav and Home order by descending privilege.** *Supersedes `D30`'s week-order.*
+`Home · Admin · Schedule · Report · Receive a load · Pick up food · Shift board · Inbox`. The
+property that matters more than the order itself: **every shorter list is this list with rows
+removed, never reshuffled**, so a volunteer who gains a duty sees a row appear in place rather than
+the bar rearranging under them. The four-item bar cap (§3) does **not** move — office work is
+reached through Home on phone and tablet, which is the design and not a truncation.
+
+**D52 — a refused claim is visible.** Reported as "the Claim button doesn't work". It worked:
+`eligible()` refuses an **overlapping** claim with a 409 whose message the server already
+composes, the row stayed `OPEN` with a null owner, and nothing was half-written — but the only
+feedback was a toast that scrolled past. The reason now sits under the row that caused it until the
+viewer changes filter or week, claims successfully, or retries. A **repeating** run's first tap
+opens the scope prompt and sends nothing, which is correct and also read as a dead button, so the
+prompt now names the run it is asking about.
+
+**D53 — the "Open" chip goes where a Claim button is.** The chip said "Open", the owner line said
+"OPEN", and the button said "Claim": three statements of one fact in one row. Every other row keeps
+its chip.
+
+**D54 — S3.1 opens on the receipts; the totals view and the drill-in are retired.** The reporter is
+a data-entry volunteer whose whole job is typing one store at a time into somebody else's web form.
+A totals-first screen read to them as "analysis, not my job" — so they never opened the drill-in
+behind it, which is where `PRD` cap 15 put **the only remaining way to correct a weight once the
+receiver's window closes**, and they reported that as a missing feature. It was not missing; it was
+unreachable from where they stood. The fix was not to build anything: the ✎ and the reportable
+switch moved **into the receipt**, unchanged operations. `ReportTable` went with the drill-in,
+because a per-category landing with nothing hanging off it is not a screen. **Intake and reported
+totals now live only on S3.2.** The drill-in's three-line trash breakdown was not lost either — a
+receipt carries its own Trash line, so the arithmetic already explains itself.
+
+**D55 — the receipts are master/detail.** A list beside the open receipt, so the reporter keeps
+their place in a fifteen-row list while typing one of them into another window. Stacks below 64rem.
+It splits on its own width rather than §3's device bands, because "do two columns of content fit" is
+a different question from "which navigation chrome does this device get".
+
+**D56 — two sections, and the second one is where the missing feature actually was.**
+*To file into Meal Connect* and *Not filed to the food bank*. The second holds two things that
+answer the same question — receipts with no store to file under, and **confirmed donations somebody
+switched off**. The second kind is the point: the report union is
+`WeightEntry[!voided] ∪ UnscheduledDonation[CONFIRMED ∧ reportable]`, so an unflagged donation has
+**no receipt at all**, which is precisely why the reporter could find no way to put one back. The
+export now returns them **beside** the receipts, never among them — merging them would break the
+conservation property and `I15`/`I16`. `I16(b)` decides whether a row can be flipped, answered on
+the read so it can say why rather than offering a control that 400s; `setReportable` is unchanged
+and stays the only enforcement. The progress bar counts fileable receipts only, so walk-ins that
+never needed reporting stop counting against the reporter.
+
+**D57 — the portal's checkboxes render on screen only when ticked, and on the print always.**
+The divergence is deliberate: the printout mimics the portal's form, and a reporter comparing the
+two needs to see the box they are deliberately leaving unticked. The screen has no form to mirror,
+so an unticked box there is only noise.
+
+**D58 — Admin metrics: two headline figures and a three-column table.** Out: the `Not reported`
+column, the `Change` column and its trend vocabulary, the by-store bar chart, and the lede. The
+pantry's reading was that the screen was doing analysis nobody asked for. **Unreported volume
+survives as the difference between the two figures**, on `D34`'s precedent that a derivable third
+number is not a third number, and the aggregate stays on the payload so `PRD` cap 16's named figure
+has somewhere to live. The **previous-period** comparison was dropped outright — it cost a second
+query over the whole union to render one word.
+
+### Two defects `D54`–`D56` uncovered
+
+Both were in the export, both pre-dated this round, and neither was what anyone was looking for.
+
+- **A `(pickup date, donor)` whose only intake was a switched-off donation produced a fileable
+  receipt ticked `No Pounds`** — telling North Texas Food Bank that a store came to nothing on a day
+  it had never been on the route. The receipt object was built *before* the reportable check, so
+  `hasIntake` was true for intake that was, by definition, not reportable. `D56` would also have
+  shown the reporter the same donation in both sections. Fixed by making the receipt require
+  **reportable** intake.
+- **✎ was offered on every entry, including walk-in donations** — but the correction service looks a
+  `weight_entry` up by id, so that path could only ever answer "No such entry." Now gated to weight
+  lines; a donation corrects through the switch beside it. Communication-only, no service change.
+
+**Retiring a surface is a good way to find out what it was hiding.** Neither defect was reachable
+from the old screen in a way anyone would have noticed, and the test that proves the first one — a
+generic comparison of every editable entry against every emitted receipt, rather than a hand-written
+expectation — is the one that should have existed all along.
+
+### Round 5 (`D59`–`D75`, 2026-08-03)
+
+The third hands-on pass, over the `D42`–`D58` build. Three themes and a batch of copy. The themes
+are worth naming because each one is a rule, not a fix, and each will be reached for again.
+
+**D59 — a screen addresses one person.** *Amends `D22`'s handling of a volunteer holding two
+duties.* The tester holds the STAFF tier and the DRIVE duty, so on a run they own, S1.3 showed them
+a card naming them as the driver and offered them a note addressed to themselves. Every gate was
+correct: the Driver/Truck card is ungated because everyone may see who is driving, and
+`canEditStaffNote` is `viewer.isStaff` because staff write that note. **Correct per capability and
+wrong per person** — which is the failure mode `D22` opened when it stopped treating duties as
+separate accounts. The rule: where the viewer *is* the subject, the screen drops the cards that
+describe them to themselves. A staff note written by someone else still shows, read-only, because
+that is a message *to* them. Truck stays either way: it is operational, and its blank is `I8`.
+
+**D60 — S2.2 goes `fullScreen`.** An old volunteer weighing on a docked tablet fat-fingers the
+bottom nav and loses the sheet. `D42` made that bar sticky and so made it permanently in reach of a
+stray thumb, which is the right call everywhere except the one screen where the whole job is
+tapping numbers near the bottom edge. `BackLink` is the way out. The bar's height comes back to the
+panes, which is what buys `D61` its fit.
+
+**D61 — the entry column is fixed; the category column is the only scroll region.** `D44` put the
+categories and the keypad side by side and stopped the *page* scrolling, but left the work pane a
+flex column of four blocks with the keypad last — so at 1024×768 the controls were below the fold
+and the receiver scrolled to reach the number pad. That is the same defect `D44` was written to fix,
+one level down. The keypad moves right, the actions left, and `--key-min` does **not** move: if it
+will not fit, the category column scrolls further. The 64px floor is the reason this app is usable
+by the people who use it and is not a spacing value.
+
+**D62 — the stop strip becomes the progress row and carries Submit.** It was a wrapping flex row, so
+a four-stop run pushed the keypad down a line and a six-stop run pushed it down two — stop count
+silently changed the layout. Now one row, horizontally scrolling, constant height. Submit is present
+from the start rather than appearing when the last stop resolves; a control that appears late is a
+control nobody is looking for. Pressing it early names what is outstanding and does not navigate.
+`I11`/`I12` are untouched: this changes what the screen offers, never what the service allows. The
+`All stops done. Receive done is available.` banner is retired with the space it took.
+
+**D63 — the board browses; Schedule manages.** `D59` one screen over. The board's per-row Edit was
+already staff-gated, so no driver ever saw it, but it was the one place the board spoke to you as
+staff rather than as someone looking for a run — and it deep-linked to Schedule anyway.
+
+**D64 — "Pick up food" becomes "Today's pickup."** `D49` split the driver's two pages and named this
+one for the job; the label did not say the thing that distinguishes it from its sibling, which is
+*today*. `D30`'s one-entry-per-capability rule is untouched.
+
+**D65 — the driver's completion review includes the extras they added.** Ad-hoc pickups live in
+their own client-side array because an `UnscheduledDonation` is not a `ShiftStop` (`I14`, `I29`),
+and that separation is right. But `CompleteRunModal` never saw the array, so a driver who added two
+stores confirmed a modal showing neither. Two lists in one modal, headed separately. The structural
+separation stands; only the review got the second half of what the driver did.
+
+**D66 — the run picker is bound to the receiver edit window.** `A162` deliberately left the picker
+unbounded, and its reason still holds: **`receiveDone` is not window-gated**, and the picker is its
+only route, so a hidden run is an `IN_PROGRESS` run nobody can ever close. A lapsed run therefore
+does not disappear — it moves to a collapsed **"Too late to weigh"** band whose only action is
+finishing it. What changed is that a dead run is no longer offered as something to weigh. A `today`
+bound was rejected outright: receiving legitimately lags past midnight, which is the case `A162`
+exists for.
+
+**"All stops done, Receive done" was a copy bug, not a state bug.** Reported as "why can I still
+press Receive done when it says it's done?" The card stated a completed fact where it should have
+named an action. It reads **"Finish this run"** now; nothing behind it changed.
+
+**D67 — unscheduled donations get a summary card.** A weighed walk-in was summarised nowhere in the
+app except inside S2.3 itself, reached by one bare button. Now a card matching the run cards, with
+today's count and pounds and any driver-flagged rows still waiting for weights.
+
+**D68 — notes on S2.2 are shown, not toggled, one line each, and they name their author.** A
+disclosure holding a note the driver wrote *for this receiver, about this run* is a note most
+receivers will never open. Showing all three was the first half; the second was that a label stacked
+over a body cost two lines apiece on the screen with the least room, to say something the note's
+position already said. **"Karen Diaz's note:" says the part the receiver cannot see** — two of the
+three come from the driver and one from an admin, and which is which is what decides how much the
+note is worth acting on. `ReceiveStopDetail` gained `driverName` for it: a name, not PII, and one
+the receiver has already read on the run they picked.
+
+They also **moved into the entry column**, filling the space Add weight and Done left empty, capped
+by the keypad's height and scrolling inside themselves past that. The block is the one thing on S2.2
+allowed to claim leftover space, because it is the only thing whose length the pantry does not
+control. Making that work needed the pad's **row to be definite**: an `auto` row is as tall as its
+tallest item, so the notes first grew the column instead of filling it and put the page back into
+scroll — the third time this round that a container which could not shrink or would not stop growing
+was the whole bug.
+
+**D69 — S3.1 stops explaining itself.** Four standing paragraphs out. The open-runs **count** stays
+— that is a fact a reporter needs before filing; it was the three-sentence tail that was the
+lecture. **`D28`'s whole-pounds note survives on the printed receipt**, on `D57`'s precedent: print
+is where a reporter compares against the portal, and it is the one thing they cannot work out for
+themselves, two similar numbers a screen apart differing for a reason neither screen shows.
+
+**D70 — the receipt being filed looks like it.** `D55` gave the reporter a list beside the open
+receipt and then made the open row look like the twenty above it.
+
+**D71 — Schedule's Runs list is this calendar week.** The heading said "Runs coming up" over every
+run that will ever exist. **The server was not the problem**: `listShifts` has had a `toDate` and the
+route has parsed `?to=` all along, and both were already tested — the client simply never sent one.
+No server file changed. The list is the whole Monday–Sunday week rather than `today → Sunday`, on
+`A178`'s cut, because a week-bounded list that starts on Thursday makes its own heading false.
+
+**A192 has a sibling: the month-grid helpers existed three times.** S1.4's away picker, S1.6 and
+S1.7 each carried a byte-equivalent `monthGrid`/`nextMonth`/`previousMonth`/`formatMonthLabel`.
+`D73` folded the first two into `s1-rescue/shared/calendar.ts`; **S1.7 still has its copy** and
+collapsing it is a clean follow-up. The shared version takes an optional first-weekday so the
+calendar can open on Monday (`A178`) while the date pickers keep their Sunday start — same code,
+one parameter, rather than a fork.
+
+**D72 — a label-only walk-in can be pointed at a real store.** `I16(b)` accepts a `donor_label` as a
+source, so a walk-in typed as a store name is legitimately reportable and its pounds are in the
+total. But the Meal Connect receipt keys on `(date, donor_id)`, so that receipt can never be ticked
+— which `domain-modeling.md §2.1` says is deliberate, because NTFB's own donor picker cannot be
+pointed at a store that is not theirs either. **What was not deliberate is that the row was stuck
+there forever**: nothing re-pointed a label at a donor once the store *was* added to our list, so
+those pounds sat outside NTFB permanently. Attaching a donor keeps the typed label as provenance and
+re-checks two things it can newly break — `I29`'s on-route guard, and `D27`'s per-donor trash rates,
+which move weight between categories and must leave the reported total alone. No schema change: both
+columns already existed and were already nullable.
+
+**The typed name could not be kept where the plan said to keep it.** The plan had `donor_id` set and
+`donor_label` retained as provenance. `ck_ud_source_exclusive` — a **tier-1 CHECK**, `donor_id IS
+NULL OR donor_label IS NULL` — forbids it, and `data-model.md §7` derives the source discriminator
+from *which of the two is set*, so a row holding both is a fourth state nothing reads. The build hit
+the constraint rather than assuming, which is the right order. **No migration was added.** The label
+is cleared and the typed name is appended to the donation's own `note` ("Written down as sunrise
+bagels."), which `intakeNotes` already carries onto the receipt — so the reporter filing the card
+still sees the name the receiver wrote beside the store it was filed under, and the UI says that is
+what happens rather than claiming the label survives. **Preserving the label literally would need a
+schema change and an amendment to two docs, one of them locked**; that is a human's call and was
+flagged, not taken.
+
+**D73 — a calendar for staff.** Day, week, month or a custom range, week by default. A cell carries
+the route name and the driver and nothing else; times and stop counts belong in the editor, and the
+editor is the existing one, so the calendar **adds no write path** and inherits every OPEN/CLAIMED
+guard unchanged. The month-grid helpers were already written for the away-date picker and were
+extracted rather than copied.
+
+**D74 — assigning a driver pre-selects the current one and confirms a swap.** The picker never read
+`run.ownerId`, so re-opening it on a claimed run showed nobody selected and listed the current
+driver unhighlighted among everyone else. Unassigning already confirmed; replacing — the same
+magnitude of change — confirmed nothing. The `I20` conflict warning stays a separate question and
+still stacks: "this driver is double-booked" and "did you mean to replace Karen" are not the same
+thing and may both need asking.
+
+### The defect round 5 built and its own QA caught
+
+**`D62`'s progress row took the whole page sideways at three stops.** The strip and its list both
+carried `min-width: 0` — the property that lets a flex child shrink below its content so an inner
+region can scroll instead. The row *containing* them did not, and it is a **grid** item, whose
+`min-width` defaults to `auto`. So the chain stopped one level short: the list could never receive
+the row's slack, the row grew past the viewport, and the page scrolled horizontally — dragging the
+keypad and the category tiles off-screen and clipping "Submit run" to "Submit". `D61`'s fixed entry
+column was failing for a reason that lived a level above it.
+
+Two entries wide it was invisible, which is why every test passed: the seed's runs have two stops,
+and the third is what tips it. Fixed with `min-width: 0` on the row, then verified by cloning the
+strip up to **thirteen** stops in a live browser — row height constant at 56px, zero page overflow
+on either axis, the list scrolling 6043px inside a 710px window, Submit still at the right edge.
+**The lesson is about the fixture, not the CSS**: a layout rule that only bites past N of something
+needs a fixture with more than N of it, and "the seed has two" is not a test.
+
+**Two more the same screenshot caught, both introduced by this round.** A single QA card — a
+fortnight-old run, both stops weighed — was saying two false things at once, and each is a instance
+of the same mistake: **a state that is set once and then never re-asked.**
+
+- **"Driver is returning to the pantry" had no end.** `pickup_completed_at` is set when the driver
+  taps *heading back* and is never cleared, so the card announced a driver on the way back a
+  fortnight after they got there. The bound is the **stops**, not a clock: if every stop is
+  resolved, the receiver has already weighed what the driver brought, so the sentence is false
+  regardless of the date. The board's and S1.4's chip is deliberately **not** fixed the same way —
+  `ShiftSummary` carries no weighing state, and widening a payload to chase a symptom that only
+  shows on an already-stuck run is the wrong trade. Recorded, not hidden.
+- **"Too late to weigh" was banding runs with nothing left to weigh.** `bandFor` asked the window
+  before it asked readiness, so a fully-weighed run sat under a heading telling the receiver they
+  had missed something — when nothing had been missed, and one tap would close it. Readiness now
+  wins: a closed window costs a resolved run nothing, because receive-done is not window-gated.
+  **This makes the band exact rather than merely correct** — what remains in it is only the runs the
+  window actually took something from, which is to say precisely the stuck ones from §3.4.
+
+Neither was caught by a test, and both are now pinned by one.
+
+**D75 — a run closed today stays on the picker, read-only.** Receive-done made a run vanish the
+instant it was confirmed, which is the one moment a receiver most wants another look at what they
+just weighed. `listReceivableRuns` now admits `COMPLETED` runs whose `occurrence_date` is the
+**pantry's** today, in their own collapsed band, offering nothing — `COMPLETED` is terminal (`I10`),
+so there was never an action to offer. Bounded to today because that is the span of one receiver's
+shift; anything older is the report's job, and widening it further would turn the working screen
+into a history. `A162`'s membership rule is otherwise untouched: everything else on the list is
+`IN_PROGRESS`.
+
+## QA round 6 — the receiver's list, and a check-off nobody could see
+
+**D76 — S2.1b owns the donation worklist; S2.3 weighs one donation.** `D67` put a summary *card* on
+the picker and left the rows on S2.3, reasoning that rows belong where they are worked. That was
+backwards for half of it. When a driver flags a store mid-run (`I17`) the food is already in the
+building and the receiver has to weigh it — it is a pickup in every sense except that no route
+planned it, and **S2.1b is the receiver's list of pickups**. A suggestion that announced itself only
+as "1 waiting for weights", behind a tap, was the one kind of arrival the picker did not list.
+
+So both lists moved to the panel, as **two sections** rather than one — suggested is somebody else's
+unfinished business, recorded is finished business, and run together neither is legible. "Start a new
+one" moved with them and became **Add walk-in donation**, because starting a donation from nothing is
+a different act from weighing one that arrived, and a screen offering both asked the receiver to pick
+a mode before it knew what they had in their hands.
+
+What is left on S2.3 is **the sheet**. It is now literally S2.2's: the shell — `.r3-sheet`, its head
+and its two panes — was extracted to `components/sheet.css` and both screens import it, so the two
+cannot drift into different-looking screens for the same job. S2.3 takes two routes (`/donations/new`
+and `/donations/:id/weigh`), goes `fullScreen` for `D60`'s reason, and reads its row **by id** so the
+page survives a reload on a docked tablet. Discard came with it: throwing a suggestion away destroys
+the only record that a driver saw this food, and that judgement belongs after opening the row rather
+than while scanning past it.
+
+**D77 — a donation is listed while the receiver's edit window is open, and both lists use the same
+bound.** Suggested is bounded because `confirmDonation` refuses a lapsed row, so listing one offered
+work the next tap would refuse — the same reasoning `D66` applied to runs. Unlike runs, **filtering
+strands nothing here**: an unconfirmed suggestion is hard-deleted at receive-done or by the daily
+sweep (`I17`), and a lapsed confirmed row is the Reporter's from S3.1.
+
+Recorded was the pantry's calendar day first, and **that was a bug found by using it**. A driver's
+flag carries its *run's* `received_date`, so weighing a suggestion off a run dated any other day
+dropped it straight out of "Recorded today" — the row vanished at the exact moment the receiver
+wanted to see it. Both lists are the window now, and the panel says **"weighed"** rather than
+"recorded today". A side effect worth having: S2.1b no longer owns a single string that states a fact
+about a calendar day, so `D67`'s three exemptions from the never-say-today rule are gone and the copy
+test sweeps everything with no exemption at all.
+
+**D78 — a filed receipt reads green.** `D56` deliberately made a filed row *recede* so it would not
+compete with `D70`'s open row. Receding turned out to be indistinguishable from absent, and QA
+reported the check-off as unclear. Green is added as a **fourth channel**, not a replacement — the
+tick, the byline and the de-emphasised weight all stay, so §2's ban on hue-alone signals still holds.
+The colour is `--success`, whose token comment already named this exact use. Filed and open can be
+true of the same row at once and still read as two facts: one is an orange edge and tint, the other a
+green fill inside the row.
+
+### Two things reported this round that were not defects
+
+- **"Skipped should count as a finished stop."** It already did, at both ends —
+  `RECEIVE_RESOLVED_STATES` is `WEIGHED | SKIPPED | REASSIGNED` and both the server count and the
+  client's `isResolved` read it. The screenshot showing "1 of 2 done" with one pending and one
+  skipped was correct. Reported in round 4 as well, verified then, and pinned by a test since.
+- **"Remove the Edit button from the board; a driver has no right to edit a shift."** A driver never
+  saw it — `canEditRun` requires the STAFF tier. It came out anyway, under `D63`, for a different
+  reason than the one reported.
+
 ---
 
 ## 3. What still needs a human
@@ -528,9 +919,21 @@ many unconfirmed prefills the close discarded.
 
 ### 3.4 Smaller open questions
 
-- **The bottom nav is `position: static`**, so it scrolls with content rather than staying pinned.
-  No doc requires it to be fixed, so this is an open question, not a defect — but on a 15-run week
-  the driver scrolls to the bottom to change screens.
+- **A lapsed run with an unresolved stop cannot be closed by anyone. Needs a ruling.** Found while
+  building `D66`, and it **predates that decision** — nothing this round widened or narrowed it.
+  `receiveDone` requires every stop resolved (`I12`), but `addWeight` and `skipStop` are both gated
+  on the receiver edit window. So once the window lapses on a run with a `PENDING` stop, there is no
+  path to `COMPLETED` from any account: the receiver cannot resolve the stop, and nobody else has a
+  control that would. The run sits `IN_PROGRESS` forever and keeps appearing in the "Too late to
+  weigh" band. It is not silent — the card leads to S2.2b, which names the outstanding stop — but
+  naming it is all anyone can do. **The question for a human is who should be able to resolve it**:
+  a Staff-tier skip, an Admin override of the window, or an explicit "abandon this run" that is
+  neither of the two. All three touch a locked gate, so none should be picked without the ruling.
+  At ~15 pickups a week this is rare, and it has never happened, because no run has ever lapsed.
+- ~~**The bottom nav is `position: static`**~~ **RESOLVED 2026-08-03 (`D42`).** The chrome is
+  sticky, so navigation is never scrolled away — and `D60` then took the bar off S2.2 entirely,
+  because on the one screen whose job is tapping near the bottom edge, a permanently-reachable bar
+  is something a thumb finds by accident.
 - ~~**A189 — does the Meal Connect form accept a decimal in Pounds?**~~ **ANSWERED 2026-08-02
   (`D28`).** The assumption was right that this needed a human: it said "whoever confirms this must
   decide where the remainder goes before it is implemented," and the pantry's own paper log settled
@@ -787,6 +1190,29 @@ cites by number.
 - **A lane report's `Assumed:` field is the load-bearing one.** Two Phase-2 lanes died before writing
   theirs; the gap was closed by a targeted `doc-qa` pass, but A173–A176 are assumptions *recovered by
   inspection* rather than declared by their author — a weaker guarantee.
+
+### 6.1 Round 4: three things reported as bugs that were not
+
+*Kept because the pattern is worth more than the three cases. In all three the code was right and
+the **communication** was wrong, and in all three the tempting fix — change the behaviour — would
+have broken something. Reproducing before believing is what separated them.*
+
+- **"The Claim button doesn't disappear."** It was `eligible()` refusing an **overlapping** claim
+  with a 409; the row stayed `OPEN`, nothing was half-written, and the toast carrying the reason
+  had scrolled past. Had this been "fixed" as a state-refresh bug, the real defect — an invisible
+  refusal — would have survived, and the overlap guard might have been weakened chasing it. `D52`
+  fixes the visibility and leaves the rule alone.
+- **"Receive done still shows the Receive done button."** The screenshot was the **CONFIRM** stage,
+  one step *before* the one `D37` changed. The CLOSED stage already had no button. What was actually
+  missing was the thing the same sentence asked for and nobody had built: **who signed off** (`D46`).
+- **"Skip should also count as a finished stop."** It already did, at both ends — `progressOf`
+  counts `disposition !== 'PENDING'` and `canHeadBack` treats `COLLECTED | SKIPPED | REASSIGNED`
+  alike, each already covered by a test. Nothing was changed.
+
+**The lesson: a user reporting a bug is reliably right that something is wrong and unreliably right
+about what.** Two of these three were a missing sentence, not a missing behaviour. The cost of
+checking first was minutes; the cost of not checking would have been changes to a claim-eligibility
+guard and a completion gate, both invariant-bearing.
 
 ---
 

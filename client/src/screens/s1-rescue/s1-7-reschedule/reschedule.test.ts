@@ -454,6 +454,14 @@ describe('copy', () => {
     }
   });
 
+  it('names the way out as a destination, not as a sentence (D43)', () => {
+    // One way out, at the top, and `BackLink`'s chevron already says "back" — so
+    // the label is the place it returns to (S1.3, this run's own page). It also
+    // has to survive §7's vocabulary: the UI calls it a run, never a shift.
+    expect(COPY.back).toBe('This run');
+    expect(COPY.back.toLowerCase()).not.toContain('back');
+  });
+
   it('never offers a replacement driver', () => {
     // Cap 9: "The system never auto-selects a replacement person." The release copy
     // says the opposite out loud, so a coordinator knows the run needs a driver.

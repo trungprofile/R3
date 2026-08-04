@@ -93,6 +93,21 @@
   margin: 0;
 }
 
+/* Who confirmed receive-done, and when (`D46`). It sits ABOVE the closed block
+ * because it is the fact a second receiver came to this screen for; the sentence
+ * about where the numbers went is the follow-up. The name carries the emphasis,
+ * the label and the timestamp are quiet — one fact, read left to right. */
+.s22b-signoff {
+  font-size: var(--font-body);
+  color: var(--text);
+  margin: 0;
+}
+
+.s22b-signoff__label {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
 /* The run is not ready. Warning fill behind dark text (§2) — this is "needs
  * attention", not a failure, and nothing has gone wrong. */
 .s22b-blocked {

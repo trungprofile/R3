@@ -139,9 +139,68 @@ export function doneStage(summary: ReceiveDoneSummary, stillOpen: boolean | null
  * refuses every receiver write on a run that is not `IN_PROGRESS`, so an Edit on a
  * closed run would lead somewhere that says no. That guard is the rule; this is the
  * same question asked politely, one screen earlier.
+ *
+ * **Both halves, since `D47`.** `requireReceivable` and `requireWindowOpen` are two
+ * separate gates on every receiver write, and the screen could previously see only
+ * the first — so **Change a weight** appeared on a run that was still open but whose
+ * day-based window had lapsed, and led to a sheet that refused the write. The
+ * payload now carries the server's own evaluation of the second (`editWindowOpen`),
+ * so the button is offered when, and only when, both would pass.
+ *
+ * Still communication only. Neither gate moved; the service asks both again.
+ *
+ * `stillOpen` keeps its three-valued reading: `null` is "could not find out" and
+ * falls back to offering, because guessing "closed" would hide the way back on a run
+ * that has one. `editWindowOpen` has no such case — it always arrives with the
+ * summary the screen cannot render without.
  */
-export function canEditWeights(stillOpen: boolean | null): boolean {
-  return stillOpen !== false;
+export function canEditWeights(stillOpen: boolean | null, editWindowOpen: boolean): boolean {
+  return stillOpen !== false && editWindowOpen;
+}
+
+// ---------------------------------------------------------------------------
+// Who signed off (`D46`)
+// ---------------------------------------------------------------------------
+
+/** The completion attribution, when there is one. */
+export interface SignOff {
+  name: string;
+  at: string;
+}
+
+/**
+ * Who finished this run and when, or null.
+ *
+ * The server populates `completedBy`/`completedAt` only on a `COMPLETED` shift,
+ * reading the last writer under I10's terminality — see the assumption beside the
+ * query in `services/receive.ts`. This side does not re-derive any of that; it only
+ * refuses to render half an attribution. A name with no time, or a time with no
+ * name, is a sentence the screen should not attempt.
+ */
+export function signOff(summary: ReceiveDoneSummary): SignOff | null {
+  if (summary.completedBy === null || summary.completedAt === null) return null;
+  return { name: summary.completedBy, at: summary.completedAt };
+}
+
+/**
+ * "2 Aug 2026, 3:14 PM" — the moment the run was closed, in the PANTRY's zone.
+ *
+ * The zone is the session's (A120) and never the device's: a receiver who closes a
+ * Tuesday run at 12:30am is reading a screen about the pantry's day, not their
+ * tablet's. `undefined` falls back to the device, which is right only for the moment
+ * before the session has loaded.
+ */
+export function signOffTime(iso: string, timeZone?: string | null): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '';
+  return at.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(timeZone ? { timeZone } : {}),
+  });
 }
 
 /**
@@ -250,7 +309,11 @@ export const COPY = {
   // --- the one action -----------------------------------------------------
   receiveDone: 'Receive done',
   confirmQuestion: 'Finish this run?',
-  backToRuns: 'Back to the runs',
+  /** `D43`: the way out is a `BackLink` at the TOP of the screen, so it is a noun
+   *  naming the destination rather than a sentence at the bottom of three
+   *  different branches. The three hand-rolled "Back to the runs" buttons are
+   *  gone with it. */
+  backToRuns: 'Runs',
   /** `D37`: the confirm is not a one-way door until it is submitted. Named for
    *  what it opens — the weights — rather than "Back", which would read as the
    *  browser's button and say nothing about what is on the other side. */
@@ -272,6 +335,9 @@ export const COPY = {
   closed: 'This run is finished',
   closedHint: 'These are the weights the report will use.',
   closedNext: 'Ask whoever files the report if one of them needs correcting.',
+  /** `D46`: the CLOSED stage said the run was finished and never said BY WHOM.
+   *  On a shared tablet that is the one question a second receiver asks. */
+  signedOffLabel: 'Finished by',
 
   // --- nothing to show ----------------------------------------------------
   noStops: 'This run has no stops.',

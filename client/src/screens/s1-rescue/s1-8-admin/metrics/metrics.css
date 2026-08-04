@@ -189,91 +189,35 @@
   background: var(--surface-paper);
 }
 
-/* A store with no earlier figure. Muted, and never a warning colour: no prior
- * period is an absence of information, not a problem (`shared/src/metrics.ts`). */
-.s32-trend--none {
+/* --- The two headline figures (D58) --------------------------------------- */
+
+/* Total rescued and To the food bank, above the table they total. Big enough to
+ * be the answer, side by side so neither is ever read alone — PRD §3's key data
+ * boundary is kept by the pair, not by either number. The by-store bar chart that
+ * stood below the table is gone with `Bars.tsx`: it drew these same figures a
+ * second way and carried nothing the table did not. */
+.s32-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin: 0 0 var(--space-5) 0;
+}
+
+.s32-figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.s32-figure__label {
+  font-size: var(--font-label);
   color: var(--text-muted);
 }
 
-/* --- Bars ----------------------------------------------------------------- */
-
-.s32-bars {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin: var(--space-4) 0;
-}
-
-.s32-bar {
-  display: grid;
-  grid-template-columns: minmax(6rem, 12rem) 1fr;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-.s32-bar__name {
-  font-size: var(--font-label);
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-
-/* The full-width track a bar is drawn against, so short bars still read as a
- * share of the largest rather than as a bar of unknown scale. */
-.s32-bar__track {
-  background: var(--surface-paper);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  height: var(--space-6);
-  overflow: hidden;
-}
-
-.s32-bar__fill {
-  display: flex;
-  height: 100%;
-}
-
-/* The split that makes the boundary visible: the part that goes to the food
- * bank, and the part that does not. */
-.s32-bar__reported {
-  background: var(--success);
-  height: 100%;
-}
-
-.s32-bar__unreported {
-  background: var(--border);
-  height: 100%;
-}
-
-.s32-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  margin: 0 0 var(--space-3) 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--font-label);
-  color: var(--text);
-}
-
-.s32-legend__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.s32-legend__swatch {
-  width: var(--space-4);
-  height: var(--space-4);
-  border-radius: var(--space-1);
-  border: 1px solid var(--border);
-}
-
-.s32-legend__swatch--reported {
-  background: var(--success);
-}
-
-.s32-legend__swatch--unreported {
-  background: var(--border);
+.s32-figure__value {
+  font-size: var(--font-h2);
+  font-weight: 600;
+  margin: 0;
 }
 
 /* --- Coverage counts ------------------------------------------------------ */

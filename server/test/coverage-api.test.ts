@@ -210,6 +210,54 @@ describe('POST /shifts/:id/claim', () => {
     });
   });
 
+  /**
+   * D52's reproduction, pinned as a test rather than left to a browser session.
+   *
+   * The round-4 report was "the Claim button is broken": Karen Diaz already owned
+   * *Race Route, 8:00–10:00* and tapped Claim on the OPEN *Tuesday Morning*,
+   * 9:00–11:00. They overlap, so I20's gate refuses. Nothing was lost and nothing was
+   * broken — the write never happened, on purpose, and the board's only signal was a
+   * toast that had scrolled away by the time anyone looked.
+   *
+   * This asserts the exact envelope the board now pins to the row, so `message` here
+   * and the sentence on the row cannot drift apart: the client renders this string
+   * and composes nothing.
+   */
+  it('refuses an OVERLAPPING claim with 409 NOT_ELIGIBLE and a sentence to show (D52)', async () => {
+    const karen = await makeDriver({ firstName: 'Karen', lastName: 'Diaz' });
+    // Race Route, already hers.
+    await makeShift({
+      status: 'CLAIMED',
+      ownerId: karen.id,
+      startsAt: at(3 * DAY),
+      endsAt: at(3 * DAY + 2 * HOUR),
+    });
+    // Tuesday Morning, open, starting an hour into the one she owns.
+    const overlapping = await makeShift({
+      createdBy: karen.id,
+      startsAt: at(3 * DAY + HOUR),
+      endsAt: at(3 * DAY + 3 * HOUR),
+    });
+
+    const res = await call('POST', `/api/shifts/${overlapping.id}/claim`, { as: karen.id });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({
+      error: 'NOT_ELIGIBLE',
+      message: 'You already have a run at that time. Cancel it first.',
+    });
+    expect(res.body.eligibility.reasons).toEqual(['OWNED_SHIFT_OVERLAP']);
+
+    // And the run is untouched: a refusal is a refusal, not a half-write the board
+    // has to reconcile.
+    const row = await db
+      .selectFrom('shift')
+      .select(['status', 'owner_id'])
+      .where('id', '=', overlapping.id)
+      .executeTakeFirstOrThrow();
+    expect(row).toMatchObject({ status: 'OPEN', owner_id: null });
+  });
+
   it('answers an ineligible claim with the reasons attached', async () => {
     const driver = await makeDriver();
     const shift = await makeShift({

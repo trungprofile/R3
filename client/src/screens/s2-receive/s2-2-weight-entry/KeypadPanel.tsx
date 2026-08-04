@@ -10,6 +10,8 @@
 // The typed value is a STRING the whole way (A165). It is displayed as typed and
 // sent as typed; nothing on this screen turns a scale reading into a JS number.
 
+import type { ReactNode } from 'react';
+
 import { Button, NumericKeypad } from '../../../components/index.ts';
 import type { CategoryTile, ReceiveStopDetail } from '../../../api/shared.ts';
 import {
@@ -42,6 +44,11 @@ export interface KeypadPanelProps {
   onRemove: () => void;
   onAdvance: () => void;
   onSkip: () => void;
+  /** The stop's notes, rendered at the FOOT of the actions column so they fill
+   *  the space beside the keypad instead of sitting under both columns. The
+   *  screen owns them; this panel owns only where they land, because only it
+   *  knows where the keypad's bottom edge is. */
+  notes?: ReactNode;
 }
 
 export function KeypadPanel({
@@ -57,6 +64,7 @@ export function KeypadPanel({
   onRemove,
   onAdvance,
   onSkip,
+  notes,
 }: KeypadPanelProps) {
   const weighed = hasWeights(detail);
   const ready = canAddWeight(entry);
@@ -161,6 +169,7 @@ export function KeypadPanel({
           ) : null}
         </div>
         {weighed ? null : <p className="r3-pad__hint">{COPY.markWeighedHint}</p>}
+        {notes}
       </div>
     </section>
   );
@@ -172,10 +181,12 @@ export function ClosedPanel({
   detail,
   busy,
   onAdvance,
+  notes,
 }: {
   detail: ReceiveStopDetail;
   busy: boolean;
   onAdvance: () => void;
+  notes?: ReactNode;
 }) {
   return (
     <section className="r3-pad r3-pad--closed" aria-label={COPY.stopTotalLabel}>
@@ -187,6 +198,7 @@ export function ClosedPanel({
         <Button variant="primary" block onClick={onAdvance} disabled={busy}>
           {COPY.nextStop}
         </Button>
+        {notes}
       </div>
     </section>
   );

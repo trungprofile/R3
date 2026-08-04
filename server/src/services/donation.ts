@@ -143,6 +143,28 @@ async function readDonations(
   });
 }
 
+/**
+ * The receiver edit window as ONE SQL expression, in one place.
+ *
+ * `donationQuery` selects it as `editable` and `listReceiveWorklist` filters the
+ * `SUGGESTED` list on it (`D77`), so the flag a row carries and the reason it is
+ * listed at all are the same sentence and cannot drift apart. `requireEditable`
+ * uses it too — the write side refusing exactly what the read side hid.
+ *
+ * It assumes the caller's query has `unscheduled_donation`, a LEFT JOIN to `shift`
+ * and a join to `app_config` in scope, which all three call sites do. The window
+ * runs from the shift's start for a driver-add, and from the row's own creation for
+ * a walk-in that has no shift to anchor to.
+ *
+ * A function rather than a shared constant so each call site gets its own node.
+ */
+function receiverWindowOpen() {
+  return sql<boolean>`
+    coalesce(shift.starts_at, unscheduled_donation.created_at)
+      + (app_config.receiver_edit_window_days * interval '1 day') > now()
+  `;
+}
+
 function donationQuery(reader: Reader) {
   return reader
     .selectFrom('unscheduled_donation')
@@ -161,12 +183,7 @@ function donationQuery(reader: Reader) {
       sql<string | null>`unscheduled_donation.weight::text`.as('weight'),
       sql<string>`to_char(unscheduled_donation.received_date, 'YYYY-MM-DD')`.as('receivedDate'),
       sql<string>`concat_ws(' ', app_user.first_name, app_user.last_name)`.as('createdByName'),
-      // The window runs from the shift's start for a driver-add, and from the row's
-      // own creation for a walk-in that has no shift to anchor to.
-      sql<boolean>`
-        coalesce(shift.starts_at, unscheduled_donation.created_at)
-          + (app_config.receiver_edit_window_days * interval '1 day') > now()
-      `.as('editable'),
+      receiverWindowOpen().as('editable'),
     ]);
 }
 
@@ -178,20 +195,76 @@ export async function listDonationsForShift(shiftId: string): Promise<DonationSu
 }
 
 /**
- * The receiver's S2.3 worklist: everything still awaiting confirmation, across runs,
- * plus recent confirmed rows so an edit is reachable without hunting.
+ * The receiver's worklist, as S2.1b lists it beside the runs (`D76`).
+ *
+ * Two lists rather than one, because they answer two different questions and the
+ * picker shows them as two sections: what a driver flagged and nobody has weighed
+ * (`suggested`), and what has already been weighed (`recorded`).
+ *
+ * BOTH ARE BOUNDED BY THE RECEIVER EDIT WINDOW (`D77`), and the symmetry is the
+ * point rather than a coincidence. `suggested` is bounded because `confirmDonation`
+ * refuses a lapsed row, so listing one offered work the next tap would refuse.
+ * `recorded` is bounded to MATCH IT: a driver's flag carries its run's
+ * `received_date`, which is that run's day and not necessarily this one, so a
+ * today-bounded `recorded` made a suggestion weighed off a Wednesday run vanish
+ * from the screen the moment it was weighed — the one thing the receiver wanted to
+ * see. Weighing something must never make it disappear. One window over both lists
+ * is also the honest statement of what the panel is: everything a receiver can
+ * still act on.
+ *
+ * Nothing is stranded by the bound — an unconfirmed suggestion is hard-deleted at
+ * receive-done or by the daily sweep (I17), and a lapsed confirmed row belongs to
+ * the Reporter from S3.1 (PRD cap 15), which is where the panel stops offering it
+ * a switch anyway.
  */
-export async function listOpenDonations(): Promise<DonationSummary[]> {
-  return readDonations(db, (qb) =>
-    qb
-      .where((eb) =>
-        eb.or([
-          eb('unscheduled_donation.status', '=', 'SUGGESTED'),
-          sql<boolean>`unscheduled_donation.created_at > now() - interval '7 days'`,
-        ]),
-      )
-      .orderBy('unscheduled_donation.created_at', 'desc'),
-  );
+export async function listReceiveWorklist(): Promise<{
+  suggested: DonationSummary[];
+  recorded: DonationSummary[];
+  /** The summed weight of `recorded`, as a decimal string. Summed in SQL over the
+   *  same predicate rather than added up from the rows: `numeric(8,2)` is exact and
+   *  a JS number is not, and this figure is one a receiver compares against the
+   *  NTFB receipt (I13's reason, one layer up). Doing it here rather than in a
+   *  second caller-side query is also what keeps the total and the list from
+   *  disagreeing across two round trips. */
+  recordedTotal: string;
+}> {
+  const [suggested, recorded, totals] = await Promise.all([
+    readDonations(db, (qb) =>
+      qb
+        .where('unscheduled_donation.status', '=', 'SUGGESTED')
+        // Single-argument `where` for a raw predicate, as everywhere else in this
+        // file: the three-argument form would append `= $1`.
+        .where(receiverWindowOpen())
+        .orderBy('unscheduled_donation.created_at', 'desc'),
+    ),
+    readDonations(db, (qb) =>
+      qb
+        .where('unscheduled_donation.status', '=', 'CONFIRMED')
+        .where(receiverWindowOpen())
+        .orderBy('unscheduled_donation.created_at', 'desc'),
+    ),
+    // The same two predicates again, as an aggregate. `app_config` and the LEFT
+    // JOIN to `shift` are what `receiverWindowOpen` reads.
+    db
+      .selectFrom('unscheduled_donation')
+      .leftJoin('shift', 'shift.id', 'unscheduled_donation.shift_id')
+      .innerJoin('app_config', (join) => join.onTrue())
+      .where('unscheduled_donation.status', '=', 'CONFIRMED')
+      .where(receiverWindowOpen())
+      .select(sql<string>`coalesce(sum(unscheduled_donation.weight), 0)::text`.as('total'))
+      .executeTakeFirst(),
+  ]);
+
+  return { suggested, recorded, recordedTotal: totals?.total ?? '0' };
+}
+
+/**
+ * One donation by id — S2.3 since `D76`, which weighs a single donation rather than
+ * holding the worklist. A read by id is what makes that page addressable: it survives
+ * a reload and can be linked to from the panel on S2.1b.
+ */
+export async function readDonation(id: string): Promise<DonationSummary> {
+  return readOne(db, id);
 }
 
 async function readOne(reader: Reader, id: string): Promise<DonationSummary> {
@@ -482,12 +555,7 @@ async function requireEditable(tx: Tx, id: string): Promise<void> {
     .selectFrom('unscheduled_donation')
     .leftJoin('shift', 'shift.id', 'unscheduled_donation.shift_id')
     .innerJoin('app_config', (join) => join.onTrue())
-    .select(
-      sql<boolean>`
-        coalesce(shift.starts_at, unscheduled_donation.created_at)
-          + (app_config.receiver_edit_window_days * interval '1 day') > now()
-      `.as('editable'),
-    )
+    .select(receiverWindowOpen().as('editable'))
     .where('unscheduled_donation.id', '=', id)
     .executeTakeFirst();
 

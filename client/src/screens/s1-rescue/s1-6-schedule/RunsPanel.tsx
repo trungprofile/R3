@@ -16,27 +16,53 @@
 // editor (`RunEditor`), which is where the invariants it protects are documented:
 // I23 keeps a per-run edit off the pattern, I24 makes the pattern edit the only thing
 // that changes it, and the editor's save path still branches on an explicit scope.
+//
+// TWO VIEWS OF ONE LIST (D73), and one editor between them. The list is this pantry
+// week (D71) and the calendar carries its own range; whichever is on screen decides
+// the `from`/`to` of the single fetch, and both open the same `RunEditor` — so the
+// calendar adds no write path and no second set of guards to keep in step.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
+  BackLink,
   Button,
   EmptyState,
   ErrorBlock,
   List,
   ListItem,
   ListRow,
+  Segmented,
   SkeletonRows,
   StatusChip,
 } from '../../../components/index.ts';
+import type { SegmentedOption } from '../../../components/index.ts';
 import { useAsyncData, useSession } from '../../../app/index.ts';
 import type { RouteDetail, ShiftSummary } from '../../../api/shared.ts';
 import { PublishForm } from './PublishForm.tsx';
+import { RunCalendar } from './RunCalendar.tsx';
 import { RunEditor } from './RunEditor.tsx';
 import { fetchRoutes, fetchRuns } from './api.ts';
-import { COPY, formatInstantRange, groupRunsByDay, pantryToday } from './logic.ts';
+import {
+  COPY,
+  calendarBounds,
+  formatInstantRange,
+  groupRunsByDay,
+  initialCalendarView,
+  pantryToday,
+  runsInRange,
+  thisWeekRange,
+} from './logic.ts';
+import type { CalendarView } from './logic.ts';
 
 type Mode = { kind: 'list' } | { kind: 'publish' } | { kind: 'edit'; shiftId: string };
+
+type ViewId = 'list' | 'calendar';
+
+const VIEWS: readonly SegmentedOption<ViewId>[] = [
+  { value: 'list', label: COPY.viewList },
+  { value: 'calendar', label: COPY.viewCalendar },
+];
 
 export interface RunsPanelProps {
   /** Switch to the Recurring runs tab with this pattern loaded — "Edit the weekly
@@ -53,19 +79,35 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
   // zone must not shift either.
   const today = pantryToday(new Date(), timezone);
 
-  const loadRuns = useCallback((signal: AbortSignal) => fetchRuns(today, signal), [today]);
+  const [view, setView] = useState<ViewId>('list');
+  const [calendar, setCalendar] = useState<CalendarView>(() => initialCalendarView(today));
+
+  // WHAT IS ON SCREEN DECIDES WHAT IS FETCHED. The list is D71's bound — the pantry
+  // week, Monday to Sunday (A178) — and the calendar's range is whatever staff set.
+  // Neither is unbounded, which is the whole of D71: `GET /shifts` with only a
+  // `from` is every run that will ever exist.
+  const range = useMemo(
+    () => (view === 'list' ? thisWeekRange(today) : calendarBounds(calendar)),
+    [view, today, calendar],
+  );
+
+  const loadRuns = useCallback(
+    (signal: AbortSignal) => fetchRuns(range.from, range.to, signal),
+    [range],
+  );
   const runs = useAsyncData<ShiftSummary[]>(loadRuns);
+  // Filtered again on arrival: a response for the range staff have just left must
+  // not paint into the one they are standing in.
+  const inRange = useMemo(() => runsInRange(runs.data ?? [], range), [runs.data, range]);
 
   // Active routes only — an archived one is hidden from new use (I21), which is
   // exactly what publishing onto it would be.
   const loadRoutes = useCallback((signal: AbortSignal) => fetchRoutes(false, signal), []);
   const routes = useAsyncData<RouteDetail[]>(loadRoutes);
 
-  const groups = useMemo(() => groupRunsByDay(runs.data ?? [], today), [runs.data, today]);
+  const groups = useMemo(() => groupRunsByDay(inRange, today), [inRange, today]);
   const editing =
-    mode.kind === 'edit'
-      ? (runs.data ?? []).find((run) => run.id === mode.shiftId) ?? null
-      : null;
+    mode.kind === 'edit' ? inRange.find((run) => run.id === mode.shiftId) ?? null : null;
 
   // A run being edited can leave the list under staff's feet — someone else
   // cancelled it, or it moved out of the window. Without this the panel sits in
@@ -76,6 +118,26 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
       setMode({ kind: 'list' });
     }
   }, [mode, runs.data, editing]);
+
+  // ONE EDITOR, both views (D73). It carries its own guards — `canSetDriver`,
+  // `canCancelRun` and `canMoveRun` are all OPEN||CLAIMED, each with a server twin
+  // — so an IN_PROGRESS or COMPLETED run opens from the calendar with the same
+  // actions hidden that the list hides. The calendar adds no write path.
+  //
+  // Keyed by the run: the editor holds the note draft and the chosen scope in local
+  // state, and switching runs without remounting would carry one run's draft onto
+  // another.
+  const renderEditor = (run: ShiftSummary) => (
+    <RunEditor
+      key={run.id}
+      run={run}
+      today={today}
+      timeZone={timezone}
+      onChanged={runs.reload}
+      onClose={() => setMode({ kind: 'list' })}
+      onEditPattern={onEditPattern}
+    />
+  );
 
   return (
     <div className="s16-panel">
@@ -91,6 +153,11 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
 
       {mode.kind === 'publish' ? (
         <>
+          {/* §3's one way out, at the top of the thing it leaves and before that
+              thing's heading (D43). The destination is a mode of this panel, not
+              a URL — which is what BackLink is for — and the label is the list it
+              returns to, in the words that list uses. */}
+          <BackLink label={COPY.runsHeading} onBack={() => setMode({ kind: 'list' })} />
           <PublishForm
             routes={routes.data ?? []}
             today={today}
@@ -99,38 +166,49 @@ export function RunsPanel({ onEditPattern }: RunsPanelProps) {
               setMode({ kind: 'list' });
             }}
           />
-          <Button variant="secondary" onClick={() => setMode({ kind: 'list' })}>
-            Back to the runs
-          </Button>
         </>
       ) : null}
 
-      <RunsList
-        groups={groups}
-        showLoading={runs.showLoading}
-        error={runs.error}
-        onRetry={runs.reload}
-        timeZone={timezone}
-        selectedId={mode.kind === 'edit' ? mode.shiftId : null}
-        onOpen={(run) => setMode({ kind: 'edit', shiftId: run.id })}
-        // Rendered inside the selected row rather than passed as an element, so the
-        // list does not have to know what an editor is. Keyed by the run: the editor
-        // holds the note draft and the chosen scope in local state, and switching
-        // runs without remounting would carry one run's draft onto another.
-        renderEditor={(run) => (
-          <div className="s16-list-editor">
-            <RunEditor
-              key={run.id}
-              run={run}
-              today={today}
-              timeZone={timezone}
-              onChanged={runs.reload}
-              onClose={() => setMode({ kind: 'list' })}
-              onEditPattern={onEditPattern}
-            />
-          </div>
-        )}
-      />
+      {/* D73's view switch. `filter` mode, not `tabs`: both views show the same
+          runs and neither mounts a different panel, so these are two ways of
+          looking at one list rather than two places to be. */}
+      {mode.kind === 'publish' ? null : (
+        <Segmented label={COPY.viewLabel} options={VIEWS} value={view} onChange={setView} />
+      )}
+
+      {view === 'calendar' ? (
+        <RunCalendar
+          view={calendar}
+          onViewChange={(next) => {
+            setCalendar(next);
+            // The open editor belongs to a run that may not be in the new range.
+            setMode({ kind: 'list' });
+          }}
+          runs={inRange}
+          showLoading={runs.showLoading}
+          error={runs.error}
+          onRetry={runs.reload}
+          today={today}
+          selectedId={mode.kind === 'edit' ? mode.shiftId : null}
+          onOpen={(run) => setMode({ kind: 'edit', shiftId: run.id })}
+          renderEditor={renderEditor}
+        />
+      ) : (
+        <RunsList
+          groups={groups}
+          showLoading={runs.showLoading}
+          error={runs.error}
+          onRetry={runs.reload}
+          timeZone={timezone}
+          selectedId={mode.kind === 'edit' ? mode.shiftId : null}
+          onOpen={(run) => setMode({ kind: 'edit', shiftId: run.id })}
+          // Rendered inside the selected row rather than passed as an element, so the
+          // list does not have to know what an editor is. Keyed by the run: the editor
+          // holds the note draft and the chosen scope in local state, and switching
+          // runs without remounting would carry one run's draft onto another.
+          renderEditor={(run) => <div className="s16-list-editor">{renderEditor(run)}</div>}
+        />
+      )}
     </div>
   );
 }

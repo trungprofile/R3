@@ -3,12 +3,29 @@
  * One top bar everywhere. Nav differs by device and is derived from tier/duty in
  * `nav.tsx`; this file only places it: a bottom bar on a phone AND on a tablet
  * (D22), a left nav on a desktop.
+ *
+ * The chrome is STICKY, not fixed, and the document keeps its own scrollbar (D42).
+ * That distinction is load-bearing twice over. A fixed-height shell with an inner
+ * scroller would break every screen-local `position: sticky` at once — there is one
+ * today (`.r3-pad`, weight-entry.css) and three screen-local scroll regions — and it
+ * would also mean the chrome reserves space it does not occupy. Sticky elements stay
+ * in flow, so the last row of a screen is never trapped underneath the bar: scroll to
+ * the true bottom and the bar is back in its own box, below the content.
  */
 
 .r3-app {
   display: flex;
   flex-direction: column;
   min-height: 100%;
+}
+
+/* Sticky chrome overlaps content at every scroll position but the ends, so a browser
+ * scrolling something into view of its own accord — a focused control reached by Tab,
+ * an anchor — can land it underneath a bar. These two lines are what stop that, and
+ * they are the only place the bar heights need to be stated. */
+html {
+  scroll-padding-top: var(--top-bar-height);
+  scroll-padding-bottom: var(--bottom-nav-height);
 }
 
 .r3-app__body {
@@ -23,8 +40,10 @@
   padding: var(--screen-padding);
 }
 
-/* Room for the fixed-height bottom nav so the last row is never trapped under it.
- * Both bar surfaces now (D22). */
+/* Breathing room above the bottom bar. Not a reservation and it does not need to be
+ * one: the bar is sticky (D42), so it keeps a box in normal flow and the last row of
+ * a screen sits above it once the page is scrolled to the end. This is the gap
+ * between the two, nothing more. Both bar surfaces (D22). */
 .r3-app--phone .r3-app__main,
 .r3-app--tablet .r3-app__main {
   padding-bottom: var(--space-4);

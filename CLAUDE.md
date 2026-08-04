@@ -7,13 +7,24 @@ System of record for Amazing Grace Food Pantry's weekly food-rescue cycle (rescu
 - `S2.4` is a device-level banner the shell mounts.
 - `S3.2` (metrics) is Admin's default **tab** since `D18`. `/metrics` still resolves, as a redirect.
 - The NTFB category mapping is not part of S3.1 (`D17`) and no longer its own Admin tab either: `D40` folded it into Admin's **Categories** tab, where a category's target is edited beside the category. `/admin?tab=mapping` still resolves, as a redirect.
-- `S1.4` (My shifts) is a **tab on the board** since `D30`, not a nav entry. `/my-shifts` still resolves.
+- `S1.4` (My shifts) was a tab on the board under `D30`; `D49` made it a nav entry again as **Today's pickup** at `/my-shifts`, and moved *When I'm away* onto the board as its second tab. `?tab=mine` still resolves.
+
+Two more things that will not be where you expect: the shell's chrome is **sticky** (`D42`), so a full-height screen must subtract `--top-bar-height` and `--bottom-nav-height` rather than assuming the page scrolls; and `/report` **opens straight onto the Meal Connect receipts** (`D54`) — there is no totals landing page any more, and the Reporter's weight edit (`PRD` cap 15) lives inside the receipt rather than behind a drill-in.
+
+A third: **S2.3 is two routes and no longer holds a list** (`D76`). `/donations/new` starts a walk-in, `/donations/:id/weigh` weighs a row a driver flagged, and both render the same sheet S2.2 does — the shell for it is `client/src/components/sheet.css`, imported by both screens, so a change to the weighing layout is a change to both. The two lists that used to sit above the form are on the **receive run picker** now, beside the runs, and both are bounded by the receiver's edit window (`D77`).
 
 There is also **one screen `ui-ux-spec.md §8` did not originally have**: **Home** (`/`), added by `D22`. It is where sign-in lands, and it shows one card per capability the signed-in user holds. It is not a duty picker and §4's ban on one still stands.
 
-Not yet deployed, and no production data exists. Four QA passes have been through it — `qa-round-1-changes.md`, an automated sweep, a hands-on pass on a volunteer holding two duties (`D22`–`D25`), and a second hands-on pass over that build (`D30`–`D41`).
+Not yet deployed, and no production data exists. Seven QA passes have been through it — `qa-round-1-changes.md` (`D16`–`D21`), an automated sweep (`qa-round-2-results.md`), then **five hands-on passes**, each over the build the one before it produced: a volunteer holding two duties (`D22`–`D25`), then `D30`–`D41`, then `D42`–`D58`, then `D59`–`D75`, then `D76`–`D78`. All five hands-on rounds are recorded in `phases-1-3.md §2`.
 
-**Navigation is one entry per capability, on every viewport (`D30`).** Home first, then Pick up food / Receive a load / Report / Schedule / Admin as the user's tier and duties allow, then Inbox — in the order a week runs. No group headings. Home is capped at six cards (`D31`). The phone and tablet bar is capped at four by `ui-ux-spec.md §3`, so office work is reached through Home there; that is the design, not a truncation.
+**Navigation is one entry per capability (`D30`) — except DRIVE, which has two (`D49`).** The order is **descending privilege** since `D51`, superseding `D30`'s week-order: Home · Admin · Schedule · Report · Receive a load · Today's pickup · Shift board · Inbox. No group headings. Home is capped at **seven** cards (`D31`, raised by `D50`).
+
+Two things about that list are load-bearing:
+
+- **Every shorter list is that list with rows removed, never reshuffled**, so gaining a duty makes a row appear in place rather than rearranging the bar under someone.
+- **The phone and tablet bar is capped at four** by `ui-ux-spec.md §3`, so office work — and Shift board, for anyone whose duties already fill the middle two slots — is reached through Home there. That is the design, not a truncation.
+
+`D49` is the one place `D30`'s rule bends, and the reason is worth knowing before "fixing" it: folding My shifts into the board put *its* two tabs inside the board's two tabs, and the nested rows were the thing QA found confusing. **Today's pickup** (`/my-shifts`) is the driver's own runs — today, then this week — and their default landing; **Shift board** (`/board`) is the shared board, with *When I'm away* as its second tab.
 
 **Nothing is deliberately unbuilt any more.** That paragraph used to name NTFB's category list as not ours to invent, with `ntfb_category` shipping empty under `D12`. **The pantry supplied it on 2026-08-02** — including where `Frz Non Meat` reports, the single unknown row that had kept the whole table unseedable. All ten NTFB categories, all eleven mappings and every storage value now ship seeded (`D26`, migration 0016), and `D12` is retired. `phases-1-3.md §3.1` records the table. Still outstanding, and still not ours to invent: **the NTFB donor codes** for the stores on our routes (`donor.ntfb_donor_code`, nullable, blank on the receipt until entered).
 
@@ -60,7 +71,8 @@ client/src/
     s1-0-home/                               the Home hub — a screen §8 did not have (D22)
     s1-8-admin/{metrics,mapping}/            metrics is Admin's default tab (D18); mapping is a
                                              section of its Categories tab (D17, then D40)
-  app/nav.tsx                                WHICH nav entries exist — one per capability (D30)
+  app/nav.tsx                                WHICH nav entries exist — one per capability (D30),
+                                             two for DRIVE (D49), descending privilege (D51)
   components/  tokens/  api/                 UI §3 contracts, §2 tokens, typed fetch
   sw.ts                                      service worker — push only, never cache-first (§4.5)
 server/

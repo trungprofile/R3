@@ -29,7 +29,7 @@ import type {
   StoreIntake,
 } from '../../../shared/src/metrics.js';
 import { db } from '../db/index.js';
-import { addDays, dayNumber, parseDate } from '../time.js';
+import { parseDate } from '../time.js';
 import { isoDate } from './schedule.js';
 import { addAll, currentWeek } from './report.js';
 
@@ -63,12 +63,18 @@ function subtract(a: string, b: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Per-store intake, with the previous equal-length period for trend.
+ * Per-store intake: what came in, and how much of it goes to the food bank.
  *
- * The union is written out twice — once for the period, once for the one before it —
- * rather than fetched in one pass and bucketed in JS, because the "previous period"
- * boundary is a date comparison Postgres already does correctly and JS would have to
- * be told about (`data-model.md §8`'s point about business days, again).
+ * **ONE QUERY, ONE WINDOW (`D58`).** This used to run the union TWICE — once for the
+ * period and once for an equal-length period before it — so the table could carry a
+ * "Change" column. That column is gone, and with it the second query, `previousFrom`,
+ * `previousTo` and the per-store `previousIntake`. A comparison window nobody reads is
+ * work, not a safeguard. `unreported` went the same way: it is `intake − reported`, a
+ * subtraction the client never re-did and can read off the two figures that remain.
+ *
+ * What is untouched is the boundary PRD §3 cares about: intake and NTFB-reported are
+ * still computed separately and still travel as two distinct numbers, per store and in
+ * the totals, and `totalUnreported` still states cap 16's unreported volume.
  *
  * `donorName` collapses the three source cases exactly as §8 says the report does:
  * master donor, free-text label, or one "Unattributed" bucket for anonymous walk-ins.
@@ -81,23 +87,11 @@ export async function intakeMetrics(
   const from = options.from ? isoDate(parseDate(options.from, 'from')) : fallback.from;
   const to = options.to ? isoDate(parseDate(options.to, 'to')) : fallback.to;
 
-  const span = dayNumber(parseDate(to, 'to')) - dayNumber(parseDate(from, 'from')) + 1;
-  const previousTo = isoDate(addDays(parseDate(from, 'from'), -1));
-  const previousFrom = isoDate(addDays(parseDate(previousTo, 'previousTo'), -(span - 1)));
-
-  const current = await intakeRows(from, to);
-  const previous = await intakeRows(previousFrom, previousTo);
-  const previousByKey = new Map(previous.map((r) => [r.key, r.intake]));
-
-  const stores: StoreIntake[] = current.map((row) => ({
+  const stores: StoreIntake[] = (await intakeRows(from, to)).map((row) => ({
     donorId: row.donorId,
     donorName: row.donorName,
     intake: row.intake,
     reported: row.reported,
-    unreported: subtract(row.intake, row.reported),
-    // Absent from the previous period is null, not "0.00" — a store that did not
-    // exist yet must not render as a total collapse.
-    previousIntake: previousByKey.get(row.key) ?? null,
   }));
 
   const totalIntake = addAll(stores.map((s) => s.intake));
@@ -110,13 +104,10 @@ export async function intakeMetrics(
     totalIntake,
     totalReported,
     totalUnreported: subtract(totalIntake, totalReported),
-    previousFrom,
-    previousTo,
   };
 }
 
 interface IntakeRow {
-  key: string;
   donorId: string | null;
   donorName: string;
   intake: string;
@@ -165,9 +156,6 @@ async function intakeRows(from: string, to: string): Promise<IntakeRow[]> {
   `.execute(db);
 
   return rows.rows.map((r) => ({
-    // A free-text label and an anonymous bucket both have a null donor_id, so the
-    // name is what distinguishes them.
-    key: `${r.donor_id ?? ''}|${r.donor_name}`,
     donorId: r.donor_id,
     donorName: r.donor_name,
     intake: r.intake,

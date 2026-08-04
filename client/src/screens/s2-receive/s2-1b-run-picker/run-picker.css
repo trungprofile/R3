@@ -246,18 +246,132 @@
   font-weight: 700;
 }
 
-/* --- Unscheduled donation ------------------------------------------------- */
+/* A lapsed run's one-line explanation (`D66`). Muted, because it is the reason
+ * the row is where it is and not the row's own subject — but full text, never a
+ * colour or an icon: the second half of it ("you can still finish this run") is
+ * the part that stops a receiver believing the run is stuck. */
+.s21b-notice {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
 
-.s21b__aside {
+/* --- Unscheduled donation (`D67`, widened to a panel by `D76`) ------------- */
+
+.s21b__donations {
   /* >= the 8px minimum gap between adjacent targets (§1.2), and then some: the
-   * last run row and this button do very different things. */
+   * last run row and the first donation row do very different things, and the rule
+   * is what stops the panel reading as a sixth band. */
   margin-top: var(--space-6);
   padding-top: var(--space-5);
   border-top: 1px solid var(--border);
 }
 
-.s21b__aside-hint {
-  margin: var(--space-2) 0 0 0;
+/* Title, today's total and the walk-in button on one line where there is room —
+ * the button is the panel's only control and belongs beside what it adds to, not
+ * stranded under two lists it has nothing to do with. */
+.s21b-don__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.s21b-don__title {
+  font-size: var(--font-h3);
+  margin: 0;
+}
+
+.s21b-don__summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pushes the button to the far end on a wide tablet and lets it drop to its own
+ * line on anything narrow, without a breakpoint. */
+.s21b-don__head > button {
+  margin-left: auto;
+}
+
+.s21b-don__group + .s21b-don__group {
+  margin-top: var(--space-5);
+}
+
+/* h3, one step down from the band headings above: these are groups WITHIN the
+ * panel, and heading level is the only thing telling a screen-reader user that. */
+.s21b-don__heading {
+  font-size: var(--font-body);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.s21b-don__hint {
+  margin: 0 0 var(--space-2) 0;
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* Who flagged it, and what they said. Inside `ListRow`'s meta slot, whose children
+ * are inline-level, so it declares its own block. */
+.s21b-don__note {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--font-label);
+  color: var(--text-muted);
+}
+
+/* A recorded row is a row plus one control beside it. The row takes the space and
+ * the button takes what it needs, so the chip column stays put down the list. */
+.s21b-don__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.s21b-don__row > :first-child {
+  flex: 1 1 auto;
+  /* A flex item's min-width defaults to `auto`, which is its content — a long store
+   * name would push the button off the row instead of wrapping. */
+  min-width: 0;
+}
+
+/* And the control does NOT shrink. Left to `flex-shrink: 1` it gave up width until
+ * "Report it" broke across two lines, which reads as two words rather than as one
+ * button. The row is the thing with slack in it; the target is not. */
+.s21b-don__row > .r3-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* I15's flag, as a chip. Reported is the DEFAULT state (a donation is reportable
+ * unless someone says otherwise), so it is the quiet one and "Ours only" is the
+ * one that stands out — the row that differs from the rule is the row worth
+ * finding. Weight, never hue alone (§2). */
+.s21b-don__chip {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-label);
+  white-space: nowrap;
+}
+
+.s21b-don__chip--reported {
+  color: var(--text-muted);
+}
+
+.s21b-don__chip--ours {
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+
+/* The window has shut on this row. Says who can still fix it rather than showing a
+ * control the server would refuse (§3 prefers hiding over disabling). */
+.s21b-don__closed {
+  margin: 0;
+  max-width: 16rem;
   font-size: var(--font-label);
   color: var(--text-muted);
 }

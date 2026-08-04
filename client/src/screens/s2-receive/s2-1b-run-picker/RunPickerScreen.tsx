@@ -16,19 +16,23 @@
 // (`architecture.md §4.5`). Nothing below decides what may be received.
 
 import { useCallback, useMemo, useState } from 'react';
-import { Button, EmptyState, ErrorBlock, List, SkeletonRows } from '../../../components/index.ts';
+import { EmptyState, ErrorBlock, List, SkeletonRows } from '../../../components/index.ts';
 import {
   buildPath,
   todayInZone,
   useAsyncData,
   useRouter,
   useSession,
+  useToast,
 } from '../../../app/index.ts';
 import type { ScreenProps } from '../../../app/index.ts';
-import type { ReceiveRunSummary } from '../../../api/shared.ts';
-import { fetchReceivableRuns, fetchRunStops } from './api.ts';
-import { COPY, listState, targetForStops, toBands } from './run-picker.ts';
+import type { ReceiveDonationSummary, ReceiveRunSummary } from '../../../api/shared.ts';
+import { fetchDonationSummary, fetchReceivableRuns, fetchRunStops } from './api.ts';
+import { setReportable } from '../s2-3-donation/api.ts';
+import { messageFor } from '../s2-3-donation/donation.ts';
+import { COPY, listState, targetForStops, toBands, toDonationPanel } from './run-picker.ts';
 import type { RunCardView } from './run-picker.ts';
+import { DonationPanel } from './DonationPanel.tsx';
 import { RunCard } from './RunCard.tsx';
 import { RunTile } from './RunTile.tsx';
 import './run-picker.css';
@@ -40,19 +44,52 @@ export function RunPickerScreen(_props: ScreenProps) {
   // `occurrenceDate` — see the date rule at the top of `run-picker.ts`.
   const { timezone } = useSession();
   const { navigate } = useRouter();
+  const toast = useToast();
 
   const load = useCallback((signal: AbortSignal) => fetchReceivableRuns(signal), []);
   const state = useAsyncData<ReceiveRunSummary[]>(load);
+  // `D67`. A separate call on purpose: a walk-in belongs to no run, and a failure
+  // here must not take the run list down with it — the panel falls back to its
+  // heading and its walk-in button, which is still the only route to S2.3.
+  const loadDonations = useCallback((signal: AbortSignal) => fetchDonationSummary(signal), []);
+  const donations = useAsyncData<ReceiveDonationSummary>(loadDonations);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [donationBusy, setDonationBusy] = useState(false);
   // `D38`: closed by default. Nothing is removed from the screen, only folded —
   // one tap has all of it back.
   const [laterOpen, setLaterOpen] = useState(false);
+  // `D66`'s band, same treatment: folded, never dropped.
+  const [lapsedOpen, setLapsedOpen] = useState(false);
+  const [closedOpen, setClosedOpen] = useState(false);
 
   const bands = useMemo(
     () => toBands(state.data ?? [], todayInZone(timezone), timezone),
     [state.data, timezone],
   );
   const view = listState(state.data, state.error, state.showLoading);
+  const donationPanel = useMemo(() => toDonationPanel(donations.data), [donations.data]);
+
+  /**
+   * Flip a recorded donation's report flag (I15, PRD cap 15).
+   *
+   * Re-reads rather than patching the row in place: this screen holds no donation
+   * state of its own, and on a shared tablet the list it is looking at may already
+   * have moved. One extra fetch on a rare tap is cheaper than a second source of
+   * truth for the same rows.
+   */
+  async function toggleReport(id: string) {
+    const row = donations.data?.recorded.find((candidate) => candidate.id === id);
+    if (!row) return;
+    setDonationBusy(true);
+    try {
+      await setReportable(id, !row.reportable);
+      donations.reload();
+    } catch (error) {
+      toast.error(messageFor(error));
+    } finally {
+      setDonationBusy(false);
+    }
+  }
 
   /**
    * Open a run.
@@ -68,7 +105,13 @@ export function RunPickerScreen(_props: ScreenProps) {
     let target = card.target;
     setBusyId(card.run.shiftId);
     try {
-      const fresh = targetForStops(card.run.shiftId, await fetchRunStops(card.run.shiftId));
+      const fresh = targetForStops(
+        card.run.shiftId,
+        await fetchRunStops(card.run.shiftId),
+        // `D66`: a fresher stop list does not reopen a closed window, so a lapsed
+        // run still lands on S2.2b rather than on a sheet that refuses every write.
+        card.run.editWindowOpen,
+      );
       if (fresh) target = fresh;
     } catch {
       // Deliberately silent: nothing failed for the receiver, and the run reload
@@ -155,25 +198,90 @@ export function RunPickerScreen(_props: ScreenProps) {
               ) : null}
             </div>
           ) : null}
+
+          {/* Band 4 (`D66`) — past the receiver's edit window. Folded like band 3
+              and, like it, never dropped: `receiveDone` is not window-gated and
+              this list is its only route, so hiding these would leave them
+              IN_PROGRESS with nothing able to close them (A162). Last on the
+              screen because there is no weighing left in it. */}
+          {bands.lapsed.length > 0 ? (
+            <div className="s21b__band">
+              <button
+                type="button"
+                className="s21b__disclosure"
+                aria-expanded={lapsedOpen}
+                onClick={() => setLapsedOpen((open) => !open)}
+              >
+                {COPY.bandLapsedCount(bands.lapsed.length)}
+              </button>
+              {lapsedOpen ? (
+                <List label={COPY.bandLapsed}>
+                  {bands.lapsed.map((card) => (
+                    <RunCard
+                      key={card.run.shiftId}
+                      card={card}
+                      busy={busyId === card.run.shiftId}
+                      onOpen={() => void openRun(card)}
+                    />
+                  ))}
+                </List>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Closed today, read-only. Receive-done used to make a run disappear at
+              the moment it was confirmed, which is exactly when a receiver wants
+              another look at what they just weighed. Collapsed, and last: it is a
+              record of the shift, not a part of it. Bounded to the pantry's today
+              by the server — anything older belongs to the report. */}
+          {bands.closed.length > 0 ? (
+            <div className="s21b__band">
+              <button
+                type="button"
+                className="s21b__disclosure"
+                aria-expanded={closedOpen}
+                onClick={() => setClosedOpen((open) => !open)}
+              >
+                {COPY.bandClosedCount(bands.closed.length)}
+              </button>
+              {closedOpen ? (
+                <List label={COPY.bandClosed}>
+                  {bands.closed.map((card) => (
+                    <RunCard
+                      key={card.run.shiftId}
+                      card={card}
+                      busy={busyId === card.run.shiftId}
+                      onOpen={() => void openRun(card)}
+                    />
+                  ))}
+                </List>
+              ) : null}
+            </div>
+          ) : null}
         </section>
       ) : null}
 
-      {/* S2.1b: "[ Unscheduled donation ] (goes to S2.3, no run needed)". It stays
-          on screen in every state, including the empty one, because it is the one
-          thing a receiver can do when no run is listed — and it is `secondary`, not
-          primary: §1's one high-emphasis action per screen belongs to picking a
-          run, which is the question the screen asks.
+      {/* S2.1b: "[ Unscheduled donation ] (goes to S2.3, no run needed)".
+          It stays on screen in every state, including the empty one, because it is
+          the one thing a receiver can do when no run is listed — and it is now also
+          the ONLY route to S2.3, since `D30` took the nav entry, so "visible in
+          every state" stopped being a courtesy and became the reason that screen is
+          reachable at all.
 
-          Outside the bands on purpose (`D38`): it is not a run, so it belongs to no
-          group of them, and it must not move or fold away when one band empties.
-          It is now also the ONLY route to S2.3 — this round took the nav entry — so
-          "stays visible in every state" stopped being a courtesy and became the
-          reason the screen is reachable at all. */}
-      <div className="s21b__aside">
-        <Button variant="secondary" onClick={() => navigate(buildPath('donation'))}>
-          {COPY.unscheduled}
-        </Button>
-      </div>
+          Outside the bands on purpose (`D38`): none of these is a run, so they
+          belong to no group of them and must not fold away when a band empties.
+
+          `D67` grew it from a bare button into a card; `D76` grew it again into the
+          two lists it now holds, because a driver's flag is work arriving and the
+          picker is where a receiver reads what has arrived. The rationale is on
+          `DonationPanel.tsx`. */}
+      <DonationPanel
+        view={donationPanel}
+        busy={donationBusy}
+        onWeigh={(id) => navigate(buildPath('donation-weigh', { id }))}
+        onAddWalkIn={() => navigate(buildPath('donation'))}
+        onToggleReport={(id) => void toggleReport(id)}
+      />
     </div>
   );
 }

@@ -21,22 +21,29 @@
 //      interaction (§3: "prefer hiding over disabling").
 //   3. `D37`: the same goes for a run that is already closed. It shows the
 //      summary and no action — a **Receive done** on a `COMPLETED` run is a
-//      button whose only outcome is "That run is already finished."
+//      button whose only outcome is "That run is already finished." Since `D46`
+//      it also names WHO closed it and when, which is the question a second
+//      receiver on a shared tablet actually arrives with.
 //
 // `D37` also makes the confirm reversible. Reaching this screen used to be the end
 // of the road: the picker sends a fully-resolved run here rather than into its
 // weights, so the only way back to a number was to not have left. **Change a
 // weight** is that way back, and it is offered for exactly as long as the server
-// would accept the write. Submitting is still the only thing that is final (I11).
+// would accept the write — BOTH halves of that since `D47`, the run being open and
+// the receiver's day window not having lapsed. Submitting is still the only thing
+// that is final (I11).
 //
 // Every state on the screen carries at least one control that leads somewhere. A
 // read-only screen with nothing tappable is a dead end, and §3 rules those out in
 // their own right — "read only" describes the data, not a reason to trap someone.
+// `D43` moved that control to the TOP: one `BackLink`, on every branch, instead of
+// three hand-rolled "Back to the runs" buttons at the bottom of three of them.
 
 import { useCallback, useState } from 'react';
-import { useAsyncData, useRouter, useToast } from '../../../app/index.ts';
+import { useAsyncData, useRouter, useSession, useToast } from '../../../app/index.ts';
 import type { ScreenProps } from '../../../app/index.ts';
 import {
+  BackLink,
   Button,
   Card,
   ConfirmModal,
@@ -62,6 +69,8 @@ import {
   outstandingLines,
   runTitle,
   shouldReloadAfter,
+  signOff,
+  signOffTime,
   weightWithUnit,
 } from './receive-done.ts';
 import './receive-done.css';
@@ -89,6 +98,9 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
   const shiftId = params['shiftId'] ?? '';
   const { go } = useRouter();
   const toast = useToast();
+  // The pantry's zone, for the sign-off time (`D46`, A120). Null until the session
+  // lands, which `signOffTime` reads as "fall back to the device".
+  const { timezone } = useSession();
 
   const load = useCallback(
     (signal: AbortSignal) => fetchReceiveDone(shiftId, signal),
@@ -163,16 +175,28 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
   const outstanding = outstandingLines(summary);
 
   /** The way back into the weights, or null when there is nowhere to go back to:
-   *  the run is closed, or it has no stops to open a sheet on. */
+   *  the run is closed, its receiver edit window has lapsed (`D47`), or it has no
+   *  stops to open a sheet on. */
   const openRunData = openRun.data?.run ?? null;
   const editStopId =
-    canEditWeights(stillOpen) && openRunData ? firstStopId(openRunData) : null;
+    canEditWeights(stillOpen, summary.editWindowOpen) && openRunData
+      ? firstStopId(openRunData)
+      : null;
+
+  /** Who confirmed receive-done, on a run that has been (`D46`). */
+  const closedBy = signOff(summary);
 
   const lede =
     stage === 'CLOSED' ? COPY.closed : stage === 'CONFIRM' ? COPY.ready : COPY.notReady;
 
   return (
     <div className="s22b">
+      {/* `D43`: one way out, at the top, on every branch — including BLOCKED,
+          which no longer carries a button of its own. A back control at the
+          bottom is only reachable after scrolling past everything the person
+          wanted to leave. */}
+      <BackLink label={COPY.backToRuns} onBack={() => go('receive-runs')} />
+
       <header className="s22b-head">
         <h1 className="s22b-title">{runTitle(summary)}</h1>
         <p className="s22b-lede">{lede}</p>
@@ -197,14 +221,26 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
       {stage === 'CLOSED' ? (
         // Finished. The summary above is the whole screen; what used to be here was
         // a button whose only possible outcome was a refusal (`D37`, I11). Not a
-        // dead end though — the way out is a control, not advice (§3).
+        // dead end — the way out is the BackLink at the top (`D43`).
         <div className="s22b-actions">
+          {/* `D46`: WHO finished it, and when. The screen used to say only that the
+              run was closed, which on a shared tablet leaves a second receiver
+              guessing whether it was them, their colleague, or a mistake. There is
+              no `completed_by` column; the server reads the last writer, which is
+              sound only because I10 makes COMPLETED terminal — the assumption is
+              recorded beside the query, not here. Absent rather than guessed if the
+              server did not send both halves. */}
+          {closedBy ? (
+            <p className="s22b-signoff">
+              <span className="s22b-signoff__label">{COPY.signedOffLabel}</span>{' '}
+              <strong>{closedBy.name}</strong>
+              {' · '}
+              {signOffTime(closedBy.at, timezone)}
+            </p>
+          ) : null}
           <p className="s22b-closed" role="status">
             {COPY.closedHint} {COPY.closedNext}
           </p>
-          <Button variant="primary" onClick={() => go('receive-runs')}>
-            {COPY.backToRuns}
-          </Button>
         </div>
       ) : stage === 'CONFIRM' ? (
         <div className="s22b-actions">
@@ -215,7 +251,10 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
           </Button>
           {/* `D37`: the confirm is reversible until it is submitted. The picker
               sends a fully-resolved run straight here, so without this there is no
-              route back to a number the receiver wants to change. */}
+              route back to a number the receiver wants to change.
+              `D47`: and it is offered only while the server would still take the
+              write — being IN_PROGRESS was half the guard, the day window is the
+              other half, and `editWindowOpen` is now on the payload. */}
           {editStopId ? (
             <>
               <Button
@@ -227,9 +266,6 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
               <p className="s22b-hint">{COPY.editHint}</p>
             </>
           ) : null}
-          <Button variant="secondary" onClick={() => go('receive-runs')}>
-            {COPY.backToRuns}
-          </Button>
         </div>
       ) : (
         // Not offered, not disabled. The gate is I12's and the server holds it;
@@ -247,10 +283,10 @@ export function ReceiveDoneScreen({ params }: ScreenProps) {
           {/* No **Change a weight** here on purpose: with a stop still unresolved
               the receiver's next step is that stop, not an old number, and the
               picker already routes a tap to the first unresolved one (S2.1b). A
-              second door onto a different stop would be a choice nobody asked for. */}
-          <Button variant="primary" onClick={() => go('receive-runs')}>
-            {COPY.backToRuns}
-          </Button>
+              second door onto a different stop would be a choice nobody asked for.
+
+              And no bottom button either, since `D43` — the BackLink at the top is
+              the way out, which is what §3's dead-end rule asks for. */}
         </div>
       )}
 

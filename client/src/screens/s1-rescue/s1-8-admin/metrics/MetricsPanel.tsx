@@ -28,9 +28,11 @@
 // tab and this in another cannot be shown two different weeks under one word.
 //
 // What did NOT change is the thing that made the old shape right: Earlier/Later
-// still step by the window's OWN LENGTH, which is exactly the window
-// `previousIntake` is measured against (`services/metrics.ts`). `periodFor` always
-// took a length rather than a "last N", so it carried straight over.
+// still step by the window's OWN LENGTH, so consecutive views are adjacent and
+// non-overlapping. `periodFor` always took a length rather than a "last N", so it
+// carried straight over. (Until D58 that step also matched the comparison window
+// the Change column was measured against; the column is gone and the step now
+// answers only to the calendar.)
 //
 // The window still starts null and resolves once the pantry's zone arrives on the
 // sign-in (A120), rather than freezing whatever the machine's clock said first.
@@ -110,8 +112,7 @@ export function MetricsPanel() {
 
         <div className="s32-period__nav">
           {/* Both step by the window's OWN length, so consecutive views are
-              adjacent and non-overlapping — which is the window `previousIntake`
-              is measured against, one screen up. */}
+              adjacent and non-overlapping. */}
           <Button
             onClick={() => setChosen(stepPeriod(period, -1))}
             aria-label={COPY.period.earlierAria}

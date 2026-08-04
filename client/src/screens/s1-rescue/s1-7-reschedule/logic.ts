@@ -51,7 +51,12 @@ export const COPY = {
   header: 'Move this run',
   /** S1.7's primary action, verbatim. */
   confirm: 'Confirm new time',
-  cancel: 'Back to the run',
+  /** The BackLink's label (D43): the destination as a noun, since the chevron
+   *  already says "back". It is S1.3, the run's own page — the same place a
+   *  finished move lands, and the only way out this screen offers. It replaces
+   *  the two "Back to the run" buttons that used to sit at the foot of the form
+   *  and inside the refusal state. */
+  back: 'This run',
 
   nowHeading: 'Right now',
   newHeading: 'Move it to',

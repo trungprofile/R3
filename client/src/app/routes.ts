@@ -24,7 +24,8 @@ export type ScreenId =
   | 'receive-runs' // S2.1b
   | 'receive-stop' // S2.2
   | 'receive-done' // S2.2b
-  | 'donation' // S2.3
+  | 'donation' // S2.3 — a walk-in, started from nothing
+  | 'donation-weigh' // S2.3 — a driver's flagged row, weighed (D76)
   | 'report' // S3.1
   | 'metrics'; // S3.2
 
@@ -45,7 +46,8 @@ export interface RouteDef {
    *  defined but not yet reachable — the nav must not offer a dead end. */
   phase: 1 | 2 | 3;
   requires?: Access;
-  /** Full-bleed: no top bar, no nav. Login (§5) and the pickup takeover (S1.5). */
+  /** Full-bleed: no nav. Login (§5), the pickup takeover (S1.5), and weight entry
+   *  (S2.2) since `D60`. */
   fullScreen?: boolean;
 }
 
@@ -107,6 +109,11 @@ export const ROUTES: readonly RouteDef[] = [
     spec: 'S2.2',
     phase: 2,
     requires: { anyDuty: ['RECEIVE'] },
+    // `D60`. An older volunteer weighing crates on a docked tablet rests a hand at
+    // the bottom edge and lands on the nav, which throws away the stop they were
+    // in the middle of. The way out is the `BackLink` at the top of the screen,
+    // where it cannot be hit by accident — and the bar's height goes to the panes.
+    fullScreen: true,
   },
   {
     id: 'receive-done',
@@ -115,12 +122,32 @@ export const ROUTES: readonly RouteDef[] = [
     phase: 2,
     requires: { anyDuty: ['RECEIVE'] },
   },
+  // S2.3 is TWO routes since `D76`, because it now weighs ONE donation and there
+  // are two ways one comes to exist: a receiver starts a walk-in from nothing, or a
+  // driver flagged a store mid-run (I17) and left a row waiting. Both land on the
+  // same screen; only `/new` has a store still to choose.
+  //
+  // The lists that used to sit above the form moved to S2.1b, which is why a
+  // donation now needs an id in the URL at all: the row is picked on the screen
+  // before this one, so this one has to survive being reloaded on it.
   {
     id: 'donation',
     path: '/donations/new',
     spec: 'S2.3',
     phase: 2,
     requires: { anyDuty: ['RECEIVE'] },
+    // Same reason as S2.2's, and now the same shape of screen (`D76`): a hand
+    // resting at the bottom edge of a docked tablet must not land on the nav
+    // halfway through a weight. The `BackLink` at the top is the way out.
+    fullScreen: true,
+  },
+  {
+    id: 'donation-weigh',
+    path: '/donations/:id/weigh',
+    spec: 'S2.3',
+    phase: 2,
+    requires: { anyDuty: ['RECEIVE'] },
+    fullScreen: true,
   },
 
   { id: 'report', path: '/report', spec: 'S3.1', phase: 3, requires: { anyDuty: ['REPORT'] } },

@@ -43,15 +43,14 @@ import {
 } from '../../../app/week.ts';
 import { EXPORT_BLOCKED_MESSAGE } from '../../../api/shared.ts';
 import type {
-  NtfbCategory,
   Receipt,
   ReceiptLine,
   ReceiptNote,
   ReceiptNoteRole,
   ReportEntry,
   ReportExport,
-  ReportLine,
   UnmappedCategory,
+  UnreportedDonation,
   WeeklyReport,
 } from '../../../api/shared.ts';
 
@@ -304,26 +303,6 @@ export function addWeights(values: readonly string[]): string | null {
 }
 
 /**
- * `a − b`, exactly, in the same integer cents `addWeights` uses.
- *
- * Exists for the drill-in's trash breakdown (D27): the deduction a Reporter is
- * shown is the difference between what was weighed and what the line reports, and
- * deriving it by subtraction is what makes the three numbers on screen close no
- * matter where the server's whole-pound rounding landed (D28).
- *
- * Null when either figure is malformed, and null rather than a negative when the
- * subtraction would go below zero — a negative deduction is not a thing this
- * screen can explain, so it shows the plain subtotal instead.
- */
-export function subtractWeights(a: string, b: string): string | null {
-  const left = toCents(a);
-  const right = toCents(b);
-  if (left === null || right === null) return null;
-  if (right > left) return null;
-  return fromCents(left - right);
-}
-
-/**
  * The keypad's proposed value, accepted or refused.
  *
  * `NumericKeypad` holds nothing; it hands the screen the value it *would* have
@@ -363,49 +342,35 @@ export function weightError(raw: string, attempted: boolean): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// The two totals, never conflated (PRD §3)
+// The totals landing is GONE (D54)
+//
+// `totalsView` stood here, and above it a per-NTFB-category table with a drill-in
+// hanging off every AGFP line. That was the screen S3.1 opened on, and it is why
+// the reporter never found the one thing PRD cap 15 lets them do: after the
+// receiver's edit window closes, correcting a weight is theirs alone, and the pencil
+// that does it sat two clicks inside a page they read as analysis rather than as
+// their job. They reported a built feature as missing.
+//
+// So the receipts ARE the screen now, and the two corrections moved onto the receipt
+// the reporter is already typing into. What went with the landing: `totalsView` and
+// its two figures, `ReportTable`, `DrillIn`, `toggleDrillIn`, the per-category
+// `drillTotals`/`subtractWeights` arithmetic, and the button that opened the
+// receipts.
+//
+// D34 CUT THE THIRD FIGURE AND THIS CUTS THE OTHER TWO, on the same argument taken
+// one step further: intake and NTFB-reported are two clearly labelled numbers on
+// Admin metrics, which is the screen for reading numbers. This one is for typing
+// them. PRD §3's rule is that the two are never conflated wherever they appear, not
+// that they appear here — and `COPY.wholePoundsNote` still explains why this screen
+// and metrics can differ by a pound (D28), on the PRINTED receipt since D69, which is
+// where a reporter has both numbers in front of them.
+//
+// The per-receipt trash arithmetic did not need explaining either, which is why
+// `drillTotals` went rather than moving. The drill-in showed ONE category, so the
+// deduction made its entries and its line disagree with nothing to say why; a
+// RECEIPT carries its own Trash line, so what was weighed and what is reported add
+// up on the same card.
 // ---------------------------------------------------------------------------
-
-export interface TotalView {
-  key: 'intake' | 'reported';
-  label: string;
-  /** The decimal string, unchanged. Formatting happens at render. */
-  value: string;
-}
-
-/**
- * TWO figures, always together, always with their own words (D34).
- *
- * WHAT CHANGED AND WHY. There were three, each with a sentence under it, sitting
- * above the export in a card of their own. The reporter's job is the Meal Connect
- * report; the range's totals are a cross-check, not what they came for. So the
- * export moved to the top as the screen's one primary action and these moved
- * under it, small and compact.
- *
- * "Received but not reported" is GONE AS A FIGURE, not as a fact: it is
- * `intake − reported` and can be read straight off the two numbers that remain.
- * Three numbers where two would do is the third one earning its place by being
- * derivable, which is the same argument D21 makes about a hint restating its
- * control.
- *
- * WHAT SURVIVES INTACT is the thing `domain-modeling.md §6` (locked) and PRD §3
- * actually require: intake and NTFB-reported stay two distinct, clearly labelled
- * numbers. They are still emitted as ONE list rather than read off the payload
- * field by field, because that is what stops the screen ever showing one of them
- * alone — a lone big number with no label is exactly how the two get conflated.
- * The LABELS carry the distinction now that the captions are gone, so they name
- * it in full: "Everything received" against "Reported to North Texas Food Bank".
- *
- * D28's whole-pound note is not deleted with the captions. It moved to the report
- * view, next to the figures a reporter actually types (`COPY.wholePoundsNote`) —
- * removing the sentence would not have removed the discrepancy it explains.
- */
-export function totalsView(report: WeeklyReport): TotalView[] {
-  return [
-    { key: 'intake', label: COPY.intakeLabel, value: report.intakeTotal },
-    { key: 'reported', label: COPY.reportedLabel, value: report.reportedTotal },
-  ];
-}
 
 // ---------------------------------------------------------------------------
 // The export decision — S3.1's three states
@@ -708,15 +673,117 @@ export function receiptRowDescription(
   return `${receiptRowTitle(receipt)}, ${weightWithUnit(receipt.totalPounds)}, ${submittedLabel(receipt, timeZone)}`;
 }
 
-/** How many of the range's receipts are already filed, said as a sentence rather
- *  than a fraction: this is the one number a reporter picking the work back up
- *  after lunch is looking for. */
+/**
+ * How far through the range a reporter is, OVER THE FILEABLE RECEIPTS ONLY (D56).
+ *
+ * It used to count every receipt, which made "9 of 11" unreachable on a range with
+ * two walk-in labels in it: a receipt with no store cannot be ticked (`D35`) and
+ * cannot be filed, so counting it in the denominator promises work that has no
+ * control to do it with. The second section now holds those, and this counts what
+ * section one holds.
+ */
+export function submittedProgressCounts(sheet: ReportExport): { done: number; total: number } {
+  const fileable = fileableReceipts(sheet);
+  return {
+    done: fileable.filter((r) => r.submitted !== null).length,
+    total: fileable.length,
+  };
+}
+
+/** The progress said as a sentence. The bar beside it is the same fact drawn, and
+ *  the sentence is the one that survives being read aloud — §3 does not allow a
+ *  visual signal to carry a state on its own, and a bar with no number is not a
+ *  status. */
 export function submittedProgress(sheet: ReportExport): string {
-  const total = sheet.receipts.length;
-  const done = sheet.receipts.filter((r) => r.submitted !== null).length;
+  const { done, total } = submittedProgressCounts(sheet);
   if (total === 0) return COPY.receiptsEmpty;
   if (done === 0) return `${COPY.progressNoneTail} ${total}.`;
   return `${done} ${COPY.progressOf} ${total} ${COPY.progressTail}`;
+}
+
+/** 0–100, for the width of the bar and for nothing else. Rounded, because a bar is
+ *  geometry; the sentence beside it carries the exact count. */
+export function submittedPercent(sheet: ReportExport): number {
+  const { done, total } = submittedProgressCounts(sheet);
+  if (total <= 0) return 0;
+  return Math.round((done / total) * 100);
+}
+
+// ---------------------------------------------------------------------------
+// Two sections (D56)
+//
+// SECTION 1, "To file into Meal Connect": every receipt with a store. This is the
+// work, and the progress bar counts exactly this.
+//
+// SECTION 2, "Not filed to the food bank": two different things that share one
+// property — nothing here will ever be typed into the portal.
+//
+//   1. Receipts with no store. A free-text walk-in label has no `donor` row, so
+//      Meal Connect's own picker cannot be pointed at it either (`D35`). Unchanged
+//      behaviour; what changed is that they are no longer mixed in with the work.
+//   2. Confirmed donations with the switch OFF. These are not in the report union
+//      at all (`domain-modeling.md §6`), so they have no receipt and there was
+//      nothing on this screen to flip. They arrive on the payload as their own
+//      list (`D56`) and flipping one on moves it into section 1 on the next read.
+// ---------------------------------------------------------------------------
+
+/** Section 1 — the receipts that can be filed, which is every receipt with a store. */
+export function fileableReceipts(sheet: ReportExport): Receipt[] {
+  return sheet.receipts.filter((receipt) => canMarkSubmitted(receipt));
+}
+
+/**
+ * Whether this receipt can be pointed at a real store (D72).
+ *
+ * True only for a card with NO store and at least one walk-in behind it — the
+ * label-only case. The server sends the ids (`labelDonationIds`) rather than the
+ * screen inferring them from a name, because the name is free text and two receivers
+ * can spell one store two ways.
+ *
+ * A receipt built only from a scheduled stop always has a store, so it never reaches
+ * this; an anonymous walk-in never forms a receipt at all (`I16(b)` keeps it out of
+ * the reported union), and the row that carries it says why on its own line in
+ * section 2.
+ */
+export function canAttachDonor(receipt: Receipt): boolean {
+  return receipt.donorId === null && receipt.labelDonationIds.length > 0;
+}
+
+/** Section 2's first half — the receipts that cannot be filed at all. */
+export function unfileableReceipts(sheet: ReportExport): Receipt[] {
+  return sheet.receipts.filter((receipt) => !canMarkSubmitted(receipt));
+}
+
+/** Whether section 2 has anything in it. Both halves, because an empty heading over
+ *  nothing is worse than no heading. */
+export function hasUnfiled(sheet: ReportExport): boolean {
+  return unfileableReceipts(sheet).length > 0 || sheet.notReported.length > 0;
+}
+
+/** One not-reported donation, titled the way a receipt row is: the day, then the
+ *  store. Same shape so the two kinds of row in section 2 read as one list. */
+export function unreportedRowTitle(row: UnreportedDonation): string {
+  return `${formatReceiptDate(row.receivedDate)} · ${row.donorName}`;
+}
+
+/**
+ * What the row says about itself, and it is the whole point of section 2.
+ *
+ * An ANONYMOUS walk-in — no donor and no label — cannot be turned on: `I16(b)` says
+ * `CONFIRMED ∧ reportable=true ⇒ source non-null`, and `setReportable` refuses it.
+ * The server answers that question on the payload (`canReport`), so the row SAYS SO
+ * rather than offering a switch that fails, which is the same courtesy `D35` gives
+ * a receipt with no store to file it under.
+ */
+export function unreportedRowDescription(row: UnreportedDonation): string {
+  const parts = [
+    unreportedRowTitle(row),
+    row.categoryName,
+    weightWithUnit(row.weight),
+    `${COPY.loggedByPrefix} ${row.receiverName}`,
+    row.canReport ? COPY.notReportedState : COPY.cannotReportState,
+  ];
+  return parts.join(', ');
 }
 
 /** The confirm a tick asks for BEFORE it writes. `ConfirmModal` requires a
@@ -727,10 +794,12 @@ export function markSubmittedQuestion(receipt: Receipt): string {
   return `${COPY.markQuestion} ${receiptRowTitle(receipt)}?`;
 }
 
-/** A week with nothing to type. Not an error: an empty week is a true answer, and
- *  it gets a sentence rather than a card with nothing in it (§6). */
+/** A range with nothing on it AT ALL — no receipts and nothing held back (D56).
+ *  Not an error: an empty range is a true answer, and it gets a sentence rather
+ *  than a card with nothing in it (§6). A range with only unreported donations in
+ *  it is NOT empty, because there is something for the reporter to decide. */
 export function isEmptyExport(sheet: ReportExport): boolean {
-  return sheet.receipts.length === 0;
+  return sheet.receipts.length === 0 && sheet.notReported.length === 0;
 }
 
 /**
@@ -747,115 +816,78 @@ export function isEmptyExport(sheet: ReportExport): boolean {
 export const PRINT_BODY_CLASS = 's31-print-mode';
 
 // ---------------------------------------------------------------------------
-// The report table
+// The corrections, now on the receipt (D54, D55 — Success Metric 4)
+//
+// PRD cap 15 gives the REPORT duty the only remaining way to correct a weight once
+// the receiver's edit window has closed, and neither correction is window-gated
+// (D14). What changed is WHERE they render, not what they do: they used to hang off
+// a per-category drill-in on a totals page, and they now sit on the receipt the
+// reporter has open in front of the portal.
+//
+//   - A WEIGHT is immutable and corrects by void-old + insert-new (I13). To the
+//     reporter it is a plain overwrite: the prior value is shown so they see what
+//     they are replacing, and there is no undo and no history UI. The void trail is
+//     the server's business and never appears here (§6, PRD).
+//   - A DONATION'S REPORT SWITCH is a plain field edit, last write wins (cap 15).
+//     Only a DONATION carries one — I15 makes scheduled intake reportable by
+//     construction, so a WEIGHT has no flag to flip.
+//
+// `groupEntriesByDay` went with the drill-in: a receipt IS one day, so grouping the
+// entries under it by day would put every row under one heading.
 // ---------------------------------------------------------------------------
 
-/** Whether the week has anything in it at all. An empty week is not an error —
- *  it is a week nobody has weighed yet, and it gets an instructive empty state
- *  rather than a zero (§6). */
-export function isEmptyWeek(report: WeeklyReport): boolean {
-  return report.lines.length === 0 && report.unmapped.length === 0;
-}
+/** A receipt's identity, as the SERVER keys it: `(pickup date, donor)`, falling back
+ *  to the free-text label when there is no donor row (`services/report.ts`,
+ *  `receiptKey`). Written twice on purpose — the client cannot import the server —
+ *  and it has to agree, or a correction is offered under the wrong card. */
+const KEY_SEP = '\u0000';
 
-/** "Frozen Meat, Bakery" — the AGFP categories rolled into one NTFB line, named
- *  for the row's accessible label. The visible table lists them with their own
- *  weights; this is the one-line version a screen reader hears first. */
-export function rolledUpNames(line: { agfpCategories: readonly { categoryName: string }[] }): string {
-  return line.agfpCategories.map((entry) => entry.categoryName).join(', ');
-}
-
-/** The drill-in is open for at most one AGFP category at a time — a second open
- *  panel would push the row being checked off screen. Clicking the open one
- *  closes it. */
-export function toggleDrillIn(current: string | null, categoryId: string): string | null {
-  return current === categoryId ? null : categoryId;
-}
-
-// ---------------------------------------------------------------------------
-// The drill-in (Success Metric 4 — 100% traceable)
-// ---------------------------------------------------------------------------
-
-export interface EntryDay {
-  day: string;
-  label: string;
-  entries: ReportEntry[];
+export function receiptKeyOf(
+  row: { donorId: string | null; donorName: string },
+  day: string,
+): string {
+  return [day, row.donorId ?? `label${KEY_SEP}${row.donorName}`].join(KEY_SEP);
 }
 
 /**
- * Entries grouped under their day, oldest first.
+ * The entries behind ONE receipt, in the order its line items read.
  *
- * The day is `report_day` — `shift.occurrence_date` for a weight and
- * `received_date` for a donation (`data-model.md §8`), decided by the server.
- * Never `created_at`: receiving legitimately lags past midnight, and bucketing on
- * the wrong column is the second of the three ways to get this phase wrong.
+ * The range's entries arrive once and are sifted here rather than fetched per
+ * receipt: a fortnight is a few hundred rows, and a request per card would put a
+ * spinner between a reporter and the number they came to fix.
+ *
+ * A donation with the switch OFF still appears under its receipt when the store has
+ * other intake that day. That is deliberate: it is the row cap 15 lets them turn
+ * back on, and it is marked (`entryDescription`) rather than hidden. It is not on
+ * the card's line items, because it is not in the report union (§6).
  */
-export function groupEntriesByDay(entries: readonly ReportEntry[]): EntryDay[] {
-  const days = new Map<string, ReportEntry[]>();
-  for (const entry of entries) {
-    const bucket = days.get(entry.day);
-    if (bucket) bucket.push(entry);
-    else days.set(entry.day, [entry]);
-  }
-  return [...days.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([day, dayEntries]) => ({ day, label: formatDayLabel(day), entries: dayEntries }));
+export function entriesForReceipt(
+  entries: readonly ReportEntry[],
+  receipt: Pick<Receipt, 'donorId' | 'donorName' | 'pickupDate'>,
+): ReportEntry[] {
+  const key = receiptKeyOf(receipt, receipt.pickupDate);
+  return entries
+    .filter((entry) => receiptKeyOf(entry, entry.day) === key)
+    .sort(
+      (a, b) =>
+        a.categoryName.localeCompare(b.categoryName) ||
+        a.donorName.localeCompare(b.donorName),
+    );
 }
 
-/** What the entries on screen add up to, for checking against the row above them.
- *  Exact (integer cents); null if any figure is malformed, in which case the
- *  screen shows no subtotal rather than a wrong one. */
+/** What the entries on screen add up to, for checking against the card above them.
+ *  Exact (integer cents); null if any figure is malformed, in which case the screen
+ *  shows no subtotal rather than a wrong one. */
 export function entriesTotal(entries: readonly ReportEntry[]): string | null {
   return addWeights(entries.map((entry) => entry.weight));
 }
 
-/** What the food bank line was built from: the reportable half only. A donation
- *  with the switch off is shown in the list and marked, but it never reached the
- *  line above, so counting it here would make the subtraction below lie. */
-function reportableTotal(entries: readonly ReportEntry[]): string | null {
+/** What the card's line items were built from: the reportable half only. A donation
+ *  with the switch off is listed and marked, but it never reached a line above, so
+ *  counting it here would make the two disagree by exactly the thing the reporter is
+ *  being shown. */
+export function correctionsTotal(entries: readonly ReportEntry[]): string | null {
   return addWeights(entries.filter((entry) => entry.reportable).map((entry) => entry.weight));
-}
-
-/**
- * What the drill-in shows under the entries.
- *
- * THE PROBLEM THIS SOLVES. Since D27 the AGFP total above these entries is NET of
- * the trash deduction, while the entries themselves are what was weighed. Left as
- * one subtotal, the two numbers sit a few lines apart and quietly disagree by the
- * deduction, which reads as a bug in the screen a Reporter came to this panel
- * specifically to trust.
- *
- * So when the category is deducted, the arithmetic is shown instead of hidden:
- * what was weighed, what moved to Trash, what is reported. The deduction is
- * DERIVED BY SUBTRACTION rather than recomputed from a rate — the rate lives on
- * the store and is applied per receipt with a rounding order that is load-bearing
- * (`domain-modeling.md §5.4`), and a second implementation here would be free to
- * disagree with the number it is explaining. Subtraction cannot.
- *
- * The nine categories with no trash rate are untouched: `deduction` is null and
- * the panel shows the single subtotal it always did.
- */
-export interface DrillTotals {
-  /** Every entry shown, added up. Null when one is malformed. */
-  shown: string | null;
-  /** Present only when the line above is net of a deduction (D27). */
-  deduction: { gross: string; deducted: string; net: string } | null;
-}
-
-export function drillTotals(
-  entries: readonly ReportEntry[],
-  categoryTotal: string,
-): DrillTotals {
-  const shown = entriesTotal(entries);
-  const gross = reportableTotal(entries);
-  if (gross === null) return { shown, deduction: null };
-
-  const deducted = subtractWeights(gross, categoryTotal);
-  // Null covers a malformed total and a net ABOVE the gross, which whole-pound
-  // rounding can produce by a pound on a category nobody deducts from. Neither is
-  // a deduction worth three lines.
-  if (deducted === null || toCents(deducted) === 0) return { shown, deduction: null };
-
-  return { shown, deduction: { gross, deducted, net: categoryTotal } };
 }
 
 /** A walk-in has no shift by construction (`domain-modeling.md §6`), so its
@@ -869,6 +901,22 @@ export function entrySource(entry: ReportEntry): string {
  *  it to flip. */
 export function hasReportToggle(entry: ReportEntry): boolean {
   return entry.kind === 'DONATION';
+}
+
+/**
+ * True for the entries that carry the ✎, and it is NOT every entry.
+ *
+ * `PUT /report/weights/:id` is `reviseReportedWeight`, which voids and re-inserts a
+ * `weight_entry` row (I13). A DONATION's id is an `unscheduled_donation` id, so the
+ * lookup finds nothing and the save comes back "No such entry." The drill-in offered
+ * the button on every row and that call could only ever fail — a defect the move onto
+ * the receipt surfaced rather than introduced.
+ *
+ * A walk-in's correction path is the report switch beside it (cap 15) and, for the
+ * weight itself, S2.3 while the receiver's window is open.
+ */
+export function hasWeightEdit(entry: ReportEntry): boolean {
+  return entry.kind === 'WEIGHT';
 }
 
 /** The one-line description a screen reader gets for an entry row: store, day,
@@ -906,36 +954,15 @@ export function reportableSavedText(donorName: string, reportable: boolean): str
 }
 
 // ---------------------------------------------------------------------------
-// Naming a food bank category on the report line
+// `ntfbLabel` and `reportLineTitle` went with the report table (D54)
 //
-// The matching EDITOR moved to Admin (D17, overriding D11) and took its own copy,
-// its own requests and its own row logic with it — see
-// `screens/s1-rescue/s1-8-admin/mapping/`. What stays here is only what the report
-// TABLE needs to name a line: the same "name (code)" rule, kept local rather than
-// imported, because no screen in this repo imports another one.
+// They named a food bank line the way its Meal Connect line item would read, for a
+// per-category table that no longer exists. The receipt names its own lines
+// (`receiptLineLabel`), which is the same naming done where a reporter is typing it
+// rather than where they were reading it. The matching EDITOR has its own copy in
+// `screens/s1-rescue/s1-8-admin/mapping/` (D17, then D40) and always did — no screen
+// in this repo imports another one.
 // ---------------------------------------------------------------------------
-
-/** "Produce (14)" — the code shown beside the name when Meal Connect has one.
- *  Null stays absent rather than printing "null" or a guessed code (D13). */
-export function ntfbLabel(category: Pick<NtfbCategory, 'name' | 'code'>): string {
-  return category.code === null || category.code === '' ? category.name : `${category.name} (${category.code})`;
-}
-
-/**
- * "Produce (14) · Refrigeration" — one report line named the way its Meal Connect
- * line item will be.
- *
- * Storage belongs in the title rather than beside it because the pair IS the line
- * item: the same food bank category under two storage requirements is two rows
- * here and two rows on the receipt, and a title that omitted storage would show
- * the Reporter two cards with identical headings.
- */
-export function reportLineTitle(
-  line: Pick<ReportLine, 'ntfbCategoryName' | 'ntfbCode' | 'storage'>,
-): string {
-  const base = ntfbLabel({ name: line.ntfbCategoryName, code: line.ntfbCode });
-  return line.storage === null || line.storage === '' ? base : `${base} · ${line.storage}`;
-}
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -1009,25 +1036,15 @@ export const COPY = {
      screen and `futureWeekHeading` already calls it one that has not happened;
      a third sentence saying the same thing is one more thing to read. */
 
-  // --- the two figures (D34) -----------------------------------------------
-  /* THREE FIGURES BECAME TWO, and every caption under them went.
-     `reportedNote` had already gone under D21. `intakeNote` and `unreportedNote`
-     were kept then, on the grounds that they were the only place the difference
-     between the two unions was stated in words. D34 removes them and the labels
-     carry it instead: "Everything received" against "Reported to North Texas Food
-     Bank" is the boundary named in the two places a reader actually looks. The
-     third figure went with them — "Received but not reported" is the difference
-     between these two and can be read straight off them.
-     `wholePoundsNote` did NOT go. It explains why this screen and Admin metrics
-     report the same range a pound apart, and deleting the sentence would not
-     delete the discrepancy; it moved to the report view, beside the figures a
-     reporter is typing into the portal. */
-  totalsLabel: 'The range in numbers',
-  intakeLabel: 'Everything received',
-  reportedLabel: 'Reported to North Texas Food Bank',
-
-  // --- the table -----------------------------------------------------------
-  tableLabel: 'North Texas Food Bank categories',
+  /* THE FIGURES AND THE TABLE ARE GONE (D54). D21 cut the captions, D34 cut the
+     third figure, and this cuts the landing they sat on: `totalsLabel`,
+     `intakeLabel`, `reportedLabel`, `tableLabel`, `rolledUpLabel`, `lineTotalLabel`,
+     `emptyWeekTitle`/`emptyWeekBody`, and the whole drill-in vocabulary
+     (`drillLabel`, `drillLoading`, `drillEmpty*`, `drillTotalLabel`, the three
+     trash lines and `close`). The reporter reads numbers on Admin metrics; this
+     screen is where they TYPE them. `wholePoundsNote` did NOT go either — D69 moved
+     it onto the printed receipt, where the gap between this screen and metrics is
+     still worth a sentence. */
   /* D21 cut `tableHint`. Every one of our categories under a line is a button
      with `aria-expanded` on it, and it opens on click; a sentence telling
      somebody to click the buttons restates the buttons. */
@@ -1036,29 +1053,21 @@ export const COPY = {
   emptyWeekTitle: 'Nothing was received in these dates.',
   emptyWeekBody: 'Try other dates, or check that the runs in them have been weighed.',
 
-  // --- the drill-in --------------------------------------------------------
-  drillLoading: 'Loading the entries',
-  drillLabel: 'Entries behind this weight',
-  drillEmptyTitle: 'Nothing behind this number.',
-  drillEmptyBody: 'No weights were logged under this category this week.',
-  colStore: 'Store',
-  colDay: 'Day',
+  // --- correcting a weight on the receipt (D54, PRD cap 15) ----------------
+  /** The heading over the corrections block on an open receipt. It names what the
+   *  block is FOR rather than what it contains: after the receiver's window closes
+   *  this is the only way left to fix a number (cap 15), and a reporter who does
+   *  not know that reads a list of weights as decoration. */
+  correctionsLabel: 'Change a weight on this pickup',
+  /* D69 cut `correctionsHint` ("These are the weights behind the lines above. Change
+     one here if it is wrong."). The heading above already says what the block is for
+     and every row carries its own Change weight button; the sentence restated both. */
+  correctionsLoading: 'Loading the weights',
+  correctionsEmpty: 'No weights were logged under this pickup.',
+  correctionsTotalLabel: 'These weights add up to',
   colReceiver: 'Logged by',
-  colWeight: 'Weight',
   loggedByPrefix: 'logged by',
   walkIn: 'Walk-in donation',
-  drillTotalLabel: 'These entries add up to',
-  close: 'Close',
-
-  /* The three lines that make the trash deduction visible (D27). Shown only for a
-     category the pantry deducts from; the other nine keep `drillTotalLabel` alone.
-     Kept under D21 for the reason §7 names: two similar numbers sit together and
-     the reader cannot see for themselves why they differ. */
-  drillGrossLabel: 'Weighed under this category',
-  drillDeductLabel: 'Counted as trash instead',
-  drillNetLabel: 'Reported under this category',
-  drillDeductNote:
-    'Trash is worked out from the weight, never weighed. These pounds move to the Trash line, so the week’s reported total does not change.',
 
   // --- editing a weight ----------------------------------------------------
   edit: 'Change weight',
@@ -1100,25 +1109,28 @@ export const COPY = {
   openRunsLabel: 'Runs still open in these dates',
   oneRun: 'run',
   manyRuns: 'runs',
-  openRunsTail:
-    'in these dates are not finished. You can still report. Anything they bring in will not be on the receipts.',
+  /** D69 kept the COUNT and cut the three sentences after it ("…are not finished. You
+   *  can still report. Anything they bring in will not be on the receipts."). How many
+   *  runs are still open is a fact a reporter needs before filing; the tail was a
+   *  lecture on a screen they read every week. A184 is untouched — an open run is still
+   *  surfaced and still does not block. */
+  openRunsTail: 'still open in these dates.',
   runOpen: 'nobody has claimed it',
   runClaimed: 'claimed, not started',
   runInProgress: 'out on the road',
   runUnfinished: 'not finished',
 
-  // --- the one way out: the receipts, on screen and on paper (D29, D34) -----
-  /** ONE BUTTON WHERE THERE WERE TWO (D34). "Export for Meal Connect" and "Print
-   *  or save as PDF" sat side by side under the totals; the second could only be
-   *  pressed after the first, and neither is what a reporter would call the thing
-   *  they came to do. This is the screen's one primary action and it sits at the
-   *  top, because the report IS the job and the range's totals are the check. */
-  export: 'Meal Connect Report',
-  /** Meal Connect has no file import (D13, and that finding stands). A Reporter
-   *  types each receipt into a web form, so this says what the cards are FOR and
-   *  names the one check the portal offers back. */
-  exportHint:
-    'One card per store per day, in the order Meal Connect takes them. Check Number of Items and Total Pounds against what it shows you.',
+  // --- the one way out: the receipts, on screen and on paper (D29, D54) -----
+  /* THE BUTTON IS GONE (D54). D34 had already cut two buttons to one — "Export for
+     Meal Connect" and "Print or save as PDF" — and made it the screen's primary
+     action. There is nothing left for it to open: the receipts ARE the screen, and
+     a button that reveals what is already on screen is a step between a reporter
+     and their job. `COPY.export` went with it. */
+  /* D69 cut `exportHint` ("One card per store per day, in the order Meal Connect
+     takes them. Check Number of Items and Total Pounds against what it shows you.").
+     The cards are on screen in that order, each one headed with a date and a store,
+     and `Number of Items` / `Total Pounds` are printed on every card under Meal
+     Connect's own names — the sentence described what the reporter was looking at. */
   /** The pantry asked for "PDF". D5 forbids the dependency and D13 says the far
    *  end is not a document anyway, so this is the same cards laid out for paper
    *  and handed to the browser's own dialogue, where "Save as PDF" is one of the
@@ -1137,12 +1149,22 @@ export const COPY = {
   receiptsTitle: 'Receipts to enter in Meal Connect',
   receiptsWeek: 'Dates',
   receiptsEmpty: 'Nothing to enter for these dates.',
-  backToTotals: 'Back to the numbers',
-  /** D28's note, moved here from under the totals (D34). It is the one thing a
-   *  reader cannot work out for themselves — two similar numbers sitting a screen
-   *  apart, differing for a reason nothing on either screen shows — and it belongs
-   *  beside the figures a reporter is about to type, not under a total they are
-   *  not typing. */
+  /* `backToTotals` is gone with the totals it went back to (D54). There is nothing
+     behind this screen any more, so there is nothing to go back to. */
+  /**
+   * D28's note — ON THE PRINTED RECEIPT ONLY since D69.
+   *
+   * D69 took four standing paragraphs off this screen and this was the one with a
+   * cost: it is the only thing explaining why S3.1 and Admin metrics show two similar
+   * numbers a pound or two apart, and deleting it outright leaves that gap with
+   * nothing to say why. So it survives where a reporter is actually comparing figures
+   * against the portal — on paper.
+   *
+   * The precedent is D57, which already diverges screen from print on this same card:
+   * an unticked Meal Connect checkbox is hidden on screen and drawn on paper, because
+   * the printout is a mirror of the portal's own form. Same element, two stylesheets,
+   * never two markup paths — see `.s31-receipts__note--print` in `report.css`.
+   */
   wholePoundsNote:
     'Whole pounds, the way the food bank takes them. Admin metrics shows the exact weight, so the two can differ by a pound or two.',
 
@@ -1155,8 +1177,16 @@ export const COPY = {
   submittedBy: 'Submitted by',
   notSubmitted: 'Not submitted yet',
   /** A free-text walk-in has no store record, so there is nothing for the food
-   *  bank's own donor picker to be pointed at and nothing to tick here. */
-  cannotSubmit: 'No store to file this under',
+   *  bank's own donor picker to be pointed at and nothing to tick here.
+   *
+   *  It says BOTH halves because the first half is the one that gets doubted.
+   *  Flipping a label-only donation on with `reportItNow` does exactly what it
+   *  says — the pounds join the reported total — but the row cannot move to
+   *  section 1, because filing needs a real store and a typed-in name is not one.
+   *  QA watched that read as "the button did nothing". Saying only "no store"
+   *  would leave a reporter believing the food is missing from the report when it
+   *  is in it. */
+  cannotSubmit: 'In the report, but no store to file it under',
   mark: 'Mark as submitted to Meal Connect',
   unmark: 'Not submitted after all',
   markQuestion: 'Mark as submitted:',
@@ -1174,6 +1204,52 @@ export const COPY = {
   progressOf: 'of',
   progressTail: 'receipts are submitted.',
   progressNoneTail: 'None submitted yet, out of',
+  /** The bar is the same fact drawn. Named for anyone who hears the screen rather
+   *  than sees it, because §3 does not let a visual signal carry a state alone. */
+  progressBarLabel: 'How many receipts are submitted',
+
+  // --- the two sections (D56) -----------------------------------------------
+  /** Section 1: the work. The progress bar counts exactly this list. */
+  fileableHeading: 'To file into Meal Connect',
+  /** Section 2: everything that will never be typed into the portal, for two
+   *  different reasons. Named for the FACT rather than for the reason, because the
+   *  two reasons are said on the rows themselves. */
+  unfiledHeading: 'Not filed to the food bank',
+  unfiledHint:
+    'None of this goes to the food bank. Pickups with no store, and donations somebody marked as not reported.',
+  /** A row in section 2 that is a donation rather than a receipt. */
+  notReportedState: 'Not reported',
+  /** I16b: an anonymous walk-in has no store and no name, so there is nothing for
+   *  the food bank to attribute the food to and the switch would be refused. The
+   *  row says so rather than offering it — the same courtesy D35 gives a receipt
+   *  with no store to file under. */
+  cannotReportState: 'No store or name on this donation, so it cannot be reported',
+  reportItNow: 'Put this in the report',
+  pickAReceipt: 'Pick a receipt on the left to start typing it in.',
+
+  // --- pointing a label at a real store (D72) -------------------------------
+  /** The way out of `cannotSubmit`. A receiver typed a store name instead of picking
+   *  a store, which `I16(b)` accepts and Meal Connect's donor picker does not — so
+   *  the pounds are in the report and the receipt can never be ticked. Nothing used
+   *  to re-point it once the store WAS added to our list, and those pounds then sat
+   *  outside the food bank permanently. */
+  attach: 'File this under a store',
+  attachQuestion: 'Which store was this?',
+  attachHint: 'Pick the store this walk-in really came from. It joins that store’s receipt.',
+  /** WHERE THE TYPED NAME GOES, said plainly, because it does move.
+   *
+   *  `ck_ud_source_exclusive` (migration 0011) is `donor_id IS NULL OR donor_label IS
+   *  NULL` — a pickup has a store OR a written-down name, never both — so choosing a
+   *  store clears the name. It is not lost: it is written into the pickup's note,
+   *  which shows in this receipt's own notes. A reporter who is about to see the name
+   *  move needs to be told it will. */
+  attachKeepsLabel: 'The name that was written down moves into the notes on this pickup.',
+  attachLoading: 'Loading the stores',
+  attachEmpty: 'No stores to pick from.',
+  /** Donors are admin master data (I21). A reporter picks from the list and never
+   *  adds to it, so the row says who can rather than offering a field. */
+  attachAskAdmin: 'If the store is not here, ask an admin to add it.',
+  attached: 'Filed under that store.',
 
   /* Meal Connect's own field names, spelled as its form spells them. These are
      the one place in R3 where somebody else's words beat ours: a Reporter is

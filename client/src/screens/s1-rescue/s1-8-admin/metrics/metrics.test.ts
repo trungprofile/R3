@@ -5,9 +5,9 @@
 // §3`). So nothing here renders. What is covered is what a plausible-looking wrong
 // number would hide:
 //
-//   - `previousIntake: null` rendering as a 100% drop, which is the failure the
-//     shared type warns about in as many words;
 //   - a displayed weight going through a float on its way to the screen (A165);
+//   - the two headline figures being emitted one without the other, which is how
+//     intake and NTFB-reported get conflated (PRD §3);
 //   - UNCLAIMED and NO_SHOW being summed into one meaningless count;
 //   - the period stepping back by something other than its own length, which
 //     would stop matching the comparison the server measures trend against;
@@ -27,8 +27,6 @@ import type {
 } from '../../../../api/shared.ts';
 import {
   ANY_FILTER,
-  barFor,
-  barsFor,
   canGoLater,
   COPY,
   coverageCsv,
@@ -46,8 +44,8 @@ import {
   FORBIDDEN_IN_COPY,
   formatWeight,
   intakeCsv,
+  headlineFigures,
   isFiltered,
-  maxIntake,
   isThisWeek,
   isValidPeriod,
   periodError,
@@ -67,7 +65,6 @@ import {
   storeKey,
   storesByIntake,
   TABS,
-  trendFor,
   weightAsNumber,
   weightWithUnit,
 } from './metrics.ts';
@@ -82,8 +79,6 @@ function store(overrides: Partial<StoreIntake> = {}): StoreIntake {
     donorName: 'Kroger Elm St',
     intake: '1000.00',
     reported: '600.00',
-    unreported: '400.00',
-    previousIntake: '800.00',
     ...overrides,
   };
 }
@@ -96,8 +91,6 @@ function intake(overrides: Partial<IntakeMetrics> = {}): IntakeMetrics {
     totalIntake: '1000.00',
     totalReported: '600.00',
     totalUnreported: '400.00',
-    previousFrom: '2026-02-03',
-    previousTo: '2026-03-02',
     ...overrides,
   };
 }
@@ -187,13 +180,11 @@ describe('the period', () => {
     expect(periodFor('2026-03-30', 7)).toEqual({ from: '2026-03-24', to: '2026-03-30' });
   });
 
-  it('steps back by the period’s own length, which is what trend compares against', () => {
-    const current = intake();
-    const earlier = periodFor('2026-03-30', 28, 1);
-    // The server's `previousFrom`/`previousTo` for the current window. Stepping
-    // back once must land exactly on it, or "Earlier" would show a period the
-    // trend column was never measured against.
-    expect(earlier).toEqual({ from: current.previousFrom, to: current.previousTo });
+  it('steps back by the period’s own length, landing on the period before it', () => {
+    // Adjacent and non-overlapping: the day before `from`, back one whole length.
+    // Until D58 this also had to match the window the server measured the Change
+    // column against; that column is gone and the calendar is the only rule left.
+    expect(periodFor('2026-03-30', 28, 1)).toEqual({ from: '2026-02-03', to: '2026-03-02' });
   });
 
   it('steps back further without overlapping', () => {
@@ -227,10 +218,9 @@ describe('the period', () => {
   });
 
   it('steps Earlier and Later by the window OWN length, adjacent and non-overlapping', () => {
-    // The half of the old shape that survived D39, and the load-bearing half:
-    // this is exactly the window `previousIntake` is measured against, one screen
-    // up (`services/metrics.ts`). Consecutive views must not overlap or leave a
-    // gap, or the trend column compares against something nobody is looking at.
+    // The half of the old shape that survived D39 and D58: consecutive views must
+    // not overlap or leave a gap, or an admin stepping back twice reads two
+    // windows that share days and cannot add them up.
     const week = { from: '2026-07-27', to: '2026-08-02' };
     expect(stepPeriod(week, -1)).toEqual({ from: '2026-07-20', to: '2026-07-26' });
     expect(stepPeriod(week, 1)).toEqual({ from: '2026-08-03', to: '2026-08-09' });
@@ -297,95 +287,47 @@ describe('date labels', () => {
 // Trend — the null-is-not-zero rule
 // ---------------------------------------------------------------------------
 
-describe('trend', () => {
-  it('has NO trend for a store with no prior period, and states no percentage', () => {
-    const trend = trendFor('500.00', null);
-    expect(trend.direction).toBe('NO_HISTORY');
-    expect(trend.percent).toBeNull();
-    expect(trend.label).not.toContain('%');
-    expect(trend.label).toBe(COPY.intake.trendNone);
+// ---------------------------------------------------------------------------
+// The two headline figures, and store ordering (D58)
+//
+// The trend suite and the bar-geometry suite stood here. Both are gone with the
+// Change column and the by-store chart: nothing computes a previous period, and
+// nothing draws a percentage of a track. What replaced them is the pair of figures
+// the chart was really being read for.
+// ---------------------------------------------------------------------------
+
+describe('the headline figures', () => {
+  it('emits BOTH numbers or neither, so one can never be shown alone (PRD §3)', () => {
+    const figures = headlineFigures(intake());
+    expect(figures.map((f) => f.key)).toEqual(['intake', 'reported']);
+    expect(figures.map((f) => f.label)).toEqual([
+      COPY.intake.colIntake,
+      COPY.intake.colReported,
+    ]);
   });
 
-  it('never renders a missing prior period as a 100% drop', () => {
-    // The exact failure `shared/src/metrics.ts` warns about: a store that did not
-    // exist last period has no trend, not a catastrophic one.
-    const absent = trendFor('0.00', null);
-    expect(absent.direction).not.toBe('DOWN');
-    expect(absent.percent).not.toBe(-100);
+  it('labels them with the same words as the columns they total', () => {
+    // The big number and the column under it must agree by construction, not by
+    // two people writing the same phrase twice.
+    const figures = headlineFigures(intake());
+    expect(figures[0]?.label).toBe(COPY.intake.colIntake);
+    expect(figures[1]?.label).toBe(COPY.intake.colReported);
   });
 
-  it('does report a real collapse as one', () => {
-    const collapsed = trendFor('0.00', '800.00');
-    expect(collapsed.direction).toBe('DOWN');
-    expect(collapsed.percent).toBe(-100);
-    expect(collapsed.label).toBe('down 100%');
+  it('formats the server’s string rather than doing arithmetic on it (A165)', () => {
+    const figures = headlineFigures({ totalIntake: '1222.35', totalReported: '600.00' });
+    expect(figures[0]?.value).toBe('1222.35 lb');
+    expect(figures[1]?.value).toBe('600 lb');
   });
 
-  it('reads a rise and a fall as whole percents', () => {
-    expect(trendFor('1000.00', '800.00').label).toBe('up 25%');
-    expect(trendFor('600.00', '800.00').label).toBe('down 25%');
-  });
-
-  it('calls an unchanged store unchanged', () => {
-    const level = trendFor('800.00', '800.00');
-    expect(level.direction).toBe('LEVEL');
-    expect(level.label).toBe(COPY.intake.trendLevel);
-  });
-
-  it('does not say "0%" for a store that moved slightly', () => {
-    const tiny = trendFor('800.20', '800.00');
-    expect(tiny.direction).toBe('UP');
-    expect(tiny.label).toBe(COPY.intake.trendUpTiny);
-    expect(tiny.label).not.toContain('0%');
-  });
-
-  it('says a rise from nothing in words, because a percentage of zero is not a number', () => {
-    const fromNothing = trendFor('500.00', '0.00');
-    expect(fromNothing.direction).toBe('UP');
-    expect(fromNothing.percent).toBeNull();
-    expect(fromNothing.label).toBe(COPY.intake.trendUpFromNothing);
-  });
-
-  it('treats zero against zero as no change, not as a rise', () => {
-    expect(trendFor('0.00', '0.00').direction).toBe('LEVEL');
+  it('never states the difference as a third figure (D58, following D34)', () => {
+    // "Not reported" is intake minus reported and is read off the two above. A
+    // third headline is the number most likely to be mistaken for one of them.
+    expect(headlineFigures(intake())).toHaveLength(2);
   });
 });
 
-// ---------------------------------------------------------------------------
-// Bars — geometry only
-// ---------------------------------------------------------------------------
-
-describe('bars', () => {
-  it('scales every bar against the largest intake in the period', () => {
-    const stores = [
-      store({ donorId: 'a', donorName: 'A', intake: '1000.00', reported: '500.00' }),
-      store({ donorId: 'b', donorName: 'B', intake: '250.00', reported: '250.00' }),
-    ];
-    expect(maxIntake(stores)).toBe(1000);
-    const bars = barsFor(stores);
-    expect(bars[0]?.widthPercent).toBe(100);
-    expect(bars[1]?.widthPercent).toBe(25);
-  });
-
-  it('splits each bar into reported and not, which is the boundary drawn', () => {
-    const bar = barFor(store({ intake: '1000.00', reported: '600.00' }), 1000);
-    expect(bar.reportedPercent).toBe(60);
-  });
-
-  it('draws nothing rather than dividing by zero', () => {
-    const empty = barFor(store({ intake: '0.00', reported: '0.00' }), 0);
-    expect(empty.widthPercent).toBe(0);
-    expect(empty.reportedPercent).toBe(0);
-  });
-
-  it('never draws past the end of the track', () => {
-    // Defensive: `reported` should never exceed `intake`, but a bar wider than its
-    // own track would break the layout rather than announce the anomaly.
-    const odd = barFor(store({ intake: '100.00', reported: '150.00' }), 50);
-    expect(odd.widthPercent).toBe(100);
-    expect(odd.reportedPercent).toBe(100);
-  });
-
+describe('store rows', () => {
   it('orders stores by intake, with the name breaking a tie so reloads agree', () => {
     const stores = [
       store({ donorId: 'b', donorName: 'Zeta', intake: '500.00' }),
@@ -557,18 +499,21 @@ describe('export', () => {
     expect(csvRow(['a', 'b,c'])).toBe('a,"b,c"');
   });
 
-  it('keeps intake, reported and unreported as three columns', () => {
+  it('is the table on screen, three columns and no more (D58)', () => {
     const csv = intakeCsv(intake());
     const header = csv.split('\r\n')[0] ?? '';
-    expect(header).toContain('Intake (lb)');
-    expect(header).toContain('Reported to food bank (lb)');
-    expect(header).toContain('Not reported (lb)');
+    // Intake and reported stay two named columns: the key data boundary has to
+    // survive the download, or the spreadsheet becomes where they get merged.
+    expect(header).toBe('Store,Total rescued (lb),To the food bank (lb)');
+    // What the screen no longer states, the download does not invent.
+    expect(header).not.toContain('Not reported');
+    expect(header).not.toContain('Change');
   });
 
   it('writes the weight it was given, digit for digit', () => {
     const csv = intakeCsv(
       intake({
-        stores: [store({ intake: '1222.35', reported: '1222.35', unreported: '0.00' })],
+        stores: [store({ intake: '1222.35', reported: '1222.35' })],
         totalIntake: '1222.35',
         totalReported: '1222.35',
         totalUnreported: '0.00',
@@ -623,13 +568,7 @@ function fixedStrings(value: unknown): string[] {
 }
 
 const COMPOSED = [
-  COPY.intake.comparedWith('2026-02-03', '2026-03-02'),
-  trendFor('1000.00', '800.00').label,
-  trendFor('600.00', '800.00').label,
-  trendFor('800.00', '800.00').label,
-  trendFor('500.00', null).label,
-  trendFor('500.00', '0.00').label,
-  trendFor('800.20', '800.00').label,
+  ...headlineFigures(intake()).flatMap((figure) => [figure.label, figure.value]),
   driverLine({ ownerId: 'u1', ownerName: 'Karen Smith', noShows: 3 }),
   routeLine({ routeId: 'r1', routeName: 'Tuesday Morning', unclaimed: 2, noShows: 1 }),
   rateLabel(3, 21) ?? '',
@@ -666,10 +605,12 @@ describe('microcopy', () => {
 
   it('labels intake and food-bank-reported as two distinct numbers (PRD §3)', () => {
     expect(COPY.intake.colIntake).not.toBe(COPY.intake.colReported);
-    expect(COPY.intake.colUnreported).not.toBe(COPY.intake.colReported);
-    // The screen says the boundary out loud rather than leaving it to be inferred
-    // from two column headings.
-    expect(COPY.intake.lede.toLowerCase()).toContain('different numbers');
+    // D58 cut the lede that said "The two are different numbers." The boundary is
+    // now carried by the labels themselves, in the two places a reader looks: the
+    // headline figures and the column headings under them. Both name a side.
+    const labels = headlineFigures(intake()).map((figure) => figure.label);
+    expect(labels).toEqual([COPY.intake.colIntake, COPY.intake.colReported]);
+    expect(COPY.intake.reportedMeans.toLowerCase()).toContain('the part');
   });
 
   it('reads an empty missed-runs period as the good news it is', () => {

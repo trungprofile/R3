@@ -95,7 +95,7 @@ describe('tier and duty comparison', () => {
   });
 });
 
-describe('navigation derived from tier and duty (UI §4, D22, D30)', () => {
+describe('navigation derived from tier and duty (UI §4, D22, D30, D49, D51)', () => {
   const ids = (u: CurrentUser, viewport: 'phone' | 'tablet' | 'desktop') =>
     flattenNav(navItemsFor(u, viewport)).map((item) => item.id);
   const headings = (u: CurrentUser, viewport: 'phone' | 'tablet' | 'desktop') =>
@@ -151,6 +151,17 @@ describe('navigation derived from tier and duty (UI §4, D22, D30)', () => {
     }
   });
 
+  it('keeps the cap even where the desktop list is twice as long (D49, D51)', () => {
+    // The person this is about: an Admin holding all three duties reads eight
+    // entries on the desktop and must still read four in 56px. D49 added a second
+    // driver entry, which is the change that could have quietly made it five.
+    const everything = user('ADMIN', ['DRIVE', 'RECEIVE', 'REPORT']);
+    expect(ids(everything, 'desktop').length).toBe(8);
+    for (const viewport of ['phone', 'tablet'] as const) {
+      expect(ids(everything, viewport).length, viewport).toBe(4);
+    }
+  });
+
   it('draws the bar without headings — there is no room for one in 56px', () => {
     for (const viewport of ['phone', 'tablet'] as const) {
       expect(headings(admin, viewport)).toEqual([null]);
@@ -166,12 +177,20 @@ describe('navigation derived from tier and duty (UI §4, D22, D30)', () => {
   });
 
   it('gives the bar Home, the duty screens and Inbox', () => {
-    expect(ids(driver, 'phone')).toEqual(['home', 'board', 'inbox']);
+    // A driver spends the fourth slot on their second entry (D49): their own runs,
+    // then the board they claim from.
+    expect(ids(driver, 'phone')).toEqual(['home', 'my-shifts', 'board', 'inbox']);
     expect(ids(receiver, 'phone')).toEqual(['home', 'receive-runs', 'inbox']);
+  });
+
+  it('spends the two middle slots on duties before second entries (D49, D51)', () => {
+    // Someone holding both duties has no room for the board: two duties fill the
+    // two slots, in the sidebar's descending-privilege order, and the board is
+    // reached through Home. That is §3's cap doing its job, not a truncation.
     expect(ids(user('VOLUNTEER', ['DRIVE', 'RECEIVE']), 'tablet')).toEqual([
       'home',
-      'board',
       'receive-runs',
+      'my-shifts',
       'inbox',
     ]);
   });
@@ -202,13 +221,28 @@ describe('navigation derived from tier and duty (UI §4, D22, D30)', () => {
     }
   });
 
-  it('labels the board Pick up food in the sidebar, and Pick up in the bar', () => {
-    // Same destination, two lengths: 56px with the icon above the word will not take
-    // the longer one at four across (§3). The sidebar matches the Home card (D30).
-    const label = (u: CurrentUser, viewport: 'phone' | 'desktop') =>
-      flattenNav(navItemsFor(u, viewport)).find((item) => item.id === 'board')?.label;
-    expect(label(driver, 'desktop')).toBe('Pick up food');
-    expect(label(driver, 'phone')).toBe('Pick up');
+  it("labels the driver entries Today's pickup and Shift board, shortened in the bar", () => {
+    // Two destinations since D49, and the names have to divide the job between them:
+    // "Today's pickup" (D64) is the driver's own runs, led by today's; "Shift board"
+    // is where new ones come from. Each has a shorter spelling for the bar — 56px with the icon above the
+    // word will not take the longer one at four across (§3). The sidebar labels
+    // match the Home cards, so the two surfaces teach one vocabulary (D30).
+    const label = (u: CurrentUser, viewport: 'phone' | 'desktop', id: string) =>
+      flattenNav(navItemsFor(u, viewport)).find((item) => item.id === id)?.label;
+    expect(label(driver, 'desktop', 'my-shifts')).toBe("Today's pickup");
+    expect(label(driver, 'phone', 'my-shifts')).toBe('Pickup');
+    expect(label(driver, 'desktop', 'board')).toBe('Shift board');
+    expect(label(driver, 'phone', 'board')).toBe('Board');
+  });
+
+  it('still calls it Shift board for a coordinator, who never picks food up', () => {
+    // §4 keeps the board for the Staff tier: a coordinator watches claims land
+    // there. Before D49 it was labelled for picking food up for them too, naming it
+    // after a job they do not have.
+    const label = flattenNav(navItemsFor(coordinator, 'desktop')).find(
+      (item) => item.id === 'board',
+    )?.label;
+    expect(label).toBe('Shift board');
   });
 
   it('gives Staff Schedule and the Board on the desktop', () => {
@@ -224,14 +258,24 @@ describe('navigation derived from tier and duty (UI §4, D22, D30)', () => {
     expect(ids(admin, 'desktop')).toContain('schedule');
   });
 
-  it('offers My shifts to nobody — D30 made it a tab of the Board', () => {
-    // A driver had it in the sidebar until D30. It is reachable from the Board now,
-    // and a nav entry plus a tab is two links to one screen.
+  it('offers My shifts to drivers again, and to nobody else (D49)', () => {
+    // D30 folded it into the Board as `?tab=mine`, which then grew a second tab row
+    // inside itself — two levels of tabs for a driver looking for their own morning.
+    // D49 makes it a sibling page. It is gated on the DUTY, matching `routes.ts`: a
+    // coordinator has no runs of their own, so the page would be empty for them.
     for (const person of everyone) {
       for (const viewport of ['phone', 'tablet', 'desktop'] as const) {
-        expect(ids(person, viewport), `${person.tier} on ${viewport}`).not.toContain('my-shifts');
+        const expected = person.duties.includes('DRIVE');
+        expect(
+          ids(person, viewport).includes('my-shifts'),
+          `${person.tier}/${person.duties} on ${viewport}`,
+        ).toBe(expected);
       }
     }
+  });
+
+  it('gives a driver both entries on the desktop, never one standing for both', () => {
+    expect(ids(driver, 'desktop')).toEqual(['home', 'my-shifts', 'board', 'inbox']);
   });
 
   it('offers Log a donation to nobody — it hangs off the receive run picker (D30)', () => {
@@ -253,11 +297,12 @@ describe('navigation derived from tier and duty (UI §4, D22, D30)', () => {
     }
   });
 
-  it('never lists more than seven, which is what one capability each comes to', () => {
-    // Home, Pick up food, Receive a load, Report, Schedule, Admin, Inbox.
+  it('never lists more than eight, which is what one entry each comes to', () => {
+    // Home, Admin, Schedule, Report, Receive a load, Today's pickup, Shift board,
+    // Inbox. Seven until D49 gave DRIVE its second entry.
     for (const person of everyone) {
       expect(ids(person, 'desktop').length, `${person.tier}/${person.duties}`).toBeLessThanOrEqual(
-        7,
+        8,
       );
     }
   });
@@ -276,22 +321,45 @@ describe('navigation derived from tier and duty (UI §4, D22, D30)', () => {
     expect(ids(admin, 'desktop')).not.toContain('metrics');
   });
 
-  it('reads Home, then a week in the order it runs, then Inbox (D30)', () => {
-    // Pick the food up, receive it, report it — with the two everyone holds either
-    // side. Schedule and Admin follow Report because they are where a week is set up
-    // rather than where it happens.
-    expect(ids(admin, 'desktop')).toEqual(['home', 'board', 'report', 'schedule', 'admin', 'inbox']);
-    expect(ids(coordinator, 'desktop')).toEqual(['home', 'board', 'schedule', 'inbox']);
+  it('reads Home, then descending privilege, then Inbox (D51)', () => {
+    // D30 ordered these "in the order a week runs"; D51 supersedes that. Descending
+    // privilege puts the narrowest capability nearest the top, so the person with
+    // the most entries does not scroll furthest for the one only they can reach —
+    // and every shorter list is the same list with rows removed, never reshuffled.
+    expect(ids(admin, 'desktop')).toEqual([
+      'home',
+      'admin',
+      'schedule',
+      'report',
+      'board',
+      'inbox',
+    ]);
+    expect(ids(coordinator, 'desktop')).toEqual(['home', 'schedule', 'board', 'inbox']);
     expect(ids(receiver, 'desktop')).toEqual(['home', 'receive-runs', 'inbox']);
     expect(ids(user('ADMIN', ['DRIVE', 'RECEIVE', 'REPORT']), 'desktop')).toEqual([
       'home',
-      'board',
-      'receive-runs',
-      'report',
-      'schedule',
       'admin',
+      'schedule',
+      'report',
+      'receive-runs',
+      'my-shifts',
+      'board',
       'inbox',
     ]);
+  });
+
+  it('keeps every shorter list in the same relative order as the longest (D51)', () => {
+    // The property the order is FOR: someone who gains a duty finds their existing
+    // entries where they left them, with a new one inserted, rather than a list they
+    // have to re-read.
+    const canonical = ids(user('ADMIN', ['DRIVE', 'RECEIVE', 'REPORT']), 'desktop');
+    for (const person of everyone) {
+      const list = ids(person, 'desktop');
+      const positions = list.map((id) => canonical.indexOf(id));
+      expect(positions, `${person.tier}/${person.duties}`).not.toContain(-1);
+      const ascending = [...positions].sort((a, b) => a - b);
+      expect(positions, `${person.tier}/${person.duties}`).toEqual(ascending);
+    }
   });
 
   it('lands everyone on the hub after sign-in, on every viewport', () => {

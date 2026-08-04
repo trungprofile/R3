@@ -8,7 +8,8 @@
 // Canonical on every surface. On a phone and a tablet it is also the only route to
 // Schedule, Report and Admin, because §3 caps the bottom bar at four items.
 //
-// At most six cards since D31, which is what keeps the grid to one screenful.
+// At most seven cards since D50 raised D31's cap by one for D49's second driver
+// card, which is what keeps the grid to one screenful.
 //
 // One request on this screen: none. The subtitles are static descriptive text, and
 // the seam for a live count is `homeCardsFor(user, live)` — see `home.ts`.
@@ -19,6 +20,7 @@ import { useCurrentUser, useRouter } from '../../../app/index.ts';
 import {
   BellIcon,
   BoardIcon,
+  CalendarIcon,
   ChartIcon,
   ClockIcon,
   DocumentIcon,
@@ -33,6 +35,7 @@ import './home.css';
  *  read as one place. Icons live here rather than in `home.ts` to keep that file
  *  free of JSX and therefore testable without a renderer. */
 const ICONS: Partial<Record<ScreenId, ReactNode>> = {
+  'my-shifts': <CalendarIcon size="2em" />,
   board: <BoardIcon size="2em" />,
   'receive-runs': <ChartIcon size="2em" />,
   report: <DocumentIcon size="2em" />,

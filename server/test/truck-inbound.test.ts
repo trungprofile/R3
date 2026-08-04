@@ -18,7 +18,7 @@ import { completePickup } from '../src/services/execution.js';
 import { removeDonor } from '../src/services/donor.js';
 import { removeCategory } from '../src/services/category.js';
 import { removeUser } from '../src/services/user.js';
-import { createDonation, listOpenDonations } from '../src/services/donation.js';
+import { createDonation, listReceiveWorklist } from '../src/services/donation.js';
 import { addWeight } from '../src/services/receive.js';
 import {
   makeCategory,
@@ -298,7 +298,7 @@ describe('I21 — the predicates intake made real (build-plan D3)', () => {
 });
 
 describe('the receiver worklist', () => {
-  it('lists a SUGGESTED prefill and a recent confirmed row', async () => {
+  it('lists a row recorded today under `recorded` (`D76`)', async () => {
     const user = await makeReceiver();
     const donor = await makeDonor();
     const category = await makeCategory();
@@ -308,9 +308,10 @@ describe('the receiver worklist', () => {
       weight: '12',
     });
 
-    const open = await listOpenDonations();
-    expect(open).toHaveLength(1);
-    expect(open[0]!.status).toBe('CONFIRMED');
-    expect(open[0]!.editableByReceiver).toBe(true);
+    const { suggested, recorded } = await listReceiveWorklist();
+    expect(suggested).toHaveLength(0);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]!.status).toBe('CONFIRMED');
+    expect(recorded[0]!.editableByReceiver).toBe(true);
   });
 });

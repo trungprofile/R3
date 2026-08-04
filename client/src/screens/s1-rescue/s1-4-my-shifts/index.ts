@@ -5,4 +5,7 @@
 // `app/routes.ts`). This barrel is the only thing that wiring needs to import.
 
 export { MyShiftsScreen } from './MyShiftsScreen.tsx';
+/** Mounted by S1.2 as its "When I'm away" tab since D49. It stays declared here
+ *  because it is S1.4's half of the spec; only where it is rendered moved. */
+export { AwayPanel } from './AwayPanel.tsx';
 export * from './logic.ts';

@@ -13,10 +13,15 @@
 //     `app_config.timezone` (`shared/src/availability.ts`, state A55). The client
 //     NEVER converts one to an instant; it only ever assembles the strings.
 //   * ISO-8601 instants — what `availability_block` and `shift` store and what
-//     comes back on the wire. Rendered here in the device's own zone, because the
-//     pantry's zone is not exposed to the browser by any endpoint (see report
-//     `Assumed:`). A driver's phone standing in the pantry's zone — the ordinary
-//     case — reads exactly what the server stored.
+//     comes back on the wire. A RUN's hours are now rendered in the PANTRY's zone,
+//     which the session carries (A120): "is this run today?" and "what time is it?"
+//     are pantry-calendar questions, and a device one zone east answered both wrong
+//     after its own midnight. The original note here — "the pantry's zone is not
+//     exposed to the browser by any endpoint" — stopped being true when A120 landed.
+//     Availability blocks are the one thing still read in the device's zone: their
+//     all-day detection is day arithmetic on instants (`describeBlock`), not a
+//     format, and moving it is a larger change than D49 asked for. Recorded rather
+//     than left to be rediscovered.
 //
 // Client-side checks below are COMMUNICATION ONLY (`CLAUDE.md`): every one of them
 // is enforced again server-side, and none of them relaxes anything. Where the
@@ -29,19 +34,36 @@ import type {
   DeclareAvailabilityRequest,
   ShiftSummary,
 } from '../../../api/shared.ts';
+import {
+  MONTH_NAMES,
+  addDaysIso,
+  compareIso,
+  isoOf,
+  parseIsoDate,
+  weekdayIndex,
+} from '../shared/calendar.ts';
 
 // ---------------------------------------------------------------------------
 // Calendar dates — `YYYY-MM-DD` text, never a `Date`
 // ---------------------------------------------------------------------------
+//
+// The grid arithmetic moved to `../shared/calendar.ts` when S1.6's calendar (D73)
+// became a fourth caller of the same six-week grid. Re-exported here so this
+// screen's own callers still read one module, and so the away picker's imports did
+// not have to move with it.
 
-export interface CalendarDate {
-  year: number;
-  /** 1-12. */
-  month: number;
-  day: number;
-}
-
-const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+export type { CalendarDate, MonthCell } from '../shared/calendar.ts';
+export {
+  WEEKDAY_INITIALS,
+  addDaysIso,
+  compareIso,
+  formatMonthLabel,
+  isoOf,
+  monthGrid,
+  nextMonth,
+  parseIsoDate,
+  previousMonth,
+} from '../shared/calendar.ts';
 
 const WEEKDAY_NAMES = [
   'Sunday',
@@ -53,63 +75,9 @@ const WEEKDAY_NAMES = [
   'Saturday',
 ] as const;
 
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-] as const;
-
-export function parseIsoDate(value: string): CalendarDate | null {
-  const match = DATE_PATTERN.exec(value);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const probe = new Date(Date.UTC(year, month - 1, day));
-  if (
-    probe.getUTCFullYear() !== year ||
-    probe.getUTCMonth() !== month - 1 ||
-    probe.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return { year, month, day };
-}
-
-export function isoOf(date: CalendarDate): string {
-  const mm = String(date.month).padStart(2, '0');
-  const dd = String(date.day).padStart(2, '0');
-  return `${date.year}-${mm}-${dd}`;
-}
-
 /** The device's current calendar day. Pure over its argument so tests can pin it. */
 export function todayIso(now: Date): string {
   return isoOf({ year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() });
-}
-
-export function addDaysIso(iso: string, days: number): string {
-  const date = parseIsoDate(iso);
-  if (!date) return iso;
-  const shifted = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
-  return isoOf({
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate(),
-  });
-}
-
-/** ISO date strings sort lexicographically; this only names why. */
-export function compareIso(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 export function daysBetweenIso(from: string, to: string): number {
@@ -118,11 +86,6 @@ export function daysBetweenIso(from: string, to: string): number {
   if (!a || !b) return 0;
   const ms = Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day);
   return Math.round(ms / 86_400_000);
-}
-
-/** Day-of-week index, 0 = Sunday. Calendar arithmetic only — no zone involved. */
-function weekdayIndex(date: CalendarDate): number {
-  return new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay();
 }
 
 /**
@@ -136,51 +99,6 @@ export function formatDayLabel(iso: string, now: Date): string {
   const month = MONTH_NAMES[date.month - 1] ?? '';
   const base = `${weekday.slice(0, 3)}, ${month.slice(0, 3)} ${date.day}`;
   return date.year === now.getFullYear() ? base : `${base}, ${date.year}`;
-}
-
-export function formatMonthLabel(year: number, month: number): string {
-  return `${MONTH_NAMES[month - 1] ?? ''} ${year}`;
-}
-
-/** Short weekday headers for the day picker, Sunday first (US pantry). */
-export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
-
-export interface MonthCell {
-  iso: string;
-  day: number;
-  /** False for the leading/trailing days that only fill the grid out. */
-  inMonth: boolean;
-}
-
-/** A month as six weeks of seven cells, Sunday first — the shape a grid renders. */
-export function monthGrid(year: number, month: number): MonthCell[][] {
-  const first: CalendarDate = { year, month, day: 1 };
-  const lead = weekdayIndex(first);
-  const start = addDaysIso(isoOf(first), -lead);
-
-  const weeks: MonthCell[][] = [];
-  for (let week = 0; week < 6; week += 1) {
-    const cells: MonthCell[] = [];
-    for (let index = 0; index < 7; index += 1) {
-      const iso = addDaysIso(start, week * 7 + index);
-      const date = parseIsoDate(iso);
-      cells.push({
-        iso,
-        day: date?.day ?? 1,
-        inMonth: date?.month === month && date.year === year,
-      });
-    }
-    weeks.push(cells);
-  }
-  return weeks;
-}
-
-export function nextMonth(year: number, month: number): { year: number; month: number } {
-  return month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
-}
-
-export function previousMonth(year: number, month: number): { year: number; month: number } {
-  return month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
 }
 
 // ---------------------------------------------------------------------------
@@ -216,13 +134,31 @@ export function minutesOfTime(value: string): number {
   return Number(hour) * 60 + Number(minute);
 }
 
-/** An instant as a wall clock in the DEVICE's zone. See the header note. */
-export function formatInstantTime(iso: string): string {
+/**
+ * An instant as a wall clock.
+ *
+ * `timeZone` is the PANTRY's (A120), which the session carries — a run's window is a
+ * pantry-local fact, so "9:00 AM" means nine at the pantry and not nine on whatever
+ * device is reading it. Left undefined it falls back to the device's own zone, which
+ * is correct only for the moment before the session has arrived and for the
+ * availability blocks below, whose day arithmetic is still device-local.
+ *
+ * Same construction as `board.ts`'s `timeRange`, deliberately: two screens showing
+ * one run's hours must not be able to disagree about them.
+ */
+export function formatInstantTime(iso: string, timeZone?: string | null): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return '';
-  return formatTimeLabel(
-    `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`,
-  );
+  if (!timeZone) {
+    return formatTimeLabel(
+      `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`,
+    );
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone,
+  }).format(at);
 }
 
 function instantDayIso(iso: string): string {
@@ -239,37 +175,78 @@ function isLocalMidnight(iso: string): boolean {
 // "My runs"
 // ---------------------------------------------------------------------------
 
-export interface RunGroups {
-  upcoming: ShiftSummary[];
-  past: ShiftSummary[];
+export interface RunBands {
+  /** The run(s) the driver is standing in front of. One large card each. */
+  today: ShiftSummary[];
+  /** The rest of this pantry week, completed and upcoming alike, in calendar
+   *  order. Compact rows — a summary, not the focus. */
+  week: ShiftSummary[];
+  /** Runs this driver owns OUTSIDE the week on screen. Not rendered as a band —
+   *  only counted, so the screen can point at where they are (the board's Mine
+   *  filter has a week control; this page does not). Dropping them silently would
+   *  lose a run a driver claimed for next Tuesday. */
+  laterCount: number;
 }
 
 /**
- * Past/future, split on the run's END, not its start: a run you are standing in
- * the middle of belongs with what is coming up, not with history.
+ * Today, then the rest of the week (D49).
  *
- * A Phase-1 run never reaches `COMPLETED` (build-plan D1) — an old `IN_PROGRESS`
- * run whose window has passed is expected here and is not a bug, so nothing below
- * treats a status as a proxy for "over".
+ * This replaces the old "Coming up / Earlier" split, which answered the wrong
+ * question. A driver opening this screen is usually standing in the pantry car park
+ * about to do the run, so what matters is TODAY, big, and then enough of the week to
+ * plan around — including the days already done, because "did I do Monday?" is a
+ * question this screen should answer without a second screen.
+ *
+ * THE DAY IS THE PANTRY'S, NOT THE DEVICE'S. Both bounds are `YYYY-MM-DD` calendar
+ * slots and every run is placed by its own `occurrenceDate` — the pantry-local slot
+ * the server already resolved (`shared/src/schedule.ts`). The clock is never
+ * consulted. That is the whole fix: the old panel asked `new Date()`, so a phone one
+ * zone east of the pantry moved today's run into yesterday after its own midnight,
+ * and "is this run today?" is a pantry-calendar question, not a device one.
+ *
+ * A Phase-1 run never reaches `COMPLETED` (build-plan D1), so an old `IN_PROGRESS`
+ * run sitting in the week band is expected and not a stuck row: nothing here treats
+ * a status as a proxy for "over".
  */
-export function groupRuns(runs: readonly ShiftSummary[], nowMs: number): RunGroups {
-  const upcoming: ShiftSummary[] = [];
-  const past: ShiftSummary[] = [];
+export function bandRuns(
+  runs: readonly ShiftSummary[],
+  today: string,
+  weekStart: string,
+  weekEnd: string,
+): RunBands {
+  const bands: RunBands = { today: [], week: [], laterCount: 0 };
 
   for (const run of runs) {
-    if (new Date(run.endsAt).getTime() <= nowMs) past.push(run);
-    else upcoming.push(run);
+    const date = run.occurrenceDate;
+    if (date === today) bands.today.push(run);
+    else if (compareIso(date, weekStart) >= 0 && compareIso(date, weekEnd) <= 0) {
+      bands.week.push(run);
+    } else bands.laterCount += 1;
   }
 
-  upcoming.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  past.sort((a, b) => b.startsAt.localeCompare(a.startsAt));
-  return { upcoming, past };
+  // Both ascending. Today's runs are done in the order they start; the week reads
+  // Monday to Sunday, which is how the driver holds the week in their head and how
+  // the board and S3.1 already cut it (A178).
+  bands.today.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  bands.week.sort(
+    (a, b) =>
+      compareIso(a.occurrenceDate, b.occurrenceDate) || a.startsAt.localeCompare(b.startsAt),
+  );
+  return bands;
 }
 
 /** "Tue, Aug 4 · 9:00 AM – 12:00 PM". The date comes from `occurrenceDate`, the
- *  pantry-local calendar slot, so it can never drift a day against the board. */
-export function formatRunWhen(run: ShiftSummary, now: Date): string {
-  return `${formatDayLabel(run.occurrenceDate, now)} · ${formatInstantTime(run.startsAt)} – ${formatInstantTime(run.endsAt)}`;
+ *  pantry-local calendar slot, so it can never drift a day against the board; the
+ *  hours come from the pantry's zone for the same reason (A120). */
+export function formatRunWhen(run: ShiftSummary, now: Date, timeZone?: string | null): string {
+  return `${formatDayLabel(run.occurrenceDate, now)} · ${formatInstantTime(run.startsAt, timeZone)} – ${formatInstantTime(run.endsAt, timeZone)}`;
+}
+
+/** Just the hours, for the Today card — the card's own heading already says the
+ *  day, and repeating "Tue, Aug 4" under it would be the doubled label D53 is
+ *  removing elsewhere. */
+export function formatRunHours(run: ShiftSummary, timeZone?: string | null): string {
+  return `${formatInstantTime(run.startsAt, timeZone)} – ${formatInstantTime(run.endsAt, timeZone)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +364,36 @@ export function isDayInRange(form: AwayForm, iso: string): boolean {
 }
 
 export const COPY = {
+  /** D49's page heading. It is the nav entry and the Home card's own words ("Pick
+   *  up food"), because a heading that renames the place you just tapped makes the
+   *  tap feel like it went somewhere else. The old "My shifts" went with the tab. */
+  pageTitle: "Today's pickup",
+
+  /** The two bands. "Today" is the focus; "This week" is the summary around it. */
+  todayHeading: 'Today',
+  weekHeading: 'This week',
+
+  /** No run today is the ordinary case, not an error — most days a driver has
+   *  none — so it says where work is rather than apologising. */
+  noneToday: 'Nothing to pick up today.',
+  noneTodayBody: 'Open runs are on the board.',
+  seeBoard: 'See open runs',
+
+  /** Nothing at all, all week and every week. */
+  noRuns: "You're not on any runs yet.",
+  noRunsBody: 'Open runs are on the board.',
+
+  /** Nothing else THIS week, but the driver does own runs beyond it. This page has
+   *  no week control on purpose — it is about now — so it says where the rest are
+   *  instead of hiding them. */
+  restOfWeekEmpty: 'Nothing else this week.',
+  laterElsewhere: 'Your later runs are on the board, under Mine.',
+
+  /** The Today card's one action. "Open" rather than "Start": starting is S1.5's
+   *  own step behind S1.3, and a card that says Start and then does not start is a
+   *  promise broken on the tap. */
+  openRun: 'Open this run',
+
   /** `ui-ux-spec.md S1.4`, in the driver's verb (S1.3's cancel-this-run). */
   explain:
     "Telling us you're away helps the coordinator fill runs. It won't cancel runs you already own. You'll need to cancel those yourself first.",

@@ -57,6 +57,15 @@ import {
   patternSentence,
   pickRangeDay,
   removeStop,
+  calendarBounds,
+  calendarLabel,
+  calendarWeeks,
+  canStepCalendar,
+  initialCalendarView,
+  runCellLabel,
+  runsInRange,
+  stepCalendar,
+  thisWeekRange,
   routeDefaultNote,
   routeFormOf,
   schedulableRoutes,
@@ -67,7 +76,7 @@ import {
   validateTerminate,
   weekdaysSentence,
 } from './logic.ts';
-import type { PatternForm, PublishForm, RouteForm, StopDraft } from './logic.ts';
+import type { CalendarView, PatternForm, PublishForm, RouteForm, StopDraft } from './logic.ts';
 import type {
   DonorSummary,
   RecurrencePatternSummary,
@@ -739,6 +748,145 @@ function sentencesOf(source: Record<string, unknown>): string[] {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// D71's week bound and D73's calendar
+//
+// The date arithmetic is what a wrong answer breaks silently: a range that is one
+// day short hides a run rather than looking wrong, and a month view whose fetch
+// stops at the month boundary blanks the grid's own leading and trailing cells.
+// ---------------------------------------------------------------------------
+
+describe('the runs window (D71)', () => {
+  it('bounds the list to the pantry week, Monday to Sunday (A178)', () => {
+    // 2026-08-04 is a Tuesday.
+    expect(thisWeekRange('2026-08-04')).toEqual({ from: '2026-08-03', to: '2026-08-09' });
+    // A Sunday belongs to the week that opened on the Monday before it, not the
+    // one starting the next day.
+    expect(thisWeekRange('2026-08-09')).toEqual({ from: '2026-08-03', to: '2026-08-09' });
+  });
+
+  it('says which week it is showing', () => {
+    expect(COPY.runsHeading).toBe('Runs this week');
+    // The empty state answers the question actually being asked. "No runs
+    // scheduled yet" was wrong the moment the list stopped being every run.
+    expect(COPY.runsEmpty).toBe('No runs this week.');
+  });
+});
+
+describe('the calendar (D73)', () => {
+  const view = (over: Partial<CalendarView> = {}): CalendarView => ({
+    ...initialCalendarView('2026-08-04'),
+    ...over,
+  });
+
+  it('opens on the week', () => {
+    expect(initialCalendarView('2026-08-04').kind).toBe('WEEK');
+  });
+
+  it('bounds a day, a week and a custom range', () => {
+    expect(calendarBounds(view({ kind: 'DAY' }))).toEqual({
+      from: '2026-08-04',
+      to: '2026-08-04',
+    });
+    expect(calendarBounds(view({ kind: 'WEEK' }))).toEqual({
+      from: '2026-08-03',
+      to: '2026-08-09',
+    });
+    expect(
+      calendarBounds(
+        view({ kind: 'CUSTOM', custom: { fromDate: '2026-08-20', toDate: '2026-08-06' } }),
+      ),
+    ).toEqual({ from: '2026-08-06', to: '2026-08-20' });
+  });
+
+  it('fetches the whole six-week grid for a month, not the month', () => {
+    // August 2026 opens on a Saturday, so a Monday-first grid starts on 27 Jul and
+    // runs to 6 Sep. Bounding the fetch at the month would leave real runs missing
+    // from cells the grid still draws.
+    expect(calendarBounds(view({ kind: 'MONTH' }))).toEqual({
+      from: '2026-07-27',
+      to: '2026-09-06',
+    });
+  });
+
+  it('steps in the unit the range is expressed in, and never steps a custom one', () => {
+    expect(stepCalendar(view({ kind: 'DAY' }), 1).anchor).toBe('2026-08-05');
+    expect(stepCalendar(view({ kind: 'WEEK' }), -1).anchor).toBe('2026-07-28');
+    expect(stepCalendar(view({ kind: 'MONTH' }), 1).anchor).toBe('2026-09-01');
+    expect(stepCalendar(view({ kind: 'MONTH' }), -1).anchor).toBe('2026-07-01');
+    const custom = view({ kind: 'CUSTOM' });
+    expect(stepCalendar(custom, 1)).toBe(custom);
+    expect(canStepCalendar(custom)).toBe(false);
+  });
+
+  it('lays a week out as one Monday-first row and a month as six', () => {
+    const week = calendarWeeks(view({ kind: 'WEEK' }), []);
+    expect(week).toHaveLength(1);
+    expect(week[0]).toHaveLength(7);
+    expect(week[0]?.[0]?.iso).toBe('2026-08-03'); // Monday
+    expect(week[0]?.[6]?.iso).toBe('2026-08-09'); // Sunday
+
+    const month = calendarWeeks(view({ kind: 'MONTH' }), []);
+    expect(month).toHaveLength(6);
+    expect(month[0]?.[0]?.iso).toBe('2026-07-27');
+    expect(month[0]?.[0]?.inRange).toBe(false); // July, drawn faintly
+    expect(month[0]?.[5]?.inRange).toBe(true); // Sat 1 Aug
+  });
+
+  it('places a run by its pantry calendar slot, never by the instant', () => {
+    // An evening run whose UTC instant is the next day. Grouping on `startsAt`
+    // would file it on the Wednesday for anyone east of the pantry.
+    const evening = run({ id: 'late', occurrenceDate: '2026-08-04', startsAt: '2026-08-05T01:00:00.000Z' });
+    const week = calendarWeeks(view({ kind: 'WEEK' }), [evening]);
+    expect(week[0]?.[1]?.iso).toBe('2026-08-04');
+    expect(week[0]?.[1]?.runs.map((r) => r.id)).toEqual(['late']);
+    expect(week[0]?.[2]?.runs).toEqual([]);
+  });
+
+  it('draws no grid for a day or a custom range', () => {
+    expect(calendarWeeks(view({ kind: 'DAY' }), [run()])).toEqual([]);
+    expect(calendarWeeks(view({ kind: 'CUSTOM' }), [run()])).toEqual([]);
+  });
+
+  it('keeps a run out of a range it does not fall in', () => {
+    const runs = [run({ id: 'in', occurrenceDate: '2026-08-04' }), run({ id: 'out', occurrenceDate: '2026-08-20' })];
+    expect(runsInRange(runs, { from: '2026-08-03', to: '2026-08-09' }).map((r) => r.id)).toEqual([
+      'in',
+    ]);
+  });
+
+  it('shows a cell the route and the driver and nothing else', () => {
+    expect(runCellLabel(run({ routeName: 'Riverside', ownerName: 'Karen Diaz' }))).toBe(
+      'Riverside · Karen Diaz',
+    );
+    // Unclaimed reads "Open" — the word the board uses for the state, and the one
+    // that fits a cell.
+    expect(runCellLabel(run({ routeName: 'Riverside', ownerName: null }))).toBe('Riverside · Open');
+    // No time, no stop count, no note. Those are in the editor a tap away.
+    expect(runCellLabel(run())).not.toMatch(/\d:\d/);
+  });
+
+  it('names what is on screen', () => {
+    expect(calendarLabel(view({ kind: 'DAY' }), '2026-08-04')).toBe('Today, Aug 4');
+    expect(calendarLabel(view({ kind: 'WEEK' }), '2026-08-04')).toBe('Aug 3 – Aug 9');
+    expect(calendarLabel(view({ kind: 'MONTH' }), '2026-08-04')).toBe('August 2026');
+    // A custom range with only one end picked says so rather than naming a day.
+    expect(calendarLabel(view({ kind: 'CUSTOM' }), '2026-08-04')).toBe(COPY.rangeCustomEmpty);
+  });
+
+  it('opens the same editor as the list, with the same guards', () => {
+    // The calendar adds no write path: it opens `RunEditor`, and these are the
+    // predicates that editor hides its actions behind. An IN_PROGRESS run is
+    // therefore read-only from a cell for exactly the reason it is from a row.
+    for (const status of ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as ShiftStatus[]) {
+      const started = run({ status });
+      expect(canSetDriver(started)).toBe(false);
+      expect(canCancelRun(started)).toBe(false);
+      expect(canMoveRun(started)).toBe(false);
+    }
+  });
+});
+
 describe('copy', () => {
   const sentences = sentencesOf(COPY);
 
@@ -788,8 +936,19 @@ describe('copy', () => {
       COPY.terminateConsequence,
       COPY.routeRemoveConsequence,
       COPY.editScopeConsequence,
+      COPY.swapDriverConsequence('Karen Diaz'),
     ]) {
       expect(consequence.length).toBeGreaterThan(20);
     }
+  });
+
+  it('names both drivers when one replaces the other (D74)', () => {
+    // Taking a driver off already asks; replacing one is the same magnitude of
+    // change and asked nothing. The question has to say who is coming off as well
+    // as who is going on, or it is not a confirmation of anything.
+    const question = COPY.swapDriverQuestion('Karen Diaz', 'Dan Reyes');
+    expect(question).toContain('Karen Diaz');
+    expect(question).toContain('Dan Reyes');
+    expect(COPY.swapDriverConsequence('Karen Diaz')).toContain('Karen Diaz');
   });
 });

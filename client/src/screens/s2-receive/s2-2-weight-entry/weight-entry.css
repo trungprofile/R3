@@ -12,94 +12,137 @@
  *     more room.
  *   - 44px minimum target, 64px keypad keys, 8px minimum gap (§1.2, §3)
  *   - orange is fill-or-accent and NEVER text (§2)
- *   - 18px body, relative units, survives 200% zoom (§1.3) — which is why the
- *     keypad band is sticky rather than pinned to a pixel height: at 200% it
- *     simply takes more of the screen and the tiles scroll behind it.
+ *   - 18px body, relative units, survives 200% zoom (§1.3).
+ *
+ * `D44` — THE PAGE DOES NOT SCROLL, and that is the whole point of this file.
+ * `D61`/`D62` — and NEITHER DOES THE ENTRY COLUMN.
+ *
+ * The sheet used to be block flow: header, notes, an auto-fill grid of eleven
+ * tiles, then the keypad below all of it, sticky to the document bottom. Tiles
+ * above keypad meant the sheet was always taller than a docked tablet, and the
+ * receiver scrolled to do a job that used to be one sheet of paper.
+ *
+ * `D44` made it two panes. That was half the job: the working pane was still a
+ * stack of stop strip, all-done banner, notes and keypad, so the number pad sat
+ * below the fold at 1024x768 anyway. The three blocks above it are gone or moved,
+ * and the layout is now three regions:
+ *
+ *   BackLink + head    which store, and the way out (`D60` — no bottom nav here)
+ *   progress row       the stop strip, "N of M done", Submit run (`D62`)
+ *   panes              categories | entry column
+ *
+ * The CATEGORY COLUMN is the one region allowed to scroll, and only when eleven
+ * rows plus their entered numbers exceed it. The entry column never does: the
+ * keypad, Add weight, the total, the notes and the two stop actions are all on
+ * screen at once and none of them moves.
+ *
+ * The arithmetic, for the device this is for (1024x768 landscape, the tablet band
+ * since `D36`):
+ *   768 viewport
+ *   - 56 top bar        (--top-bar-height, a real reservation since D42)
+ *   - 24 fullscreen padding top / - 24 bottom (`.r3-app__fullscreen`, app.css)
+ *   = 664 for the sheet — 48 more than before `D60` took the bottom nav off it —
+ *   of which the BackLink takes ~44, the head ~63 and the progress row ~60,
+ *   leaving ~480 for the panes. The keypad is 4 rows of 64px plus gaps, ~290.
+ * Eleven category rows at the --target-min floor plus their gaps is ~524, so the
+ * category column scrolls on a full sheet. That is `D44`'s designed fallback and
+ * remains it: space comes from the layout, never from the 64px key (§3).
  */
 
-.r3-sheet {
-  /* Full width: the sheet is a wide grid of columns, not a reading column. */
-  padding-bottom: var(--space-6);
-}
+/* The shell — `.r3-sheet`, its head and its two panes — moved to
+ * `components/sheet.css` under `D76`, when S2.3 became the second screen weighing
+ * happens on. The arithmetic above still describes it; the rules are there so the
+ * two screens cannot drift apart. What stays in this file is everything specific
+ * to weighing a STOP of a run.
+ *
+ * This screen adds a fourth region between the head and the panes, so its root
+ * carries `.r3-sheet--progress` as well as `.r3-sheet`. */
 
-.r3-sheet--message {
-  max-width: 34rem;
-  margin: 0 auto;
-}
-
-/* --- Header: which store, and the strip of stops -------------------------- */
-
-.r3-sheet__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3) var(--space-5);
-  margin-bottom: var(--space-4);
-}
-
-.r3-sheet__title h1 {
-  margin: 0;
-}
-
-.r3-sheet__label {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--font-label);
-}
-
-.r3-sheet__hint {
-  margin: 0 0 var(--space-3);
-  color: var(--text-muted);
-  font-size: var(--font-label);
-}
-
-/* A skipped or moved stop: its numbers still show, nothing new goes on. */
+/* A skipped or moved stop: its numbers still show, nothing new goes on.
+   No margins on any of these three blocks — they are flex children of the
+   working column now and its `gap` spaces them (`D44`). A margin on top of the
+   gap is height this screen cannot spare. */
 .r3-sheet__closed {
-  margin: 0 0 var(--space-4);
+  margin: 0;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface-paper);
 }
 
-/* "All stops done — Receive done available" (S2.2). Success-coloured because
-   the run is ready to close, not because it is closed — Receive done is still a
-   deliberate action on the next screen (I11). */
-.r3-sheet__banner {
+/* --- The progress row (`D62`) ----------------------------------------------
+ *
+ * The stop strip, its "N of M done", and Submit run — one row across the top of
+ * both panes. It replaces the all-stops-done banner, which lived in the working
+ * column and appeared only once every stop was resolved; a control that arrives
+ * late is a control nobody expects, and while it was absent the screen offered no
+ * way on to S2.2b at all.
+ *
+ * `nowrap` is the load-bearing word. The strip is the one thing here whose
+ * content grows with the run, and wrapping it is what used to push the keypad
+ * down a row on a four-stop run. The strip scrolls sideways inside its own track
+ * instead, so this row's height is the same for two stops and for eight. */
+
+.r3-sheet__progress {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  border: 2px solid var(--success);
-  border-radius: var(--radius-card);
-  background: var(--surface-paper);
+  gap: var(--space-4);
+  /* The row is a GRID item, and a grid item's `min-width` defaults to `auto` —
+     it will not shrink below its content, whatever the flex children inside it
+     say. Without this the chain of `min-width: 0` below stops one level short:
+     the strip cannot hand its slack to the scrolling list, so a third stop
+     widened this row past the viewport and took the whole page sideways with
+     it, dragging the keypad and the tiles off-screen. That is `D61`'s fixed
+     entry column failing for a reason that lives up here, not down there. */
+  min-width: 0;
 }
 
-.r3-sheet__banner p {
-  margin: 0;
-  font-weight: 700;
+/* Submit sits at the right end whatever is to its left — including nothing, on a
+   run whose strip has not loaded. */
+.r3-sheet__progress > .r3-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 /* --- The stop strip ------------------------------------------------------- */
 
 .r3-strip {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--space-2) var(--space-4);
+  gap: var(--space-4);
+  /* Takes the row's slack and gives it to the scrolling list. `min-width: 0` is
+     what lets a flex child shrink below its content — without it the list would
+     force the row wider than the screen instead of scrolling. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
+/* ONE ROW, scrolling sideways (`D62`). Was `flex-wrap: wrap`. */
 .r3-strip__list {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  /* A stop lands whole rather than half-cut. `proximity` and not `mandatory`:
+     the receiver is flicking to find a store, not paging, and mandatory snapping
+     fights a short drag. */
+  scroll-snap-type: x proximity;
+  /* The track is reserved whether or not a scrollbar is showing, so the row does
+     not change height between a two-stop run and an eight-stop one. */
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.r3-strip__list > li {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
 }
 
 .r3-strip__stop {
@@ -107,6 +150,8 @@
   align-items: baseline;
   gap: var(--space-2);
   min-height: var(--target-min);
+  /* One line per stop: its height is what fixes this row's height. */
+  white-space: nowrap;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
@@ -137,27 +182,46 @@
   font-size: var(--font-label);
 }
 
+/* "2 of 3 done", pinned to the right of the scrolling list — it must not scroll
+   away with the stops it is counting. */
 .r3-strip__progress {
+  flex: 0 0 auto;
   margin: 0;
   color: var(--text-muted);
   font-size: var(--font-label);
   font-weight: 700;
+  white-space: nowrap;
 }
 
 /* --- Notes the receiver reads and never writes ---------------------------- */
 
+/* `D68`: shown, not toggled. Stacked in the entry column so each note's label
+   sits above its own text — read down, not across. */
+/* The notes take whatever the controls above them did not, and no more. `flex: 1`
+   claims the leftover; `min-height: 0` plus `overflow-y: auto` means a driver's
+   paragraph scrolls inside this block rather than pushing Done off the screen.
+   The block's ceiling is therefore the keypad's own bottom edge, which is the
+   only height on this screen that is fixed by something other than content. */
 .r3-notes {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--space-2) var(--space-4);
-  margin-bottom: var(--space-4);
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
+/* All three channels empty: no box, and no gap around a box that is not there.
+   Twelve pixels of nothing is twelve pixels the category pane does not get. */
+.r3-notes:empty {
+  display: none;
+}
+
+/* ONE LINE, not a heading over a body: the label is an inline span and the note
+   runs on after it. Stacked, each note cost two lines of the column with the
+   least room on it. */
 .r3-note {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
@@ -176,34 +240,29 @@
   font-weight: 700;
 }
 
-.r3-notes__toggle {
-  min-height: var(--target-min);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  color: var(--text);
-  font-family: inherit;
-  font-size: var(--font-label);
-  cursor: pointer;
-}
+/* TWO LINES, then it scrolls inside itself — the same cap-and-scroll shape `D45`
+   uses on `.r3-tile__entries`, and for the same reason: a long note must cost the
+   entry column exactly what a short one costs, or the driver's paragraph about a
+   locked back door pushes the keypad off a 768px screen.
+   `--line-height` is unitless (tokens.css), so two lines of body text is the font
+   size times it, twice. */
+/* The per-note two-line cap is GONE, and deliberately. It was there to stop one
+   long note lengthening the column; the column now has a hard ceiling of its own
+   and scrolls as a whole, so capping each note as well would mean two nested
+   scroll regions for the same reason — and a receiver hunting a sentence inside a
+   32px window. One scroller, at the block. */
 
-.r3-notes__run {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-/* --- The category tiles --------------------------------------------------- */
+/* --- The category rows -----------------------------------------------------
+ *
+ * `D44`: one VERTICAL column, not a six-across grid. Every category visible at
+ * once is the paper-sheet property the pantry asked for, and it is also what
+ * makes the keypad fit beside them instead of below them. */
 
 .r3-tiles {
   display: grid;
-  /* Six across at 1024px, more on a desktop, and never fewer than three — the
-     11 tiles stay one screen's worth of targets rather than a scroll. */
-  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
-  gap: var(--space-2);
-  margin: 0 0 var(--space-5);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -214,13 +273,17 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface-paper);
+  /* Corner-clipping, so a child's square corner cannot poke through the radius.
+     NOT the entry cap — that is `.r3-tile__entries`'s own overflow below, and
+     confusing the two is how the cap gets deleted by accident. */
   overflow: hidden;
 }
 
-/* Selected: the orange bar S2.2 asks for. */
+/* Selected: the orange bar S2.2 asks for — down the leading edge now that the
+   target is a row rather than a tile, matching the stop strip's current stop. */
 .r3-tile--selected {
   border-color: var(--brand-orange);
-  box-shadow: inset 0 var(--space-1) 0 0 var(--brand-orange);
+  box-shadow: inset var(--space-1) 0 0 0 var(--brand-orange);
 }
 
 .r3-tile--closed {
@@ -228,13 +291,19 @@
   color: var(--text-muted);
 }
 
+/* Name and subtotal on ONE line: eleven rows then cost eleven target heights and
+   nothing more, which is what lets all eleven sit on a 768px-tall tablet. */
 .r3-tile__pick {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
   width: 100%;
-  min-height: var(--row-min);
-  padding: var(--space-3);
+  /* §1.2's 44px floor, and this row is deliberately AT it rather than at
+     `--row-min` — the difference is 12px per row and 132px over the column. */
+  min-height: var(--target-min);
+  padding: var(--space-1) var(--space-3);
   border: 0;
   background: transparent;
   color: inherit;
@@ -248,6 +317,20 @@
   font-weight: 700;
 }
 
+.r3-tile__figures {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+/* `D45`'s affordance: how many numbers the row holds when it holds more than it
+   can show. Muted and one step down — the subtotal is what is being read. */
+.r3-tile__count {
+  color: var(--text-muted);
+  font-size: var(--font-label);
+}
+
 /* The live subtotal — the hand arithmetic this screen exists to kill. */
 .r3-tile__subtotal {
   font-size: var(--font-h3);
@@ -255,13 +338,25 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Running entries underneath: gapless, no line numbers (S2.2). */
+/* Running entries underneath: gapless, no line numbers (S2.2).
+ *
+ * `D45` — CAPPED AT TWO CHIP ROWS, scrolling inside itself. Before this there was
+ * no max-height and no overflow at all, so one category with twenty numbers grew
+ * every sibling in its grid row and lengthened the page; in a single column it
+ * would push the ten categories below it off the pane instead. The cap is what
+ * makes a busy category cost the same height as a quiet one.
+ *
+ * Two rows of `--target-min` chips, their `--space-2` gap, and the block's own
+ * bottom padding — `box-sizing: border-box` (tokens.css) means max-height counts
+ * the padding, so it is added here rather than left to overflow. */
 .r3-tile__entries {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  max-height: calc(var(--target-min) * 2 + var(--space-2) + var(--space-2));
+  overflow-y: auto;
   margin: 0;
-  padding: 0 var(--space-3) var(--space-3);
+  padding: 0 var(--space-3) var(--space-2);
   list-style: none;
 }
 
@@ -291,27 +386,51 @@
   color: var(--brand-orange);
 }
 
-/* --- The keypad band ------------------------------------------------------ */
+/* --- The keypad band ------------------------------------------------------
+ *
+ * `position: sticky; bottom: 0` is GONE (`D44`). It existed because the tiles
+ * were above the keypad and the sheet was taller than the screen, so the keypad
+ * had to be pinned while they scrolled behind it. The keypad is now in its own
+ * pane inside a box that never scrolls, so there is nothing to stick to and
+ * nothing to stick past — and the border-top and opaque background that made it
+ * read as a floating band go with it. */
 
+/* `D61` — KEYPAD RIGHT, ACTIONS LEFT. It was the other way round, and the swap is
+ * not cosmetic: the keypad is the widest fixed thing on the screen, so putting it
+ * against the outer edge lets Add weight, the stop total and the two stop actions
+ * take the remaining width beside it rather than under it. The keys do not move
+ * from `--key-min` (§3's 64px floor) at any width — space comes from the layout,
+ * and if it runs out the CATEGORY column scrolls further. */
+/* THE KEYPAD DEFINES THE ROW, and that is the load-bearing part.
+ *
+ * A grid row sized `auto` is as tall as its tallest item, so once the notes moved
+ * into the actions column they grew the row rather than filling it — the column
+ * got taller than the keypad beside it, and the page scrolled by exactly the
+ * overflow. `flex: 1` on the notes cannot help while the thing it is claiming a
+ * share of has no fixed size to share.
+ *
+ * So the row is DEFINITE: four keys and their three gaps, which is what the
+ * keypad measures anyway. The actions column then stretches to a height it does
+ * not control, its notes take what the controls above them leave, and a long note
+ * scrolls instead of pushing Done off the screen. Written from the tokens rather
+ * than as 280px so it follows `--key-min` if the floor ever rises. */
 .r3-pad {
   display: grid;
-  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 17rem);
   grid-template-areas:
     'line line'
-    'keys actions';
-  gap: var(--space-3) var(--space-5);
-  /* Stays in view while the tiles scroll behind it: at 768px tall in landscape
-     the sheet is taller than the screen, and the keypad is where the hands are. */
-  position: sticky;
-  bottom: 0;
-  padding: var(--space-3) 0 var(--space-4);
-  border-top: 1px solid var(--border);
-  background: var(--surface);
+    'actions keys';
+  grid-template-rows: auto calc(var(--key-min) * 4 + var(--space-2) * 3);
+  gap: var(--space-3) var(--space-4);
+  padding: 0;
 }
 
+/* No keypad, so nothing sets a row height and none should be forced: this panel
+   is a total, a button and the notes, and it is as tall as they are. */
 .r3-pad--closed {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: 'actions';
+  grid-template-rows: auto;
 }
 
 .r3-pad__line {
@@ -327,12 +446,18 @@
   grid-area: keys;
 }
 
+/* `align-self: stretch`, not `start`: the column now runs the full height of the
+   keypad beside it, because the notes at its foot are what fill the gap Add
+   weight and Done used to leave empty. `min-height: 0` is what lets that foot
+   scroll instead of growing — the same shrink-below-content rule the progress
+   row needed one level up. */
 .r3-pad__actions {
   grid-area: actions;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  align-self: start;
+  align-self: stretch;
+  min-height: 0;
 }
 
 .r3-pad__selected,
@@ -401,16 +526,55 @@
   font-size: var(--font-label);
 }
 
-/* Portrait tablet, or a desktop window narrowed past the two-column band: the
-   band stacks instead of squeezing the keypad. Not a phone layout — the matrix
-   marks this screen `n/a` there — just the same layout, one column. */
-@media (max-width: 48rem) {
+/* A window narrow enough that the keypad and its actions cannot sit side by side
+   (the keypad is 15rem and the actions need a readable "Add weight" beside it):
+   the band stacks instead of squeezing either. Not a phone layout — the matrix
+   marks this screen `n/a` there — just the same layout, one column.
+
+   The keypad KEYS do not shrink at any width. §3 fixes them at >=64px and
+   `--key-min` is that number; winning space by going under it was tried once and
+   correctly overruled. Space comes from the layout, never from the target. */
+@media (max-width: 30rem) {
   .r3-pad {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       'line'
       'keys'
       'actions';
-    position: static;
   }
+}
+
+/* --- Submit on an unfinished run (`D62`) ----------------------------------
+ *
+ * Inside the modal, not on the screen. The list is what is still to do, in route
+ * order, and it is the only thing the modal adds to the shared refusal sentence. */
+
+.r3-sheet__blocked {
+  margin: 0 0 var(--space-3);
+}
+
+.r3-sheet__outstanding-label {
+  margin: 0 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-label);
+  font-weight: 700;
+}
+
+.r3-sheet__outstanding {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.r3-sheet__outstanding li {
+  padding: var(--space-1) 0;
+}
+
+.r3-sheet__outstanding-name {
+  font-weight: 700;
+}
+
+.r3-sheet__outstanding-state {
+  color: var(--text-muted);
+  font-size: var(--font-label);
 }

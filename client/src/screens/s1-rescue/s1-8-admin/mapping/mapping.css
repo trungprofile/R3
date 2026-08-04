@@ -57,8 +57,12 @@
   white-space: nowrap;
 }
 
+/* The BackLink above it carries no bottom margin, so the form supplies the gap
+ * between the way out and its heading (D43) — the same `--space-5` the admin
+ * forms next door use. */
 .s18-map__form {
   max-width: 34rem;
+  margin-top: var(--space-5);
 }
 
 .s18-map__form-actions {

@@ -6,19 +6,24 @@
 // add (`phase-3-build-plan.md §3`), so everything on this screen that is a RULE
 // rather than a pixel lives here and is covered by `metrics.test.ts`.
 //
-// Three things this file exists to get right, each of which yields a plausible
+// Two things this file exists to get right, each of which yields a plausible
 // wrong answer if it is got wrong somewhere else:
 //
 //   1. INTAKE ≠ NTFB-REPORTED. PRD §3 calls this the key data boundary and S3.2
 //      repeats it as the screen's "Key:". They are two labelled numbers here and
 //      on screen, and no function in this file ever adds or collapses them.
-//   2. `previousIntake: null` IS NOT ZERO. A store with no prior period has no
-//      trend, not a 100% collapse (`shared/src/metrics.ts`). `trendFor` answers
-//      `NO_HISTORY` and states no percentage at all.
-//   3. UNCLAIMED and NO_SHOW STAY SPLIT. Rolled together a count says nothing
+//      `headlineFigures` emits BOTH or neither, for the same reason S3.1's
+//      `totalsView` does.
+//   2. UNCLAIMED and NO_SHOW STAY SPLIT. Rolled together a count says nothing
 //      about what to do; split, it is either a scheduling problem or a
 //      conversation with one person (I7, and the type's own comment). Nothing
 //      below returns their sum as a headline figure.
+//
+// `trendFor` and its vocabulary were the third of these and are GONE with the
+// Change column (D58), along with `barFor`/`barsFor`/`maxIntake` and the whole
+// by-store chart. The rule they protected — `previousIntake: null` is not zero and
+// must never render as a 100% drop — no longer has anything to protect, because
+// the previous period is not computed, not sent and not shown.
 //
 // Weights arrive as `numeric(8,2)` DECIMAL STRINGS and are printed as text.
 // `weightAsNumber` exists for geometry and comparison only — a figure that
@@ -101,11 +106,13 @@ export function weightAsNumber(value: string): number {
 //
 // WHAT SURVIVED, and it is the load-bearing half: a period is still held and
 // stepped as a LENGTH, not as a "last N". `periodFor` takes a number of days, and
-// Earlier/Later move by the window's OWN length so consecutive views are adjacent
-// and non-overlapping — the same relationship `previousIntake` is measured
-// against, one screen up. A seven-day window therefore compares against the seven
-// days before it, which is exactly the like-for-like property A179 wanted; what is
-// lost is the four-week default's smoothing, and that is the trade.
+// Earlier/Later move by the window's OWN length, so consecutive views are adjacent
+// and non-overlapping and Earlier lands exactly on the period before this one.
+//
+// That used to be doing double duty: it also matched the window the server measured
+// `previousIntake` against, so the Change column and the Earlier button agreed. D58
+// removed the comparison entirely, and stepping by the window's own length is now
+// simply the only step that reads the calendar without gaps or overlaps.
 //
 // Every date here is a `YYYY-MM-DD` PANTRY-LOCAL calendar slot, the same frame
 // `occurrenceDate` is stated in — never an instant. The screen gets today from
@@ -159,8 +166,7 @@ export function addDays(date: string, days: number): string {
  *
  * `stepsBack: 0` ends today, which is `defaultRange()`'s own definition on the
  * server. Stepping back moves by the period's OWN length, so consecutive views are
- * adjacent and non-overlapping — the same relationship `previousIntake` measures
- * against, one screen up.
+ * adjacent and non-overlapping.
  */
 export function periodFor(today: string, days: number, stepsBack: number = 0): Period {
   const to = addDays(today, -days * stepsBack);
@@ -181,7 +187,7 @@ export function defaultPeriod(today: string): Period {
 
 /** How many days a window covers, inclusive. This is what Earlier/Later step by
  *  (D39): the window's OWN length, so consecutive views are adjacent and
- *  non-overlapping, which is the relationship `previousIntake` measures against. */
+ *  non-overlapping. */
 export function periodLength(period: Period): number {
   const from = parseCalendarDate(period.from).getTime();
   const to = parseCalendarDate(period.to).getTime();
@@ -270,86 +276,18 @@ export function startTimeLabel(startsAt: string, timeZone?: string | undefined):
 }
 
 // ---------------------------------------------------------------------------
-// Intake — trend
-// ---------------------------------------------------------------------------
-
-/**
- * Which way a store went against the previous equal-length period.
- *
- * `NO_HISTORY` is the one that matters. `previousIntake` is null when there is no
- * prior data, and `shared/src/metrics.ts` says in as many words that this "is
- * different from zero and must not render as a 100% drop" — a store that did not
- * exist last period has no trend, not a catastrophic one. It gets a dash and a
- * plain phrase, never a number and never a red arrow.
- */
-export type TrendDirection = 'UP' | 'DOWN' | 'LEVEL' | 'NO_HISTORY';
-
-export interface Trend {
-  direction: TrendDirection;
-  /** Whole percent change, or null when there is no percentage to state — no
-   *  prior period at all, or a prior period of zero to divide by. */
-  percent: number | null;
-  /** What the cell reads. Plain and non-judgemental (§7). */
-  label: string;
-}
-
-export function trendFor(intake: string, previousIntake: string | null): Trend {
-  // No prior period. NOT a drop — there is nothing to have dropped from.
-  if (previousIntake === null) {
-    return { direction: 'NO_HISTORY', percent: null, label: COPY.intake.trendNone };
-  }
-
-  const now = weightAsNumber(intake);
-  const before = weightAsNumber(previousIntake);
-
-  // A prior period of exactly nothing. The change is real but a percentage of
-  // zero is not a number, so it is said in words instead of invented.
-  if (before === 0) {
-    if (now === 0) return { direction: 'LEVEL', percent: 0, label: COPY.intake.trendLevel };
-    return { direction: 'UP', percent: null, label: COPY.intake.trendUpFromNothing };
-  }
-
-  if (now === before) return { direction: 'LEVEL', percent: 0, label: COPY.intake.trendLevel };
-
-  const percent = Math.round(((now - before) / before) * 100);
-  const up = now > before;
-  if (percent === 0) {
-    // Moved, but by less than half a percent. Saying "0%" would read as no change.
-    return {
-      direction: up ? 'UP' : 'DOWN',
-      percent: 0,
-      label: up ? COPY.intake.trendUpTiny : COPY.intake.trendDownTiny,
-    };
-  }
-  return {
-    direction: up ? 'UP' : 'DOWN',
-    percent,
-    label: up ? `up ${percent}%` : `down ${Math.abs(percent)}%`,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Intake — bars
+// Intake — the two headline figures (D58)
 //
-// S3.2: "Simple bar/line, no heavy dashboard." Hand-rolled CSS widths, no chart
-// library — Phase 3 added no dependency (`phase-3-build-plan.md §3`) and a
-// charting package for eleven horizontal bars would be the heavy dashboard the
-// spec rules out in the same sentence.
+// `trendFor` stood here, answering "which way did this store go against the
+// previous equal-length period". It is gone with the Change column, and so is the
+// `NO_HISTORY` case it existed for: nothing computes a previous period any more,
+// so there is no null prior figure left to be mistaken for a 100% drop.
 //
-// The bar is SPLIT the way the table is: the part that flows to the food bank and
-// the part that does not, in one length. That is the "key data boundary" (PRD §3)
-// drawn rather than restated — a reader can see at a glance that a store's tall
-// bar is mostly unreported, which is the pattern the screen exists to surface.
+// The by-store bar chart (`barFor`, `barsFor`, `maxIntake` and `Bars.tsx`) went in
+// the same decision. It drew the table's own figures a second way and carried no
+// number the table did not; what replaces it is the two figures the chart was
+// really being read for, stated large.
 // ---------------------------------------------------------------------------
-
-export interface StoreBar {
-  key: string;
-  donorName: string;
-  /** 0–100: this store's intake against the largest in the period. */
-  widthPercent: number;
-  /** 0–100 OF THE BAR'S OWN WIDTH: the part that went to the food bank. */
-  reportedPercent: number;
-}
 
 /** A stable key for a store row. Donations carrying a free-text label have no
  *  `donorId` (and the anonymous walk-ins collapse into one bucket), so the name
@@ -358,34 +296,30 @@ export function storeKey(store: Pick<StoreIntake, 'donorId' | 'donorName'>): str
   return store.donorId ?? `label:${store.donorName}`;
 }
 
-function roundPercent(value: number): number {
-  return Math.round(value * 10) / 10;
+export interface HeadlineFigure {
+  key: 'intake' | 'reported';
+  label: string;
+  /** Already formatted with its unit — nothing downstream does arithmetic on it. */
+  value: string;
 }
 
-/** The tallest bar's figure. 0 when there is nothing, which every scale below
- *  survives by drawing nothing rather than dividing by it. */
-export function maxIntake(stores: readonly StoreIntake[]): number {
-  return stores.reduce((largest, store) => Math.max(largest, weightAsNumber(store.intake)), 0);
-}
-
-export function barFor(store: StoreIntake, max: number): StoreBar {
-  const intake = weightAsNumber(store.intake);
-  const reported = weightAsNumber(store.reported);
-  return {
-    key: storeKey(store),
-    donorName: store.donorName,
-    widthPercent: max <= 0 ? 0 : roundPercent(Math.min(100, (intake / max) * 100)),
-    reportedPercent: intake <= 0 ? 0 : roundPercent(Math.min(100, (reported / intake) * 100)),
-  };
-}
-
-/** Every bar, tallest first — the order that makes "which store gives most" and
- *  "which store gives least" both readable without hunting. */
-export function barsFor(stores: readonly StoreIntake[]): StoreBar[] {
-  const max = maxIntake(stores);
-  return [...stores]
-    .sort(compareByIntake)
-    .map((store) => barFor(store, max));
+/**
+ * The period's two answers, ALWAYS TOGETHER and always with their own words.
+ *
+ * The same guard S3.1's `totalsView` puts on the report: they are emitted as one
+ * list rather than read off the payload field by field, because that is what stops
+ * the screen ever showing one of them alone. A lone "1,240 lb" with no counterpart
+ * is exactly how intake and NTFB-reported get conflated, and PRD §3 calls that the
+ * key data boundary.
+ *
+ * "Not reported" is deliberately not a third figure (D58, following D34): it is the
+ * difference between these two and can be read straight off them.
+ */
+export function headlineFigures(metrics: Pick<IntakeMetrics, 'totalIntake' | 'totalReported'>): HeadlineFigure[] {
+  return [
+    { key: 'intake', label: COPY.intake.colIntake, value: weightWithUnit(metrics.totalIntake) },
+    { key: 'reported', label: COPY.intake.colReported, value: weightWithUnit(metrics.totalReported) },
+  ];
 }
 
 /** Largest intake first, name ascending to break a tie so the order is stable
@@ -576,28 +510,24 @@ export function csvRow(cells: readonly string[]): string {
 /**
  * The intake table as CSV, with the totals row the screen shows.
  *
- * Intake, reported and unreported are three columns and stay three columns — the
- * key data boundary survives the export, or the spreadsheet it lands in becomes
- * the place the two numbers get merged.
+ * IT IS THE TABLE, so D58's three columns are its three columns — a download that
+ * carried a "Not reported" figure and a "Change" the screen no longer states would
+ * be a second, unreviewed report rather than an export of this one.
+ *
+ * Intake and reported stay two named columns, which is the half that matters: the
+ * key data boundary has to survive the export, or the spreadsheet it lands in
+ * becomes the place the two numbers get merged.
  */
 export function intakeCsv(metrics: IntakeMetrics): string {
   const lines = [
-    csvRow(['Store', 'Intake (lb)', 'Reported to food bank (lb)', 'Not reported (lb)', 'Change']),
+    csvRow(['Store', 'Total rescued (lb)', 'To the food bank (lb)']),
     ...storesByIntake(metrics.stores).map((store) =>
-      csvRow([
-        store.donorName,
-        formatWeight(store.intake),
-        formatWeight(store.reported),
-        formatWeight(store.unreported),
-        trendFor(store.intake, store.previousIntake).label,
-      ]),
+      csvRow([store.donorName, formatWeight(store.intake), formatWeight(store.reported)]),
     ),
     csvRow([
       COPY.intake.totalsRow,
       formatWeight(metrics.totalIntake),
       formatWeight(metrics.totalReported),
-      formatWeight(metrics.totalUnreported),
-      '',
     ]),
   ];
   return `${lines.join('\r\n')}\r\n`;
@@ -690,39 +620,35 @@ export const COPY = {
 
   intake: {
     heading: 'What came in',
-    /** PRD §3's key data boundary, said once at the top rather than left to be
-     *  worked out from two column headings. */
-    lede: 'Every pound R3 recorded, and how much of it goes to the food bank. The two are different numbers.',
+    /* D58 CUT THE LEDE ("Every pound R3 recorded, and how much of it goes to the
+       food bank. The two are different numbers."). The two headline figures now
+       sit directly under this heading with their own labels, and a sentence
+       telling an admin that two labelled numbers are two numbers is the hint that
+       restates its own control — the same thing D21 cut across the app. The
+       boundary is still stated twice, in the two places a reader looks: the
+       figures, and the column headings under them. */
     loading: 'Loading intake',
     emptyTitle: 'Nothing was recorded in this period.',
     emptyBody: 'Try a wider range of dates, or step back to one where runs had been weighed.',
 
+    /** The two headline figures are labelled with the same words as the two
+     *  columns they total, so the big number and the column agree by construction
+     *  rather than by two people writing the same phrase twice. */
+    figuresLabel: 'What came in, in numbers',
     colStore: 'Store',
     colIntake: 'Total rescued',
     colReported: 'To the food bank',
-    colUnreported: 'Not reported',
-    colTrend: 'Change',
     /** The column headings are short; the boundary they draw is not obvious from
      *  four words, so each carries its own line underneath. */
     intakeMeans: 'Everything received from this store.',
     reportedMeans: 'The part that goes on the food-bank report.',
-    unreportedMeans: 'The rest. Tracked here, never reported.',
-    trendMeans: 'Against the period before this one.',
 
     totalsRow: 'All stores',
-    comparedWith: (from: string, to: string) => `Compared with ${rangeLabel(from, to)}.`,
-
-    trendNone: 'no earlier figure',
-    trendLevel: 'no change',
-    trendUpFromNothing: 'up from none',
-    trendUpTiny: 'up by less than 1%',
-    trendDownTiny: 'down by less than 1%',
-
-    chartHeading: 'By store',
-    chartLegendReported: 'To the food bank',
-    chartLegendUnreported: 'Not reported',
-    /** The chart is the table drawn; a screen reader already has the numbers. */
-    chartNote: 'The same figures as the table, drawn to scale.',
+    /* GONE WITH THE COLUMNS THEY LABELLED (D58): `colUnreported`,
+       `unreportedMeans`, `colTrend`, `trendMeans`, `comparedWith`, the five trend
+       phrases and the four chart strings. Nothing computes a previous period any
+       more, so a sentence naming one would name a window the server never
+       measured. */
 
     export: 'Download this table',
   },

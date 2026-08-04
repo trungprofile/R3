@@ -340,7 +340,15 @@ textarea.r3-field__control {
 
 /* --- Top bar (§3) — identical on every screen (§4) ------------------------ */
 
+/* Sticky since D42, along with both navs. The stacking ladder in this app runs
+ * chrome 10 · dropdown 20 · install prompt 40 · modal 100 · toast 120 · truck
+ * banner 150 · offline overlay 200, so the chrome sits over the page and under
+ * everything that is deliberately on top of the page — including a TimeField list
+ * opened next to a bar, which must not be clipped by it. */
 .r3-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -389,6 +397,10 @@ textarea.r3-field__control {
   font-size: var(--font-label);
   font-weight: 600;
   cursor: pointer;
+  /* "Log out" is two words and the bar is crowded at 375px, so it wrapped to
+     "Log" / "out" — legible to nobody and least of all to this app's readers.
+     The target already clears 44px; only the label needed pinning. */
+  white-space: nowrap;
 }
 
 .r3-topbar__action:hover {
@@ -418,7 +430,15 @@ textarea.r3-field__control {
 
 /* --- Bottom nav (phone, §3) — <=4 items, icon + label, 56px --------------- */
 
+/* Sticky, not fixed (D42): it keeps a box in normal flow, so scrolling to the end of
+ * a screen puts the last row above the bar rather than under it, and no rule has to
+ * reserve a height that a fixed bar would have taken out of the page. Reaching the
+ * nav no longer means scrolling to the true bottom of the document — which is the
+ * whole reason several screens had grown their own bottom "Back to …" button. */
 .r3-bottomnav {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
   display: flex;
   min-height: var(--bottom-nav-height);
   background: var(--surface);
@@ -455,7 +475,22 @@ textarea.r3-field__control {
 
 /* --- Side nav (desktop, §4) ---------------------------------------------- */
 
+/* Sticky under the top bar (D42). `align-self` and the explicit height are what make
+ * it stick at all: a flex item stretches to its row's height by default, and an
+ * element already as tall as its container has nowhere to stick to. It gets its own
+ * scrollbar because an eight-entry list plus the AGFP mark can outgrow a short
+ * laptop window, and the alternative is the list scrolling the page away from the
+ * screen it is navigating. Two `height` lines on purpose: `vh` first as the answer
+ * for anything that does not know `dvh`, and `dvh` after it, which wins wherever it
+ * parses. */
 .r3-sidenav {
+  position: sticky;
+  top: var(--top-bar-height);
+  z-index: 10;
+  align-self: flex-start;
+  height: calc(100vh - var(--top-bar-height));
+  height: calc(100dvh - var(--top-bar-height));
+  overflow-y: auto;
   flex: 0 0 var(--side-nav-width);
   padding: var(--space-4) var(--space-2);
   background: var(--surface);

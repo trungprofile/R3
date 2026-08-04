@@ -344,6 +344,8 @@ CREATE TABLE shift (
 
 **owner-on-cancel (LOCKED, per `Domain Modeling §2.2`):** cancel clears `owner_id` in the same UPDATE. The prior owner's identity is **not** retained on the row (`updated_by` is the canceller, possibly staff). If "which driver was bumped" is ever needed for analytics it must come from the notification log or an audit trail, not `shift`. CANCELLED is excluded from MISSED/NO_SHOW (`Domain Modeling §3.1`).
 
+**There is no `completed_by`, and `D46` deliberately did not add one.** S2.2b names who signed a run off by reading `updated_by`/`updated_at` **on a `COMPLETED` row only**. That is sound *because* `I10` makes `COMPLETED` terminal: nothing can write to the row afterwards, so the last writer is the person who confirmed receive-done. **The dependency runs the wrong way round for comfort** — a display feature resting on a state-machine property — so it is recorded in both places. If `COMPLETED` ever gains an outbound edge, this stops being a fact and starts being a plausible-looking wrong name, and the fix is a real column, not a patch to the query. Contrast the cancel case directly above, where `updated_by` is explicitly *not* a safe read for the same question.
+
 **Materialization provenance:** a minted shift's `created_by = recurrence_pattern.created_by`. No system user. Minted-vs-one-off = `recurrence_pattern_id IS NOT NULL`.
 
 **Idempotency:** `uq_shift_occurrence` makes the rolling job safe under retry/overlap. Job inserts `ON CONFLICT (recurrence_pattern_id, occurrence_date) DO NOTHING`. One-offs have `recurrence_pattern_id = NULL`; PG default **NULLS DISTINCT** lets multiple one-offs share a date. **Do not** use `NULLS NOT DISTINCT`.

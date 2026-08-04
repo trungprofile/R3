@@ -20,6 +20,7 @@ import {
   flagAdHoc,
   listDonationsForShift,
   purgeExpiredSuggestions,
+  readDonation,
   setReportable,
 } from '../src/services/donation.js';
 import {
@@ -360,6 +361,39 @@ describe('the receiver edit window (§3.1)', () => {
 
     await expect(confirmDonation(receiver, flagged.id, { weight: '10' })).rejects.toThrow(
       /time to change this run has passed/i,
+    );
+  });
+});
+
+describe('one donation by id (`D76`)', () => {
+  it('reads back the row S2.3 is opened on', async () => {
+    // S2.3 weighs a single donation since `D76`, and is reached by URL from the
+    // worklist on S2.1b — so it must be readable without the list that linked to it.
+    const { shift, driver, offRoute } = await scene();
+    const flagged = await flagAdHoc(driver, shift.id, { donorId: offRoute.id, note: 'one crate' });
+
+    const read = await readDonation(flagged.id);
+
+    expect(read).toEqual(flagged);
+    expect(read.status).toBe('SUGGESTED');
+    expect(read.donorDisplay).toBe('Corner Market');
+    expect(read.note).toBe('one crate');
+  });
+
+  it('reads a confirmed row, weight and category and all', async () => {
+    const { shift, driver, receiver, category, offRoute } = await scene();
+    const flagged = await flagAdHoc(driver, shift.id, { donorId: offRoute.id });
+    await confirmDonation(receiver, flagged.id, { weight: '12.50', categoryId: category.id });
+
+    const read = await readDonation(flagged.id);
+    expect(read.status).toBe('CONFIRMED');
+    expect(read.weight).toBe('12.50');
+    expect(read.categoryName).toBe('Produce');
+  });
+
+  it('throws notFound for an id that is not a donation', async () => {
+    await expect(readDonation('00000000-0000-0000-0000-000000000000')).rejects.toThrow(
+      /No such donation/i,
     );
   });
 });

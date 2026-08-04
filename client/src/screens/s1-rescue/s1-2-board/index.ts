@@ -12,8 +12,12 @@ export { BoardScreen } from './Board.tsx';
 export {
   AT_RISK_LEAD_MS,
   BOARD_FILTERS,
+  BOARD_TABS,
+  BOARD_TAB_QUERY_KEY,
   COPY,
   actionFor,
+  boardTabFromQuery,
+  claimRefusal,
   dayHeading,
   groupByDay,
   isAtRisk,
@@ -25,4 +29,12 @@ export {
   weekdayName,
   withOptimisticClaim,
 } from './board.ts';
-export type { BoardFilter, BoardRow, BoardViewer, DayGroup, RowAction } from './board.ts';
+export type {
+  BoardFilter,
+  BoardRow,
+  BoardTab,
+  BoardViewer,
+  ClaimRefusal,
+  DayGroup,
+  RowAction,
+} from './board.ts';

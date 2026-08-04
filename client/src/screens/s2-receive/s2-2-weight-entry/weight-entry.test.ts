@@ -21,7 +21,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../api/index.ts';
-import { RECEIVE_STOP_STATES } from '../../../api/shared.ts';
+import { RECEIVE_INCOMPLETE_MESSAGE, RECEIVE_STOP_STATES } from '../../../api/shared.ts';
 import type {
   CategoryTile,
   ReceiveStopDetail,
@@ -33,6 +33,7 @@ import {
   COPY,
   FORBIDDEN_EDIT_WORDS,
   FORBIDDEN_IN_COPY,
+  ENTRIES_ALWAYS_VISIBLE,
   KEYPAD_MAX_DIGITS,
   acceptKeypadValue,
   advanceTargetFor,
@@ -40,6 +41,7 @@ import {
   applyStopState,
   canAddWeight,
   canSkipStop,
+  entryCountLabel,
   findEntry,
   formatPounds,
   formatWeight,
@@ -52,12 +54,14 @@ import {
   normalizeWeight,
   orderedStops,
   orderedTiles,
+  outstandingStops,
   progressLabel,
   progressOf,
   sheetIsOpen,
   shouldReloadAfter,
   stopStateLabel,
   stopStateMark,
+  submitDecision,
 } from './weight-entry.ts';
 
 // ---------------------------------------------------------------------------
@@ -93,6 +97,7 @@ function detail(over: Partial<ReceiveStopDetail> = {}): ReceiveStopDetail {
     stopNote: null,
     donorNote: null,
     runNote: null,
+    driverName: 'Karen Diaz',
     tiles: [tile()],
     stopTotal: '0.00',
     ...over,
@@ -288,6 +293,39 @@ describe('tile order never moves under the hand', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// `D45` — a busy category stops resizing the screen
+// ---------------------------------------------------------------------------
+
+describe('a busy category says how many numbers it holds', () => {
+  /** N entries with distinct ids, so the list is a real list. */
+  const entries = (count: number) =>
+    Array.from({ length: count }, (_, index) => entry({ id: `e-${index}` }));
+
+  it('says nothing while nothing can be hidden', () => {
+    // The entry list is capped at two chip rows and scrolls inside them. Two is
+    // the fewest chips two rows can ever hold, so at or below that the receiver
+    // is definitely seeing everything and a count would be noise.
+    expect(entryCountLabel([])).toBeNull();
+    expect(entryCountLabel(entries(1))).toBeNull();
+    expect(entryCountLabel(entries(ENTRIES_ALWAYS_VISIBLE))).toBeNull();
+  });
+
+  it('counts them once the row may be showing fewer than it has', () => {
+    // The affordance for a scroll region that has none of its own — without it
+    // the cap is a trap, because numbers vanish with nothing saying they did.
+    expect(entryCountLabel(entries(3))).toBe('3 entries');
+    expect(entryCountLabel(entries(20))).toBe('20 entries');
+  });
+
+  it('is a floor, not a measurement', () => {
+    // How many chips actually fit is a function of the digits typed into them and
+    // the pane's width, neither of which this side can know. It therefore errs
+    // toward showing the count rather than toward hiding numbers silently.
+    expect(ENTRIES_ALWAYS_VISIBLE).toBe(2);
+  });
+});
+
 describe('what the stop has on it', () => {
   it('knows when nothing has been weighed', () => {
     expect(hasWeights(detail())).toBe(false);
@@ -408,6 +446,65 @@ describe('"Done" only navigates (I12)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// `D62` — Submit run, in the progress row and present always
+// ---------------------------------------------------------------------------
+
+describe('`D62` — Submit run', () => {
+  it('goes to Receive done once every stop is resolved', () => {
+    // Same target the all-stops-done banner used, and the same gate — what
+    // changed is that the control is on the screen before the gate opens.
+    expect(submitDecision(strip('WEIGHED', 'SKIPPED', 'REASSIGNED'))).toBe('go');
+    expect(submitDecision(strip('WEIGHED'))).toBe('go');
+  });
+
+  it('is blocked while any stop still wants a weight, and does not navigate', () => {
+    expect(submitDecision(strip('WEIGHED', 'COLLECTED'))).toBe('blocked');
+    expect(submitDecision(strip('PENDING', 'PENDING'))).toBe('blocked');
+  });
+
+  it('is blocked on a strip that has not loaded rather than sending someone on', () => {
+    // An empty strip is a failed or pending read, not a finished run — the same
+    // reading `allStopsResolved` takes.
+    expect(submitDecision([])).toBe('blocked');
+  });
+
+  it('agrees with the gate the whole screen already uses (I12)', () => {
+    // Two readings of one rule would be one too many. Submit must open exactly
+    // when `allStopsResolved` does, since that is what "Done" follows as well.
+    for (const stops of [
+      strip('WEIGHED', 'COLLECTED'),
+      strip('WEIGHED', 'SKIPPED'),
+      strip('PENDING'),
+      [],
+    ]) {
+      expect(submitDecision(stops) === 'go').toBe(allStopsResolved(stops));
+    }
+  });
+
+  it('names what is outstanding, in route order', () => {
+    const stops = [
+      stop({ id: 'a', donorName: 'Aldi', position: 2, state: 'PENDING' }),
+      stop({ id: 'b', donorName: 'Kroger', position: 0, state: 'WEIGHED' }),
+      stop({ id: 'c', donorName: "Sam's", position: 1, state: 'COLLECTED' }),
+    ];
+    expect(outstandingStops(stops).map((s) => s.donorName)).toEqual(["Sam's", 'Aldi']);
+  });
+
+  it('lists nothing when the run is finished', () => {
+    expect(outstandingStops(strip('WEIGHED', 'SKIPPED', 'REASSIGNED'))).toEqual([]);
+  });
+
+  it('reads outstanding the same way S2.2b does (I12)', () => {
+    // S2.2b's `outstandingLines` is `isResolved` negated over the completion
+    // summary; this is the same negation over the strip. The two screens must not
+    // disagree about which stop is missing.
+    const stops = strip('WEIGHED', 'COLLECTED', 'PENDING', 'SKIPPED', 'REASSIGNED');
+    expect(outstandingStops(stops).every((s) => !isResolved(s.state))).toBe(true);
+    expect(outstandingStops(stops)).toHaveLength(2);
+  });
+});
+
 describe('the strip re-reads from the same response as the sheet', () => {
   it('folds the new state in without a second request', () => {
     const stops = strip('COLLECTED', 'PENDING');
@@ -493,8 +590,46 @@ describe('errors', () => {
 // Copy (§7)
 // ---------------------------------------------------------------------------
 
+describe('a note is one line, and says whose it is (`D68`)', () => {
+  it('names the driver in the label rather than heading the note', () => {
+    // "About the whole run" over a body cost two lines of the entry column to say
+    // something the position already said. Who wrote it is the part the receiver
+    // cannot see, and it decides how much the note is worth acting on.
+    expect(COPY.stopNoteLabel('Karen Diaz')).toBe("Karen Diaz's note:");
+    expect(COPY.runNoteLabel('Karen Diaz')).toBe("Karen Diaz's note on the run:");
+    // The store's note is nobody's: it is an admin's standing note about a place.
+    expect(COPY.donorNoteLabel).toBe('Store note:');
+  });
+
+  it('spells every possessive one way, including after an s', () => {
+    // The same single rule S2.1b's run label follows. Two rules would spell one
+    // volunteer's name two ways on two screens.
+    expect(COPY.stopNoteLabel('Chris')).toBe("Chris's note:");
+  });
+
+  it('names the role when a run has no driver', () => {
+    // A stop is readable on a run with no owner. The note must not vanish, and it
+    // must not claim an author it does not have.
+    expect(COPY.stopNoteLabel(null)).toBe('Driver note:');
+    expect(COPY.runNoteLabel(null)).toBe('Driver note on the run:');
+  });
+
+  it('distinguishes the stop note from the run note', () => {
+    // Both come from the same driver. One is about this store and one about the
+    // whole morning, and a receiver acts on them differently.
+    expect(COPY.stopNoteLabel('Karen')).not.toBe(COPY.runNoteLabel('Karen'));
+  });
+});
+
 describe('microcopy', () => {
-  const sentences = Object.values(COPY);
+  // Two labels are functions of the driver's name since `D68` made a note one
+  // line ("Karen's note:"). Resolve them so the sweeps below still see every
+  // string a receiver can read — a label that escapes the sweep is a label the
+  // forbidden-word and I11/I13 rules stop covering, which is the whole point of
+  // sweeping rather than listing.
+  const sentences: string[] = Object.values(COPY).flatMap((value) =>
+    typeof value === 'function' ? [value('Karen Diaz'), value(null)] : [value],
+  );
 
   it('says something everywhere', () => {
     for (const sentence of sentences) expect(sentence.length).toBeGreaterThan(0);
@@ -552,5 +687,54 @@ describe('microcopy', () => {
     // The destructive confirm keeps the long form: §3 wants the button that cannot
     // be taken back to name the action, not to echo the one that opened the modal.
     expect(COPY.skipConfirm).toBe('Skip stop');
+  });
+
+  it('uses no em dash (§7)', () => {
+    for (const sentence of sentences) expect(sentence).not.toContain('—');
+  });
+
+  it('does not restate the refusal S2.2b and the server already word (`D62`)', () => {
+    // The modal shows `RECEIVE_INCOMPLETE_MESSAGE` itself. A second copy of that
+    // sentence in this file is the thing that would drift.
+    for (const sentence of sentences) expect(sentence).not.toBe(RECEIVE_INCOMPLETE_MESSAGE);
+    expect(RECEIVE_INCOMPLETE_MESSAGE.length).toBeGreaterThan(0);
+  });
+
+  it('words the Submit modal as S2.2b words its BLOCKED stage (`D62`)', () => {
+    // Not imported from S2.2b — one screen's copy is not another's dependency —
+    // but the receiver meets both, so the words are the same words.
+    expect(COPY.notReady).toBe('This run is not finished yet');
+    expect(COPY.outstandingLabel).toBe('Still to do');
+  });
+
+  it('has no run-notes disclosure left to label (`D68`)', () => {
+    // The three notes are labelled text now. The toggle's word going with it is
+    // the point: a stray copy key outlives the control it named and comes back as
+    // a second, hidden way to read a note.
+    expect('runNotesToggle' in COPY).toBe(false);
+    expect(COPY.runNoteLabel.length).toBeGreaterThan(0);
+    expect(COPY.stopNoteLabel.length).toBeGreaterThan(0);
+    expect(COPY.donorNoteLabel.length).toBeGreaterThan(0);
+  });
+
+  it('has no all-stops-done banner left to label (`D62`)', () => {
+    // Submit run replaced it and is present always, so the banner's two strings
+    // are not a fallback — they are a control that no longer exists.
+    expect('allDoneBanner' in COPY).toBe(false);
+    expect('goToReceiveDone' in COPY).toBe(false);
+  });
+
+  it('names the way out as the place it goes (`D60`)', () => {
+    // `BackLink` takes a noun; the chevron already says "back". Same label S2.2b
+    // uses for the same destination.
+    expect(COPY.backToRuns).toBe('Runs');
+  });
+
+  it('offers Submit without claiming it closes the run (I11)', () => {
+    // Receive done (S2.2b) is still the one completion action. Submit is the way
+    // to it, and the label must not read as the act itself.
+    expect(COPY.submitRun).toBe('Submit run');
+    expect(COPY.submitRun.toLowerCase()).not.toContain('finish');
+    expect(COPY.submitRun.toLowerCase()).not.toContain('receive done');
   });
 });

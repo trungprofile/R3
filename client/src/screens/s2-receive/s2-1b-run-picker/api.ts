@@ -8,7 +8,11 @@
 // client against a different file than the one the lane is writing (A34 / A78).
 
 import { api } from '../../../api/index.ts';
-import type { ReceiveRunSummary, ReceiveStopSummary } from '../../../api/shared.ts';
+import type {
+  ReceiveDonationSummary,
+  ReceiveRunSummary,
+  ReceiveStopSummary,
+} from '../../../api/shared.ts';
 
 /**
  * The picker's list (`GET /api/receive/runs`).
@@ -24,6 +28,12 @@ import type { ReceiveRunSummary, ReceiveStopSummary } from '../../../api/shared.
  *
  * Which is why this screen never sends a date and never compares one against the
  * device's clock. Each row states the run's own `occurrenceDate` instead (S2.1b).
+ *
+ * `D66` did not change any of that. The edit window arrives as a per-row flag on
+ * each summary, not as a filter: still no date is sent, still nothing is dropped,
+ * and a lapsed run is banded differently rather than hidden — hiding it would
+ * strand it, since `receiveDone` is not window-gated and this list is its only
+ * route.
  */
 export function fetchReceivableRuns(signal?: AbortSignal): Promise<ReceiveRunSummary[]> {
   return api.get<ReceiveRunSummary[]>('/receive/runs', { ...(signal ? { signal } : {}) });
@@ -41,6 +51,21 @@ export function fetchReceivableRuns(signal?: AbortSignal): Promise<ReceiveRunSum
  * A courtesy, not a rule: if this call fails the screen opens the stop it already
  * had, and the server decides what may happen there (`architecture.md §4.5`).
  */
+/**
+ * The unscheduled-donation card's counts (`GET /api/receive/donations/summary`,
+ * `D67`).
+ *
+ * Its own call rather than a widening of the run list: a walk-in has no run, so it
+ * is not a row of that list, and a failure to count donations must not empty the
+ * screen a receiver came here to use. The card renders with its title alone if this
+ * never answers — it is the only route to S2.3.
+ */
+export function fetchDonationSummary(signal?: AbortSignal): Promise<ReceiveDonationSummary> {
+  return api.get<ReceiveDonationSummary>('/receive/donations/summary', {
+    ...(signal ? { signal } : {}),
+  });
+}
+
 export function fetchRunStops(
   shiftId: string,
   signal?: AbortSignal,

@@ -436,6 +436,16 @@
 
 /* --- The review screen ---------------------------------------------------- */
 
+/* D65 — which of the two review lists this is. The stops the route planned, then
+ * the extras the driver added; the heading is what keeps them apart, since the
+ * rows themselves are not a merged list (I14). */
+.r3-review__label {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-label);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .r3-review {
   list-style: none;
   margin: 0 0 var(--space-5);

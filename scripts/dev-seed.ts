@@ -72,7 +72,9 @@ async function main(): Promise<void> {
   // --- People -------------------------------------------------------------
   // Tiers and duties are different kinds of thing (I1 hierarchy, I2 set), and the
   // seed covers the combinations the screens branch on: an admin, a coordinator
-  // who does not drive, two drivers, and one driver who is also a receiver.
+  // who also drives, two drivers, and one driver who is also a receiver. The
+  // coordinator is STAFF+DRIVE on purpose — it is the two-duties-on-one-account
+  // case D59 turns on, reachable without signing in as an admin.
   const admin = await createUser({
     firstName: 'Ada',
     lastName: 'Grace',
@@ -88,7 +90,7 @@ async function main(): Promise<void> {
     firstName: 'Sam',
     lastName: 'Okafor',
     tier: 'STAFF',
-    duties: ['REPORT'],
+    duties: ['DRIVE'],
     phone: '5550002222',
     address: '2 Pantry Way',
     credential: PASSWORD,
@@ -161,7 +163,7 @@ async function main(): Promise<void> {
 seeded ${timezone}
 
   admin        ${admin.user.username}   ${PASSWORD}
-  coordinator  ${coordinator.user.username}   ${PASSWORD}   (REPORT only — no board actions)
+  coordinator  ${coordinator.user.username}   ${PASSWORD}   (STAFF + DRIVE — the D59 overlap)
   driver       ${karen.user.username}   ${PIN}
   driver       ${luis.user.username}   ${PIN}   (also RECEIVE)
 

@@ -648,16 +648,19 @@ describe('metrics ignore the reportable flag entirely', () => {
     const metrics = await intakeMetrics({ from: '2026-08-03', to: '2026-08-09' });
     const northside = metrics.stores.find((s) => s.donorName === 'Northside');
 
-    expect(northside).toMatchObject({
-      intake: '70.00',
-      reported: '50.00',
-      unreported: '20.00',
-    });
+    // D58 cut the per-store `unreported` column; the two figures the row still
+    // carries are the boundary itself, and the difference is read off them.
+    expect(northside).toMatchObject({ intake: '70.00', reported: '50.00' });
     expect(metrics.totalIntake).toBe('70.00');
+    // PRD cap 16's "unreported donation volume" survives as the aggregate figure.
     expect(metrics.totalUnreported).toBe('20.00');
   });
 
-  it('reports no previous figure rather than zero when there is no prior period', async () => {
+  it('measures one window and no other (D58)', async () => {
+    // The comparison period is GONE: `intakeMetrics` used to run its union twice, so
+    // the table could carry a Change column against an equal-length period before
+    // this one. Nothing renders that any more, and a payload that still announced a
+    // window nobody measured against would be a promise with no query behind it.
     const { actor, produce } = await scene();
     const store = await makeDonor('Northside');
     const created = await createDonation(actor, {
@@ -672,7 +675,21 @@ describe('metrics ignore the reportable flag entirely', () => {
       .execute();
 
     const metrics = await intakeMetrics({ from: '2026-08-03', to: '2026-08-09' });
-    // Null, not "0.00" — a store with no history must not render as a 100% drop.
-    expect(metrics.stores[0]!.previousIntake).toBeNull();
+    expect(metrics.from).toBe('2026-08-03');
+    expect(metrics.to).toBe('2026-08-09');
+    expect(Object.keys(metrics).sort()).toEqual([
+      'from',
+      'stores',
+      'to',
+      'totalIntake',
+      'totalReported',
+      'totalUnreported',
+    ]);
+    expect(Object.keys(metrics.stores[0]!).sort()).toEqual([
+      'donorId',
+      'donorName',
+      'intake',
+      'reported',
+    ]);
   });
 });

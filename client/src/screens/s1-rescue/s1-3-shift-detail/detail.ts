@@ -290,6 +290,17 @@ export interface DetailViewer {
 export interface DetailCapabilities {
   isOwner: boolean;
   /**
+   * D59: a screen addresses one person. When the viewer IS the run's driver, the
+   * screen stops describing them to themselves — no row naming them back, no note
+   * addressed to them by them. Same value as `isOwner`, named for what it decides.
+   */
+  viewerIsSubject: boolean;
+  /**
+   * D59: the Driver row is for someone reading about a run that is not theirs.
+   * Truck is not gated with it — it is operational, and `COPY.unset` '—' is I8.
+   */
+  showDriverRow: boolean;
+  /**
    * S1.3: "owner sees **Release run** (red). Before-start only; in-progress/past
    * hide it." `CLAIMED` is the only state with a release edge (`§3.1`), and the
    * server's predicate adds `starts_at > now()` — both are repeated here so the
@@ -306,7 +317,15 @@ export interface DetailCapabilities {
    * hunt for it, and the honest answer is that this one now needs staff.
    */
   showStartedNotice: boolean;
-  /** Staff add/edit the coordinator→driver note here; the driver sees it read-only. */
+  /**
+   * Staff add/edit the coordinator→driver note here; the driver sees it read-only.
+   *
+   * D59 adds the owner term: a staff member looking at their OWN run is the driver
+   * this note is written to, so the screen does not offer them a note to themselves.
+   * `shift.staff_note` has no author column, so a note already on the run cannot be
+   * proved to be someone else's — it still shows, read-only, because it is a message
+   * TO them and losing it would be worse than not being able to edit it here.
+   */
   canEditStaffNote: boolean;
   /** Staff-only, and only on an `IN_PROGRESS` run's unresolved stops (I30). */
   canReassignStops: boolean;
@@ -330,6 +349,8 @@ export function capabilitiesFor(
 
   return {
     isOwner,
+    viewerIsSubject: isOwner,
+    showDriverRow: !isOwner,
     // Not gated on the Drive duty. The server declares `anyDuty: ['DRIVE']` on
     // release and re-checks it, but a driver whose duty was removed after they
     // claimed would otherwise be shown a run they cannot hand back at all — and
@@ -342,7 +363,10 @@ export function capabilitiesFor(
     showStartedNotice:
       isOwner &&
       ((shift.status === 'CLAIMED' && !beforeStart) || shift.status === 'IN_PROGRESS'),
-    canEditStaffNote: viewer.isStaff,
+    // D59: staff, and not about themselves. The server is unchanged — `PATCH
+    // /shifts/:id`'s staff-note path has no owner term (`schedule.ts`); this is
+    // only what the screen offers.
+    canEditStaffNote: viewer.isStaff && !isOwner,
     canReassignStops: viewer.isStaff && shift.status === 'IN_PROGRESS',
     releaseRepeats: shift.recurrencePatternId !== null,
     // S1.3 gives the banner to the OWNER — its sentence is second-person and about

@@ -167,7 +167,9 @@ async function main(): Promise<void> {
   await updateUser(admin.user.id, { tier: 'ADMIN', credential: PASSWORD });
 
   const coordinator = await createUser({
-    firstName: 'Sam', lastName: 'Okafor', tier: 'STAFF', duties: ['REPORT'],
+    // STAFF + DRIVE: the two-duties-on-one-account case D59 turns on, without the
+    // admin tier confounding what the screen offers.
+    firstName: 'Sam', lastName: 'Okafor', tier: 'STAFF', duties: ['DRIVE'],
     phone: '5550002222', address: '2 Pantry Way', credential: PASSWORD,
   });
 
@@ -460,7 +462,10 @@ async function main(): Promise<void> {
       .selectFrom('shift')
       .select(['id'])
       .where('status', '=', 'IN_PROGRESS')
-      .where('occurrence_date', '=', addDays(today, -15))
+      // Cast in SQL rather than passing the bare string: `occurrence_date` is a date
+      // column, and this is the same reason `coverage.ts` casts on its range edges — a
+      // calendar slot compared as an instant is off by the pantry's UTC offset.
+      .where('occurrence_date', '=', sql<Date>`${addDays(today, -15)}::date`)
       .executeTakeFirstOrThrow();
     const stops = await db
       .selectFrom('shift_stop').select(['id']).where('shift_id', '=', lapsed.id)
@@ -615,7 +620,7 @@ QA world built — ${timezone}, today is ${today}
 
   Signing in
     admin        ${admin.user.username}   ${PASSWORD}
-    coordinator  ${coordinator.user.username}   ${PASSWORD}   (STAFF, REPORT only)
+    coordinator  ${coordinator.user.username}   ${PASSWORD}   (STAFF + DRIVE — the D59 overlap)
     driver       ${karen.user.username}   ${PIN}
     driver       ${luis.user.username}   ${PIN}   (also RECEIVE)
     no duties    ${nina.user.username}   ${PIN}   (A112 read-only)

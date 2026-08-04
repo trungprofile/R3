@@ -1,24 +1,27 @@
 // S2.3 Unscheduled donation — food that arrived outside a scheduled pickup
 // (PRD cap 12).
 //
-// `ui-ux-spec.md S2.3`, on the shared tablet in landscape, one button from S2.1b
-// or S2.2. The responsive matrix marks this surface `n/a` on a phone, so there is
-// no phone layout — a wide two-column entry area that a desktop browser also
-// reads comfortably, and nothing else.
+// `ui-ux-spec.md S2.3`, on the shared tablet in landscape, one tap from S2.1b. The
+// responsive matrix marks this surface `n/a` on a phone, so there is no phone
+// layout — a wide two-column entry area that a desktop browser also reads
+// comfortably, and nothing else.
 //
-// TWO ENTRY PATHS, ONE SCREEN:
+// THIS SCREEN WEIGHS ONE DONATION (`D76`). It used to be three things stacked: a
+// list of what drivers had flagged, a form, and a list of what had been recorded.
+// Both lists are on S2.1b now, where the rest of a receiver's arrivals are listed,
+// and what is left here is the sheet — the same layout S2.2 weighs a stop on.
 //
-//   FROM A PREFILL  a driver flagged it mid-run (S1.5) and it arrived as a
-//                   `SUGGESTED` row with donor, category and note already filled
-//                   (I17). The receiver supplies the weight and confirms. Those
-//                   rows are listed FIRST — they are the reason someone is here.
-//   FROM SCRATCH    a walk-in or a relayed store call, born `CONFIRMED`.
+// TWO DOORS, ONE SCREEN:
 //
-// THE GRAIN IS ONE ROW PER CATEGORY (I18). This form submits one category and one
-// weight; a donation spanning three kinds of food is three submissions, exactly
-// as adding three weights to a stop is three entries on S2.2. A successful submit
-// therefore keeps the store, the note and the report toggle and clears only the
-// category and the weight.
+//   /donations/:id/weigh   a driver flagged it mid-run (S1.5) and it arrived as a
+//                          `SUGGESTED` row carrying the store and their note
+//                          (I17). The receiver supplies the weight and confirms.
+//                          The store is settled and the picker is not offered.
+//   /donations/new         a walk-in or a relayed store call, born `CONFIRMED`.
+//                          The store is still a question, so it is asked.
+//
+// THE GRAIN IS ONE ROW PER CATEGORY (I18) — see `DonationForm.tsx` for what that
+// means for the form, and which column each control lives in and why.
 //
 // WHAT THIS SCREEN NEVER SENDS: a `shiftId`. A receiver-authored donation is a
 // walk-in by construction (build-plan D10) — `POST /donations` sets no shift, and
@@ -26,22 +29,15 @@
 // from that run. The driver's half of cap 12 is the one that carries a shift, and
 // it is sent from S1.5.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useAsyncData, useRouter, useToast } from '../../../app/index.ts';
 import type { ScreenProps } from '../../../app/index.ts';
-import {
-  Button,
-  ConfirmModal,
-  ErrorBlock,
-  SkeletonRows,
-} from '../../../components/index.ts';
-import type { DonationSummary } from '../../../api/shared.ts';
+import { BackLink, ConfirmModal, ErrorBlock, SkeletonRows } from '../../../components/index.ts';
 import {
   confirmDonation,
   createDonation,
   discardSuggestion,
   fetchDonationScreen,
-  setReportable,
 } from './api.ts';
 import type { DonationScreenData } from './api.ts';
 import {
@@ -53,45 +49,37 @@ import {
   isSubmittable,
   messageFor,
   nextInSameDonation,
-  removeRow,
   shouldReloadAfter,
-  splitWorklist,
-  upsertRow,
 } from './donation.ts';
 import type { DonationDraft } from './donation.ts';
 import { DonationForm } from './DonationForm.tsx';
-import { PrefillList } from './PrefillList.tsx';
-import { RecordedList } from './RecordedList.tsx';
+import '../../../components/sheet.css';
 import './donation.css';
 
 export function DonationScreen({ params }: ScreenProps) {
-  // Present only if the registry ever routes a run-scoped variant of this screen;
-  // `/donations/new` carries no shift and the fall-through is the pantry-wide
-  // worklist. Either way nothing about the SUBMISSION changes — D10 keeps the
-  // shift off a receiver-authored row regardless of which door was used.
-  const shiftId = params['shiftId'] ?? null;
+  // Present on `/donations/:id/weigh` and absent on `/donations/new` — which door
+  // was used is the only difference between the two, and it is read here once.
+  const donationId = params['id'] ?? null;
   const { go } = useRouter();
   const toast = useToast();
 
   const load = useCallback(
-    (signal: AbortSignal) => fetchDonationScreen(shiftId, signal),
-    [shiftId],
+    (signal: AbortSignal) => fetchDonationScreen(donationId, signal),
+    [donationId],
   );
   const remote = useAsyncData<DonationScreenData>(load);
 
-  // The rows are edited in place by every action here, so they are state rather
-  // than read straight off the fetch: each write returns the updated row and
-  // replaces it, with no second round trip.
-  const [rows, setRows] = useState<DonationSummary[]>([]);
-  useEffect(() => {
-    if (remote.data) setRows(remote.data.rows);
-  }, [remote.data]);
-
-  const [draft, setDraft] = useState<DonationDraft>(emptyDraft);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<DonationDraft | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [discarding, setDiscarding] = useState<DonationSummary | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+
+  // The row is the server's; the draft is seeded from it once and then owned here.
+  // `draftFrom` deliberately does NOT carry the category over (D24) — a driver
+  // flags a store, not a kind of food, and a prefilled category is a number
+  // somebody would confirm without reading.
+  const row = remote.data?.donation ?? null;
+  const current = draft ?? (row ? draftFrom(row) : emptyDraft());
 
   const editDraft = (next: DonationDraft) => {
     setDraft(next);
@@ -99,31 +87,18 @@ export function DonationScreen({ params }: ScreenProps) {
     if (showErrors && isSubmittable(next)) setShowErrors(false);
   };
 
-  const startOver = () => {
-    setEditingId(null);
-    setDraft(emptyDraft());
-    setShowErrors(false);
-  };
-
-  const pickPrefill = (row: DonationSummary) => {
-    setEditingId(row.id);
-    setDraft(draftFrom(row));
-    setShowErrors(false);
-  };
+  const leave = () => go('receive-runs');
 
   const failed = (error: unknown) => {
     toast.error(messageFor(error));
-    // Another receiver confirmed the same prefill, or receive-done swept it
-    // (I17). Ordinary on a shared tablet, and fixed by a re-read rather than by
-    // asking the receiver to do anything.
-    if (shouldReloadAfter(error)) {
-      startOver();
-      remote.reload();
-    }
+    // Another receiver confirmed the same row, or receive-done swept it (I17).
+    // Ordinary on a shared tablet. There is nothing left on this screen to work,
+    // so the way out is the list rather than a reload of a row that is gone.
+    if (shouldReloadAfter(error)) leave();
   };
 
   const submit = async () => {
-    if (!isSubmittable(draft)) {
+    if (!isSubmittable(current)) {
       // Tapping is how the form tells them what is missing (§6: what happened +
       // what to do). The server refuses the same things again.
       setShowErrors(true);
@@ -131,17 +106,22 @@ export function DonationScreen({ params }: ScreenProps) {
     }
     setBusy(true);
     try {
-      const saved =
-        editingId === null
-          ? await createDonation(createBody(draft))
-          : await confirmDonation(editingId, confirmBody(draft));
-      setRows((current) => upsertRow(current, saved));
-      toast.success(editingId === null ? COPY.savedNew : COPY.savedConfirm);
-      setEditingId(null);
-      // Keep the store and the report choice: the next category of the same
-      // donation is one weight away (I18).
-      setDraft((current) => nextInSameDonation(current));
-      setShowErrors(false);
+      if (donationId === null) {
+        await createDonation(createBody(current));
+        toast.success(COPY.savedNew);
+        // Keep the store and the report choice: the next category of the same
+        // walk-in is one weight away (I18). Staying put is the whole reason this
+        // screen does not bounce back to the list on every submit.
+        setDraft(nextInSameDonation(current));
+        setShowErrors(false);
+      } else {
+        await confirmDonation(donationId, confirmBody(current));
+        toast.success(COPY.savedConfirm);
+        // A driver's row is ONE row. There is no second category to add to it —
+        // anything else that came with the same delivery is its own walk-in — so
+        // the work here is finished and the list is where the next thing is.
+        leave();
+      }
     } catch (error) {
       failed(error);
     } finally {
@@ -149,37 +129,27 @@ export function DonationScreen({ params }: ScreenProps) {
     }
   };
 
-  const discard = async (row: DonationSummary) => {
+  const discard = async () => {
+    if (donationId === null) return;
     setBusy(true);
     try {
-      await discardSuggestion(row.id);
-      setRows((current) => removeRow(current, row.id));
-      if (editingId === row.id) startOver();
+      await discardSuggestion(donationId);
       toast.success(COPY.discarded);
+      leave();
     } catch (error) {
       failed(error);
     } finally {
-      setDiscarding(null);
+      setDiscarding(false);
       setBusy(false);
     }
   };
 
-  const toggleReport = async (row: DonationSummary) => {
-    setBusy(true);
-    try {
-      const saved = await setReportable(row.id, !row.reportable);
-      setRows((current) => upsertRow(current, saved));
-      toast.success(COPY.reportableSaved);
-    } catch (error) {
-      failed(error);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const backLink = <BackLink label={COPY.back} onBack={leave} />;
 
   if (remote.error) {
     return (
-      <div className="s23">
+      <div className="r3-sheet r3-sheet--message">
+        {backLink}
         <ErrorBlock error={remote.error} onRetry={remote.reload} />
       </div>
     );
@@ -187,62 +157,58 @@ export function DonationScreen({ params }: ScreenProps) {
   if (remote.data === null) {
     // Nothing at all under 300ms (§6) — `showLoading` already carries the delay.
     return remote.showLoading ? (
-      <div className="s23">
+      <div className="r3-sheet r3-sheet--message">
+        {backLink}
         <SkeletonRows rows={5} label={COPY.loading} />
       </div>
     ) : null;
   }
 
-  const { pending, recorded } = splitWorklist(rows);
-  const editing = editingId === null ? null : (rows.find((row) => row.id === editingId) ?? null);
-
   return (
-    <div className="s23">
-      <header className="s23-head">
-        <h1 className="s23-title">{COPY.title}</h1>
-        <p className="s23-lede">{COPY.lede}</p>
+    <div className="r3-sheet">
+      {/* §3's one way out of a screen, at the top where a person looks for it
+          (D43) — and the ONLY way out, since `D76` made this route `fullScreen`
+          and took the bottom nav off it for the same reason S2.2 has none. */}
+      {backLink}
+
+      <header className="r3-sheet__head">
+        <p className="r3-sheet__label">{row ? COPY.weighingLabel : COPY.newLabel}</p>
+        <h1>{row ? row.donorDisplay : COPY.newTitle}</h1>
+        {/* The driver, and what they said about it. The reason this row exists is
+            that a person saw the food; `D68` settled that a note reads as that
+            person speaking rather than as a field. */}
+        {row?.note ? (
+          <p className="s23-driver-note">
+            {row.createdByName ? COPY.noteFrom(row.createdByName) : COPY.noteFromDriver}{' '}
+            {row.note}
+          </p>
+        ) : null}
       </header>
 
-      <PrefillList
-        rows={pending}
-        activeId={editingId}
-        onPick={pickPrefill}
-        onDiscard={setDiscarding}
-        busy={busy}
-      />
-
       <DonationForm
-        draft={draft}
+        draft={current}
         onDraft={editDraft}
         categories={remote.data.categories}
         donors={remote.data.donors}
-        editing={editing}
+        editing={row}
         showErrors={showErrors}
         busy={busy}
         onSubmit={() => void submit()}
-        onStartOver={startOver}
+        onDiscard={row ? () => setDiscarding(true) : undefined}
       />
-
-      <RecordedList rows={recorded} onToggleReport={(row) => void toggleReport(row)} busy={busy} />
-
-      <div className="s23-foot">
-        <Button variant="secondary" onClick={() => go('receive-runs')}>
-          {COPY.backToRuns}
-        </Button>
-      </div>
 
       {discarding ? (
         // §6: names the consequence, Cancel takes focus as the calm default, and
-        // the confirm button is red. Throwing away a prefill destroys the only
-        // record that a driver saw this food.
+        // the confirm button is red. Throwing this away destroys the only record
+        // that a driver saw this food.
         <ConfirmModal
           question={COPY.discardQuestion}
           consequence={COPY.discardConsequence}
           confirmLabel={COPY.discardConfirm}
           destructive
           busy={busy}
-          onConfirm={() => void discard(discarding)}
-          onCancel={() => setDiscarding(null)}
+          onConfirm={() => void discard()}
+          onCancel={() => setDiscarding(false)}
         />
       ) : null}
     </div>

@@ -50,19 +50,40 @@ import type {
   UpdateRouteRequest,
 } from '../../../api/shared.ts';
 import { hasDuty } from '../../../api/shared.ts';
+import {
+  MONTH_NAMES,
+  addDaysIso,
+  compareIso,
+  formatMonthLabel,
+  monthGrid,
+  nextMonth,
+  parseIsoDate,
+  previousMonth,
+} from '../shared/calendar.ts';
+import { weekEndOf, weekStartOf } from '../../../app/week.ts';
 
 // ---------------------------------------------------------------------------
 // Calendar dates — `YYYY-MM-DD` text, never a `Date`
 // ---------------------------------------------------------------------------
+//
+// The grid arithmetic lives in `../shared/calendar.ts` and is re-exported here.
+// S1.4's away picker, S1.6's day pickers and D73's calendar all draw the same
+// six-week month, and three copies of it is three chances to disagree about which
+// day a month opens on.
 
-export interface CalendarDate {
-  year: number;
-  /** 1-12. */
-  month: number;
-  day: number;
-}
-
-const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+export type { CalendarDate, MonthCell } from '../shared/calendar.ts';
+export {
+  WEEKDAY_INITIALS,
+  WEEKDAY_INITIALS_MONDAY,
+  addDaysIso,
+  compareIso,
+  formatMonthLabel,
+  isoOf,
+  monthGrid,
+  nextMonth,
+  parseIsoDate,
+  previousMonth,
+} from '../shared/calendar.ts';
 
 /** ISO weekday order, 1 = Monday … 7 = Sunday — the numbering
  *  `recurrence_pattern.weekdays` uses (`data-model.md §5.2`). */
@@ -75,61 +96,6 @@ export const WEEKDAY_NAMES = [
   'Saturday',
   'Sunday',
 ] as const;
-
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-] as const;
-
-/** Sunday-first column headers for the day grid (US pantry). */
-export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
-
-export function parseIsoDate(value: string): CalendarDate | null {
-  const match = DATE_PATTERN.exec(value);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const probe = new Date(Date.UTC(year, month - 1, day));
-  if (
-    probe.getUTCFullYear() !== year ||
-    probe.getUTCMonth() !== month - 1 ||
-    probe.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return { year, month, day };
-}
-
-export function isoOf(date: CalendarDate): string {
-  return `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
-}
-
-export function addDaysIso(iso: string, days: number): string {
-  const date = parseIsoDate(iso);
-  if (!date) return iso;
-  const shifted = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
-  return isoOf({
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate(),
-  });
-}
-
-/** ISO date strings sort lexicographically; this only names why. */
-export function compareIso(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
 
 /** ISO weekday of a calendar date, 1 = Monday … 7 = Sunday. Pure calendar
  *  arithmetic — which weekday a date falls on involves no zone. */
@@ -231,49 +197,6 @@ export function dayHeadingParts(iso: string, today: string): DayHeadingParts {
 export function dayHeading(iso: string, today: string): string {
   const { lead, date } = dayHeadingParts(iso, today);
   return `${lead}, ${date}`;
-}
-
-export function formatMonthLabel(year: number, month: number): string {
-  return `${MONTH_NAMES[month - 1] ?? ''} ${year}`;
-}
-
-export interface MonthCell {
-  iso: string;
-  day: number;
-  /** False for the leading/trailing days that only fill the grid out. */
-  inMonth: boolean;
-}
-
-/** A month as six weeks of seven cells, Sunday first — the shape a grid renders. */
-export function monthGrid(year: number, month: number): MonthCell[][] {
-  const first = isoOf({ year, month, day: 1 });
-  // `isoWeekdayOf` is Monday-first; the grid is Sunday-first.
-  const lead = isoWeekdayOf(first) % 7;
-  const start = addDaysIso(first, -lead);
-
-  const weeks: MonthCell[][] = [];
-  for (let week = 0; week < 6; week += 1) {
-    const cells: MonthCell[] = [];
-    for (let index = 0; index < 7; index += 1) {
-      const iso = addDaysIso(start, week * 7 + index);
-      const date = parseIsoDate(iso);
-      cells.push({
-        iso,
-        day: date?.day ?? 1,
-        inMonth: date?.month === month && date.year === year,
-      });
-    }
-    weeks.push(cells);
-  }
-  return weeks;
-}
-
-export function nextMonth(year: number, month: number): { year: number; month: number } {
-  return month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
-}
-
-export function previousMonth(year: number, month: number): { year: number; month: number } {
-  return month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
 }
 
 export function monthOf(iso: string, fallback: { year: number; month: number }) {
@@ -459,9 +382,13 @@ export const COPY = {
   terminateNoRange: 'Pick a first and last day.',
 
   // --- Runs list -----------------------------------------------------------
-  runsHeading: 'Runs coming up',
-  runsEmpty: 'No runs scheduled yet.',
-  runsEmptyBody: 'Publish one above, or add a recurring run.',
+  /** D71. It used to say "Runs coming up" over a list bounded only below, so it
+   *  was every run that would ever exist. The list is now this pantry week
+   *  (A178, Monday to Sunday) and the heading says which week it is. Anything
+   *  past it is the calendar's job. */
+  runsHeading: 'Runs this week',
+  runsEmpty: 'No runs this week.',
+  runsEmptyBody: 'Publish one above, or open the calendar to look at another week.',
   repeatsTag: 'repeats weekly',
   conflictTag: 'assigned over a conflict',
   unowned: 'No driver yet',
@@ -489,6 +416,17 @@ export const COPY = {
   assignHint: 'A run does not need a driver. Leave it open and anyone can claim it.',
   assignAnyway: 'Assign anyway',
   assigned: (name: string) => `${name} is on this run.`,
+  /** D74. The picker opens with the run's own driver already chosen, and says
+   *  which row that is — it used to open with nobody selected and the current
+   *  driver sitting unmarked among everyone else. */
+  currentDriver: 'Driving this run now',
+  /** D74's swap confirmation, in `clearDriver`'s shape and voice: the question
+   *  names both people, the consequence names what happens to the one coming off.
+   *  Separate from I20's conflict warning, which asks a different question and may
+   *  be on screen at the same time. */
+  swapDriverQuestion: (from: string, to: string) => `Change the driver from ${from} to ${to}?`,
+  swapDriverConsequence: (from: string) => `${from} comes off the run and is not driving it.`,
+  swapDriverGo: 'Change the driver',
   clearDriver: 'Take the driver off',
   clearDriverQuestion: 'Take the driver off this run?',
   clearDriverConsequence: 'It goes back on the board as open, and anyone can claim it.',
@@ -497,6 +435,40 @@ export const COPY = {
   noDrivers: 'No one can drive yet.',
   noDriversBody: 'An admin adds the drive duty to an account in Admin.',
   checkingDriver: 'Checking…',
+
+  // --- The calendar (D73) --------------------------------------------------
+  /** The view switch. Two words, and the list stays the default: a coordinator
+   *  who only wants "what is on this week" should not have to leave a calendar to
+   *  get it. */
+  viewLabel: 'How to show the runs',
+  viewList: 'List',
+  viewCalendar: 'Calendar',
+  /** The calendar's own range control. Week is the default because it is the
+   *  week the list beside it shows (D71), so switching views does not also
+   *  change which days are on screen. */
+  rangeLabel: 'How much to show',
+  rangeDay: 'Day',
+  rangeWeek: 'Week',
+  rangeMonth: 'Month',
+  rangeCustom: 'Custom',
+  rangeCustomHint: 'Tap the first day, then the last.',
+  rangeCustomEmpty: 'Pick a first and last day.',
+  calendarPrevious: 'Show the days before',
+  calendarNext: 'Show the days after',
+  /** An unclaimed run in a cell. Not `unowned`'s "No driver yet": a cell has room
+   *  for one word, and "Open" is the word the board already uses for the state. */
+  calendarUnowned: 'Open',
+  calendarEmpty: 'No runs in these days.',
+  calendarEmptyBody: 'Pick another range, or publish a run from the list.',
+  /** Below the tablet breakpoint there is no grid: seven columns on a 375px phone
+   *  is unreadable, and S1.6 is a desk screen. The range still means what it
+   *  means, so this says the days are all there rather than letting it look like
+   *  a truncation. */
+  calendarListOnly: 'The grid needs a wider screen. These are the same days, as a list.',
+  /** Each cell's accessible name — the sentence a screen reader gets in place of a
+   *  grid position. */
+  calendarCellLabel: (day: string, count: number) =>
+    count === 1 ? `${day}, 1 run` : `${day}, ${count} runs`,
 
   // --- Route builder (S1.6: "an ordered list of stores") -------------------
   routesHeading: 'Route templates',
@@ -1031,6 +1003,202 @@ export function groupRunsByDay(runs: readonly ShiftSummary[], today: string): Ru
         (a, b) => a.startsAt.localeCompare(b.startsAt) || a.routeName.localeCompare(b.routeName),
       ),
     }));
+}
+
+// ---------------------------------------------------------------------------
+// The calendar (D73)
+// ---------------------------------------------------------------------------
+//
+// A second VIEW of the runs the Runs tab already has, not a second screen and not
+// a second editor: a cell opens `RunEditor`, which carries its own guards
+// (`canSetDriver` / `canCancelRun` / `canMoveRun`, all OPEN||CLAIMED) and their
+// server twins. The calendar adds no write path of its own, so an IN_PROGRESS or
+// COMPLETED run opens exactly as read-only here as it does from the list.
+//
+// EVERY DATE BELOW IS PANTRY-LOCAL `YYYY-MM-DD`. The range is what the fetch is
+// bounded by (`GET /shifts?from=&to=`) and what a run is placed by
+// (`occurrenceDate`, the slot the server already resolved) — no instant is
+// consulted, so no device zone can move a run onto the wrong day.
+//
+// The week is A178's, Monday to Sunday, because D71's list, the board and S3.1 all
+// cut it there. That is also why the month grid asks for a Monday-first week: two
+// views of the same seven days must not open on different days.
+
+/** How much the calendar shows at once. `WEEK` is the default (D73). */
+export type CalendarRangeKind = 'DAY' | 'WEEK' | 'MONTH' | 'CUSTOM';
+
+export interface DateRange {
+  /** `YYYY-MM-DD`, inclusive at both ends. */
+  from: string;
+  to: string;
+}
+
+export interface CalendarView {
+  kind: CalendarRangeKind;
+  /** The day the arrows step from, pantry-local. For `MONTH` it is any day of the
+   *  month on screen. */
+  anchor: string;
+  /** Read only when `kind` is `CUSTOM`. Two taps make it, the same way the
+   *  bulk-terminate range does (`pickRangeDay`), so staff learn one calendar. */
+  custom: TerminateRange;
+}
+
+/**
+ * D71's bound on the Runs list: the pantry week `today` falls in, Monday to
+ * Sunday (A178).
+ *
+ * The whole week rather than "today onward", so the heading is literally true and
+ * so a coordinator can see whether Monday's run went out. The publish form is
+ * still floored at today — this bounds what is READ, never what can be written.
+ */
+export function thisWeekRange(today: string): DateRange {
+  const start = weekStartOf(today);
+  return { from: start, to: weekEndOf(start) };
+}
+
+export function initialCalendarView(today: string): CalendarView {
+  return { kind: 'WEEK', anchor: today, custom: { fromDate: null, toDate: null } };
+}
+
+/**
+ * The days on screen — and therefore the `from`/`to` the fetch is bounded by.
+ *
+ * `MONTH` covers the whole SIX-WEEK grid rather than the month, because the grid
+ * renders the leading and trailing days of the neighbouring months and a run in
+ * one of those cells would otherwise be a blank the coordinator has no reason to
+ * distrust.
+ */
+export function calendarBounds(view: CalendarView): DateRange {
+  if (view.kind === 'DAY') return { from: view.anchor, to: view.anchor };
+  if (view.kind === 'WEEK') {
+    const start = weekStartOf(view.anchor);
+    return { from: start, to: weekEndOf(start) };
+  }
+  if (view.kind === 'MONTH') {
+    const weeks = monthGridOf(view.anchor);
+    const first = weeks[0]?.[0]?.iso ?? view.anchor;
+    const last = weeks[weeks.length - 1]?.[6]?.iso ?? view.anchor;
+    return { from: first, to: last };
+  }
+  const { fromDate, toDate } = view.custom;
+  if (fromDate === null || toDate === null) return { from: view.anchor, to: view.anchor };
+  return compareIso(fromDate, toDate) <= 0
+    ? { from: fromDate, to: toDate }
+    : { from: toDate, to: fromDate };
+}
+
+/** The six-week grid the anchor's month lays out, Monday-first (A178). */
+function monthGridOf(anchor: string) {
+  const { year, month } = monthOf(anchor, { year: 2026, month: 1 });
+  return monthGrid(year, month, 1);
+}
+
+/** One step back or forward, in the unit the range is expressed in. `CUSTOM` does
+ *  not step: its two ends were chosen, and shifting them under staff would undo a
+ *  choice they made rather than move a window they are browsing. */
+export function stepCalendar(view: CalendarView, delta: -1 | 1): CalendarView {
+  if (view.kind === 'DAY') return { ...view, anchor: addDaysIso(view.anchor, delta) };
+  if (view.kind === 'WEEK') return { ...view, anchor: addDaysIso(view.anchor, delta * 7) };
+  if (view.kind === 'MONTH') {
+    const { year, month } = monthOf(view.anchor, { year: 2026, month: 1 });
+    const next = delta === 1 ? nextMonth(year, month) : previousMonth(year, month);
+    return { ...view, anchor: `${next.year}-${String(next.month).padStart(2, '0')}-01` };
+  }
+  return view;
+}
+
+export function canStepCalendar(view: CalendarView): boolean {
+  return view.kind !== 'CUSTOM';
+}
+
+/** What is on screen, said once above the grid. */
+export function calendarLabel(view: CalendarView, today: string): string {
+  if (view.kind === 'DAY') return dayHeading(view.anchor, today);
+  if (view.kind === 'MONTH') {
+    const { year, month } = monthOf(view.anchor, { year: 2026, month: 1 });
+    return formatMonthLabel(year, month);
+  }
+  if (view.kind === 'CUSTOM' && (view.custom.fromDate === null || view.custom.toDate === null)) {
+    return COPY.rangeCustomEmpty;
+  }
+  const { from, to } = calendarBounds(view);
+  return from === to
+    ? formatShortDate(from, today)
+    : `${formatShortDate(from, today)} – ${formatShortDate(to, today)}`;
+}
+
+/** Runs whose own calendar slot falls inside the range. The client filters as well
+ *  as the server bounding the fetch, because a stale response from the range staff
+ *  just left must not paint into the one they are on. */
+export function runsInRange(runs: readonly ShiftSummary[], range: DateRange): ShiftSummary[] {
+  return runs.filter(
+    (run) =>
+      compareIso(run.occurrenceDate, range.from) >= 0 &&
+      compareIso(run.occurrenceDate, range.to) <= 0,
+  );
+}
+
+export interface CalendarCell {
+  iso: string;
+  /** The day number, for the cell's corner. */
+  day: number;
+  /** False for a grid cell outside the month being shown — rendered faintly, still
+   *  a target, because a run really is scheduled on it. */
+  inRange: boolean;
+  runs: ShiftSummary[];
+}
+
+/**
+ * The grid: rows of seven cells, Monday-first, each carrying its own runs.
+ *
+ * `WEEK` is one row and `MONTH` is six. `DAY` and `CUSTOM` are not grids — a
+ * seven-column layout of one day is a worse list than a list — and the panel
+ * renders those through `groupRunsByDay`, which is the shape the Runs list
+ * already uses.
+ */
+export function calendarWeeks(
+  view: CalendarView,
+  runs: readonly ShiftSummary[],
+): CalendarCell[][] {
+  const byDate = new Map<string, ShiftSummary[]>();
+  for (const run of runs) {
+    const existing = byDate.get(run.occurrenceDate);
+    if (existing) existing.push(run);
+    else byDate.set(run.occurrenceDate, [run]);
+  }
+  const cellsOf = (iso: string, day: number, inRange: boolean): CalendarCell => ({
+    iso,
+    day,
+    inRange,
+    runs: (byDate.get(iso) ?? [])
+      .slice()
+      .sort(
+        (a, b) => a.startsAt.localeCompare(b.startsAt) || a.routeName.localeCompare(b.routeName),
+      ),
+  });
+
+  if (view.kind === 'WEEK') {
+    const start = weekStartOf(view.anchor);
+    return [
+      Array.from({ length: 7 }, (_, index) => {
+        const iso = addDaysIso(start, index);
+        return cellsOf(iso, parseIsoDate(iso)?.day ?? 1, true);
+      }),
+    ];
+  }
+  if (view.kind === 'MONTH') {
+    return monthGridOf(view.anchor).map((week) =>
+      week.map((cell) => cellsOf(cell.iso, cell.day, cell.inMonth)),
+    );
+  }
+  return [];
+}
+
+/** A cell's one line per run: route, then who is driving it. Times, stop counts
+ *  and notes are deliberately not here — they belong in the editor the cell opens,
+ *  and a cell that tries to be the run detail stops being readable at a glance. */
+export function runCellLabel(run: ShiftSummary): string {
+  return `${run.routeName} · ${run.ownerName ?? COPY.calendarUnowned}`;
 }
 
 /**

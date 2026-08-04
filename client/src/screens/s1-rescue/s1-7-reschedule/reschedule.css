@@ -14,8 +14,10 @@
   max-width: 40rem;
 }
 
+/* The BackLink above it carries no bottom margin of its own, so the title
+ * supplies the gap between the way out and the heading (D43). */
 .s17-title {
-  margin: 0 0 var(--space-4);
+  margin: var(--space-2) 0 var(--space-4);
 }
 
 .s17-heading {

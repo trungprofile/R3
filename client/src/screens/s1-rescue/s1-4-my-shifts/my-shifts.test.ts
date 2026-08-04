@@ -17,16 +17,17 @@ import {
   COPY,
   EMPTY_FORM,
   addDaysIso,
+  bandRuns,
   buildDeclaration,
   compareIso,
   daysBetweenIso,
   describeBlock,
   failureMessage,
   formatDayLabel,
+  formatRunHours,
   formatRunWhen,
   formatTimeLabel,
   groupBlocks,
-  groupRuns,
   isDayInRange,
   minutesOfTime,
   monthGrid,
@@ -150,43 +151,88 @@ describe('wall clock', () => {
   });
 });
 
-describe('my runs', () => {
-  it('splits on the run END, so a run in progress right now is still upcoming', () => {
-    const finished = run({ id: 'past', startsAt: instant(2026, 8, 1, 9), endsAt: instant(2026, 8, 1, 12) });
-    const running = run({
-      id: 'now',
-      status: 'IN_PROGRESS',
-      startsAt: instant(2026, 8, 3, 9),
-      endsAt: instant(2026, 8, 3, 12),
-    });
-    const later = run({ id: 'later', startsAt: instant(2026, 8, 10, 9), endsAt: instant(2026, 8, 10, 12) });
+describe('today, then this week (D49)', () => {
+  // The pantry week NOW falls in: Mon 3 Aug – Sun 9 Aug 2026.
+  const TODAY = '2026-08-03';
+  const WEEK_START = '2026-08-03';
+  const WEEK_END = '2026-08-09';
 
-    const { upcoming, past } = groupRuns([later, finished, running], NOW.getTime());
-    expect(upcoming.map((r) => r.id)).toEqual(['now', 'later']);
-    expect(past.map((r) => r.id)).toEqual(['past']);
+  /** A run on a given pantry-local calendar slot. Only `occurrenceDate` decides the
+   *  band, which is the point — no clock is consulted anywhere below. */
+  function on(date: string, over: Partial<ShiftSummary> = {}): ShiftSummary {
+    return run({ occurrenceDate: date, id: date, ...over });
+  }
+
+  it("puts today's runs in their own band and the rest of the week in the other", () => {
+    const bands = bandRuns(
+      [on('2026-08-06'), on('2026-08-03'), on('2026-08-01')],
+      TODAY,
+      WEEK_START,
+      WEEK_END,
+    );
+    expect(bands.today.map((r) => r.id)).toEqual(['2026-08-03']);
+    // Saturday the 1st is outside the Mon-to-Sun week, so it is not in the band.
+    expect(bands.week.map((r) => r.id)).toEqual(['2026-08-06']);
   });
 
-  it('keeps an old IN_PROGRESS run in the past group — D1: Phase 1 has no COMPLETED', () => {
-    const stale = run({
-      id: 'stale',
-      status: 'IN_PROGRESS',
-      startsAt: instant(2026, 7, 20, 9),
-      endsAt: instant(2026, 7, 20, 12),
-    });
-    const { upcoming, past } = groupRuns([stale], NOW.getTime());
-    expect(upcoming).toHaveLength(0);
-    expect(past.map((r) => r.status)).toEqual(['IN_PROGRESS']);
+  it('keeps the days already gone in This week, completed and upcoming together', () => {
+    // The old split hid them under "Earlier". "Did I do Monday?" is a question this
+    // screen has to answer, and Monday is part of this week whether or not it is over.
+    const bands = bandRuns(
+      [on('2026-08-04'), on('2026-08-07')],
+      '2026-08-05',
+      WEEK_START,
+      WEEK_END,
+    );
+    expect(bands.week.map((r) => r.id)).toEqual(['2026-08-04', '2026-08-07']);
+    expect(bands.today).toHaveLength(0);
   });
 
-  it('orders what is coming forwards and what has been backwards', () => {
-    const a = run({ id: 'a', startsAt: instant(2026, 8, 5, 9), endsAt: instant(2026, 8, 5, 12) });
-    const b = run({ id: 'b', startsAt: instant(2026, 8, 4, 9), endsAt: instant(2026, 8, 4, 12) });
-    const c = run({ id: 'c', startsAt: instant(2026, 7, 1, 9), endsAt: instant(2026, 7, 1, 12) });
-    const d = run({ id: 'd', startsAt: instant(2026, 7, 8, 9), endsAt: instant(2026, 7, 8, 12) });
+  it('reads the week in calendar order, and today in start order', () => {
+    const early = on('2026-08-03', { id: 'early', startsAt: instant(2026, 8, 3, 7, 0) });
+    const late = on('2026-08-03', { id: 'late', startsAt: instant(2026, 8, 3, 16, 0) });
+    const bands = bandRuns(
+      [late, early, on('2026-08-09'), on('2026-08-05')],
+      TODAY,
+      WEEK_START,
+      WEEK_END,
+    );
+    expect(bands.today.map((r) => r.id)).toEqual(['early', 'late']);
+    expect(bands.week.map((r) => r.id)).toEqual(['2026-08-05', '2026-08-09']);
+  });
 
-    const { upcoming, past } = groupRuns([a, b, c, d], NOW.getTime());
-    expect(upcoming.map((r) => r.id)).toEqual(['b', 'a']);
-    expect(past.map((r) => r.id)).toEqual(['d', 'c']);
+  it('bands on the PANTRY calendar, never on the device clock', () => {
+    // The whole reason this changed. A run at 10pm pantry-time on the 3rd is already
+    // the 4th on a device an hour or two east; `occurrenceDate` is the slot the
+    // server resolved against `app_config.timezone`, and it is the only input.
+    const lateRun = on('2026-08-03', {
+      startsAt: instant(2026, 8, 3, 22, 0),
+      endsAt: instant(2026, 8, 4, 1, 0),
+    });
+    expect(bandRuns([lateRun], '2026-08-03', WEEK_START, WEEK_END).today).toHaveLength(1);
+    // And it is NOT today on the 4th, however the device's clock reads.
+    expect(bandRuns([lateRun], '2026-08-04', WEEK_START, WEEK_END).today).toHaveLength(0);
+  });
+
+  it('counts runs outside the week instead of dropping them', () => {
+    // This page has no week control; the board's Mine filter does. A run claimed for
+    // next Tuesday must not vanish from the only screen that lists a driver's runs.
+    const bands = bandRuns(
+      [on('2026-08-12'), on('2026-07-20'), on('2026-08-05')],
+      TODAY,
+      WEEK_START,
+      WEEK_END,
+    );
+    expect(bands.laterCount).toBe(2);
+    expect(bands.week.map((r) => r.id)).toEqual(['2026-08-05']);
+  });
+
+  it('keeps an old IN_PROGRESS run in its own week — D1: Phase 1 has no COMPLETED', () => {
+    // Nothing here reads `status` as a proxy for "over", so a run that never reached
+    // COMPLETED lands on its calendar day like any other.
+    const stale = on('2026-08-04', { status: 'IN_PROGRESS' });
+    const bands = bandRuns([stale], '2026-08-06', WEEK_START, WEEK_END);
+    expect(bands.week.map((r) => r.status)).toEqual(['IN_PROGRESS']);
   });
 
   it('dates a row from occurrenceDate, not from the instant', () => {
@@ -198,6 +244,17 @@ describe('my runs', () => {
       endsAt: instant(2026, 8, 5, 1, 0),
     });
     expect(formatRunWhen(late, NOW)).toBe('Tue, Aug 4 · 10:00 PM – 1:00 AM');
+  });
+
+  it("reads a run's hours in the PANTRY's zone when the session has one (A120)", () => {
+    // A fixed instant, so this asserts the zone and not the machine the suite is on.
+    const fixed = run({
+      startsAt: '2026-08-04T13:00:00.000Z',
+      endsAt: '2026-08-04T15:00:00.000Z',
+    });
+    expect(formatRunHours(fixed, 'UTC')).toBe('1:00 PM – 3:00 PM');
+    expect(formatRunHours(fixed, 'America/Chicago')).toBe('8:00 AM – 10:00 AM');
+    expect(formatRunWhen(fixed, NOW, 'UTC')).toBe('Tue, Aug 4 · 1:00 PM – 3:00 PM');
   });
 });
 

@@ -43,10 +43,13 @@ export function fetchReceiveDone(
  * `IN_PROGRESS` shifts and nothing else (A162). A shift missing from that list is
  * one the server will not accept a receiver's write on — which is the same guard it
  * applies before every weight change, so the screen is reading the existing rule
- * rather than inventing a second one. Being IN_PROGRESS is only *half* that guard;
- * the other half is the day-based edit window, which no receive response exposes to
- * the client at all. Erring in this direction is the safe one: the worst case is an
- * Edit that leads to a sheet where the server refuses the write and says why.
+ * rather than inventing a second one.
+ *
+ * Being IN_PROGRESS is only *half* that guard; the other half is the day-based edit
+ * window. That gap is CLOSED as of `D47` — `readReceiveDone` now surfaces the
+ * server's own evaluation of the window as `editWindowOpen` on `ReceiveDoneSummary`,
+ * and `canEditWeights` takes both halves. This read still answers only the first,
+ * and still errs toward offering when it cannot answer at all.
  *
  * A courtesy, never the rule. If this read fails the screen behaves exactly as it
  * did before (`architecture.md §4.5`) — the run is closed by `receiveDone()` inside

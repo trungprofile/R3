@@ -287,6 +287,8 @@ export function RunView({ run, onRun, onReload }: RunViewProps) {
       {completing ? (
         <CompleteRunModal
           run={run}
+          // D65: the review shows both halves of what the driver picked up.
+          extras={flagged}
           busy={completeBusy}
           onCancel={() => setCompleting(false)}
           onConfirm={(note) => void completeRun(note)}

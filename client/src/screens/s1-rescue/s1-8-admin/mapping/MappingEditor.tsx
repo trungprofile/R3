@@ -42,6 +42,7 @@
 import { useCallback, useState } from 'react';
 import { useAsyncData, useToast } from '../../../../app/index.ts';
 import {
+  BackLink,
   Button,
   Card,
   ConfirmModal,
@@ -224,6 +225,10 @@ export function MappingEditor({
     const editing = view.kind === 'edit' ? view.category : null;
     return (
       <div className="s18-map">
+        {/* §3's one way out, at the top and before the form's heading (D43) —
+            the same shape `MasterPanel` and `AccountForm` use for the editor of
+            a master record, since this is one too. */}
+        <BackLink label={COPY.ntfbLabel} onBack={openList} />
         <form
           className="s18-map__form"
           onSubmit={(event) => {
@@ -258,11 +263,10 @@ export function MappingEditor({
           {errorNote}
 
           <div className="s18-map__form-actions">
+            {/* The form's one high-emphasis action (§1 principle 1). The way out
+                is the BackLink above, not a second button here (D43). */}
             <Button variant="primary" type="submit" loading={busy}>
               {view.kind === 'create' ? COPY.createNtfb : COPY.saveNtfb}
-            </Button>
-            <Button variant="secondary" onClick={openList} disabled={busy}>
-              {COPY.back}
             </Button>
           </div>
 

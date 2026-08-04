@@ -10,6 +10,13 @@
 //
 // MISSED / at-risk is derived at read time and never stored (I7), so it arrives
 // as a flag beside the status rather than as a status value.
+//
+// "Returning" (D48) is the same kind of thing and for the same reason: there is no
+// `RETURNING` status and there must not be one. Heading back is a MILESTONE INSIDE
+// `IN_PROGRESS` — `Shift.pickup_completed_at`, I27 — and `services/execution.ts`
+// deliberately leaves `status` alone when it sets it. So the milestone arrives here
+// as the timestamp it is, and the chip reads it. Nothing about the state machine
+// moved; this is the word on a chip.
 
 import type { ShiftStatus } from '../api/shared.ts';
 
@@ -19,17 +26,39 @@ export interface StatusChipProps {
   mine?: boolean;
   /** Derived, staff view: unclaimed and close to its start (I7). */
   atRisk?: boolean;
+  /** I27's handoff milestone, straight off `ShiftSummary`. Set does NOT mean
+   *  completed — the run is still `IN_PROGRESS` and only the receiver's
+   *  receive-done closes it (I11). It only changes the IN_PROGRESS chip. */
+  pickupCompletedAt?: string | null;
 }
 
-interface ChipLook {
+export interface ChipLook {
   label: string;
   modifier: string;
 }
 
-function look(status: ShiftStatus, mine: boolean, atRisk: boolean): ChipLook {
+/**
+ * The chip's word and colour, as a pure function so it can be tested — there is no
+ * jsdom and no component renderer in this repo (build-plan §3/D5), so a rule that
+ * only exists inside a component body is a rule no test can reach.
+ *
+ * Order matters: the ownership overlay wins over CLAIMED, at-risk over OPEN, and
+ * the handoff milestone over IN_PROGRESS. None of the three overlaps another.
+ */
+export function statusChipLook({
+  status,
+  mine = false,
+  atRisk = false,
+  pickupCompletedAt = null,
+}: StatusChipProps): ChipLook {
   // Ownership overlay first, and only over CLAIMED.
   if (status === 'CLAIMED' && mine) return { label: 'Mine', modifier: 'mine' };
   if (atRisk && status === 'OPEN') return { label: 'At risk', modifier: 'at-risk' };
+  // D48. Same modifier as In progress on purpose: the run IS still in progress, so
+  // a second colour would claim a state change that I27 explicitly does not make.
+  if (status === 'IN_PROGRESS' && pickupCompletedAt !== null) {
+    return { label: 'Returning', modifier: 'in-progress' };
+  }
 
   switch (status) {
     case 'OPEN':
@@ -48,8 +77,8 @@ function look(status: ShiftStatus, mine: boolean, atRisk: boolean): ChipLook {
   }
 }
 
-export function StatusChip({ status, mine = false, atRisk = false }: StatusChipProps) {
-  const { label, modifier } = look(status, mine, atRisk);
+export function StatusChip(props: StatusChipProps) {
+  const { label, modifier } = statusChipLook(props);
   return <span className={`r3-chip r3-chip--${modifier}`}>{label}</span>;
 }
 

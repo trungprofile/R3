@@ -27,12 +27,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAsyncData, useRouter, useToast } from '../../../app/index.ts';
 import type { ScreenProps } from '../../../app/index.ts';
 import {
+  BackLink,
   Button,
   ConfirmModal,
   EmptyState,
   ErrorBlock,
+  Modal,
   SkeletonRows,
 } from '../../../components/index.ts';
+import { RECEIVE_INCOMPLETE_MESSAGE } from '../../../api/shared.ts';
 import type {
   ReceiveStopDetail,
   ReceiveStopSummary,
@@ -55,7 +58,6 @@ import {
   COPY,
   acceptKeypadValue,
   advanceTargetFor,
-  allStopsResolved,
   applyStopState,
   canAddWeight,
   formatWeight,
@@ -63,10 +65,14 @@ import {
   messageFor,
   normalizeWeight,
   orderedTiles,
+  outstandingStops,
   sheetIsOpen,
   shouldReloadAfter,
+  stopStateLabel,
+  submitDecision,
 } from './weight-entry.ts';
 import type { AdvanceTarget } from './weight-entry.ts';
+import '../../../components/sheet.css';
 import './weight-entry.css';
 
 /** Somewhere else to be. Held rather than followed while a number sits unadded
@@ -101,6 +107,8 @@ export function WeightEntryScreen({ params }: ScreenProps) {
   const [leaving, setLeaving] = useState<LeaveTarget | null>(null);
   const [confirmingSkip, setConfirmingSkip] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  /** `D62`: Submit was pressed on a run that still has a stop outstanding. */
+  const [showingOutstanding, setShowingOutstanding] = useState(false);
 
   // A different stop is a different sheet. Clear what the old one held before the
   // new numbers arrive, so no subtotal from the last store is ever on screen
@@ -162,6 +170,18 @@ export function WeightEntryScreen({ params }: ScreenProps) {
     // `stay`: nothing else on this run wants a weight and this stop is not
     // resolved either. Going anywhere would strand it, so the button does
     // nothing rather than something wrong.
+  };
+
+  /** `D62` — **Submit run**, which is present always rather than appearing once
+   *  the run is finished. It closes nothing: a finished run goes to Receive done
+   *  (S2.2b, the one completion action, I11) and an unfinished one gets the modal
+   *  naming what is left. Either way this screen writes nothing. */
+  const onSubmit = () => {
+    if (submitDecision(stops) === 'go') {
+      leave({ kind: 'receive-done' });
+      return;
+    }
+    setShowingOutstanding(true);
   };
 
   const onAdd = async () => {
@@ -268,10 +288,20 @@ export function WeightEntryScreen({ params }: ScreenProps) {
   };
 
   // --- the states before there is a sheet -----------------------------------
+  //
+  // `D60` took the nav off this screen, so the `BackLink` is the ONLY way out of
+  // every one of these branches as well as of the sheet itself — the same rule
+  // `D43` applied to S2.2b. Leaving it off the error and skeleton branches would
+  // make a failed read a dead end.
+
+  // Through `leave`, not `go`: it is one more way off this stop, and a number left
+  // on the keypad has to be warned about on all of them (S2.2's edge case).
+  const backToRuns = <BackLink label={COPY.backToRuns} onBack={() => leave({ kind: 'runs' })} />;
 
   if (stopId === '') {
     return (
       <div className="r3-sheet r3-sheet--message">
+        {backToRuns}
         <EmptyState
           title={COPY.noStopTitle}
           action={
@@ -290,6 +320,7 @@ export function WeightEntryScreen({ params }: ScreenProps) {
     if (sheet.error) {
       return (
         <div className="r3-sheet r3-sheet--message">
+          {backToRuns}
           <ErrorBlock error={sheet.error} onRetry={reloadAll} />
         </div>
       );
@@ -297,6 +328,7 @@ export function WeightEntryScreen({ params }: ScreenProps) {
     if (sheet.showLoading) {
       return (
         <div className="r3-sheet r3-sheet--message">
+          {backToRuns}
           <SkeletonRows rows={5} label={COPY.loadingSheet} />
         </div>
       );
@@ -310,19 +342,52 @@ export function WeightEntryScreen({ params }: ScreenProps) {
   const open = sheetIsOpen(detail);
   const tiles = orderedTiles(detail.tiles);
   const selectedTile = tiles.find((tile) => tile.categoryId === selectedCategoryId) ?? null;
-  const runDone = allStopsResolved(stops);
+  const outstanding = outstandingStops(stops);
 
+  // THREE REGIONS, and the only thing that scrolls is the categories (`D61`,
+  // `D62`).
+  //
+  // `D44` made this two panes and stopped the page scrolling, which was half the
+  // job: the working column was still a flex stack of stop strip, all-done
+  // banner, notes and keypad, so on a real 1024x768 tablet the number pad was
+  // below the fold — the exact thing `D44` set out to stop. Three blocks of
+  // chrome sat above the controls and each was expendable.
+  //
+  // Now, top to bottom:
+  //   BackLink + header     which store is being weighed, and the way out (`D60`)
+  //   progress row          the stop strip, "N of M done", Submit run (`D62`)
+  //   panes                 categories | entry column
+  //
+  // The entry column is FIXED — typed line, Add weight, the keypad, the stop
+  // total, the notes (`D68`, two lines each then scroll), Done and Skip all sit
+  // on screen at once and none of them moves. The category column takes the slack
+  // and is the one region allowed to scroll, which is `D44`'s accepted fallback
+  // and remains it.
+  //
+  // Order matters below the two-pane breakpoint, where the panes stack: the
+  // categories come first in the DOM so the reading order matches the visual one
+  // side by side, and the entry column falls under them.
   return (
-    <div className="r3-sheet">
+    // `--progress` adds the fourth grid track this screen's progress row sits in
+    // (`D62`); the shell itself is `components/sheet.css`, shared with S2.3 (`D76`).
+    <div className="r3-sheet r3-sheet--progress">
+      {backToRuns}
+
       <header className="r3-sheet__head">
-        <div className="r3-sheet__title">
-          <p className="r3-sheet__label">{COPY.weighingLabel}</p>
-          <h1>{detail.donorName}</h1>
-        </div>
+        <p className="r3-sheet__label">{COPY.weighingLabel}</p>
+        <h1>{detail.donorName}</h1>
+      </header>
+
+      {/* `D62`: the strip is the progress row now, spanning both panes. It left
+          the working column because a run with four stops used to WRAP it onto a
+          second line and push the keypad down by a row; the row's height is
+          constant here whatever the stop count, and the strip scrolls sideways
+          instead. */}
+      <div className="r3-sheet__progress">
         {stops.length === 0 && strip.error ? (
-          // The sheet loaded and the strip did not. Weighing still works; the
-          // way between stops does not, so say so and offer the retry (§6)
-          // rather than leaving a silent dead button under the keypad.
+          // The sheet loaded and the strip did not. Weighing still works; the way
+          // between stops does not, so say so and offer the retry (§6) rather
+          // than leaving a silent dead button in the row.
           <ErrorBlock error={strip.error} onRetry={strip.reload} />
         ) : (
           <StopStrip
@@ -331,69 +396,75 @@ export function WeightEntryScreen({ params }: ScreenProps) {
             onPick={(id) => leave({ kind: 'stop', stopId: id })}
           />
         )}
-      </header>
 
-      {runDone ? (
-        <div className="r3-sheet__banner">
-          <p>{COPY.allDoneBanner}</p>
-          <Button variant="secondary" onClick={() => leave({ kind: 'receive-done' })}>
-            {COPY.goToReceiveDone}
-          </Button>
-        </div>
-      ) : null}
+        <Button variant="secondary" onClick={onSubmit}>
+          {COPY.submitRun}
+        </Button>
+      </div>
 
-      <StopNotes detail={detail} />
+      <div className="r3-sheet__panes">
+        <section className="r3-sheet__categories" aria-label={COPY.categoriesLabel}>
+          {tiles.length === 0 ? (
+            <EmptyState title={COPY.noCategories}>{COPY.noCategoriesNext}</EmptyState>
+          ) : (
+            <ul className="r3-tiles">
+              {tiles.map((tile) => (
+                <CategoryTile
+                  key={tile.categoryId}
+                  tile={tile}
+                  selected={tile.categoryId === selectedCategoryId}
+                  editingEntryId={editing?.entryId ?? null}
+                  open={open}
+                  onSelect={() => selectCategory(tile.categoryId)}
+                  onEditEntry={(entryRow) => startEdit(entryRow, tile.categoryName)}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
 
-      {open ? null : (
-        <p className="r3-sheet__closed">
-          <strong>{detail.state === 'SKIPPED' ? COPY.skippedTitle : COPY.movedTitle}</strong>{' '}
-          {detail.state === 'SKIPPED' ? COPY.skippedNext : COPY.movedNext}
-        </p>
-      )}
+        <section className="r3-sheet__work" aria-label={COPY.workLabel}>
+          {open ? null : (
+            <p className="r3-sheet__closed">
+              <strong>{detail.state === 'SKIPPED' ? COPY.skippedTitle : COPY.movedTitle}</strong>{' '}
+              {detail.state === 'SKIPPED' ? COPY.skippedNext : COPY.movedNext}
+            </p>
+          )}
 
-      {tiles.length === 0 ? (
-        <EmptyState title={COPY.noCategories}>{COPY.noCategoriesNext}</EmptyState>
-      ) : (
-        <ul className="r3-tiles">
-          {tiles.map((tile) => (
-            <CategoryTile
-              key={tile.categoryId}
-              tile={tile}
-              selected={tile.categoryId === selectedCategoryId}
-              editingEntryId={editing?.entryId ?? null}
-              open={open}
-              onSelect={() => selectCategory(tile.categoryId)}
-              onEditEntry={(entryRow) => startEdit(entryRow, tile.categoryName)}
+          {open ? (
+            <KeypadPanel
+              detail={detail}
+              selectedTile={selectedTile}
+              entry={entry}
+              onEntryChange={(next) => setEntry((current) => acceptKeypadValue(current, next))}
+              editing={editing}
+              busy={busy}
+              onAdd={() => void onAdd()}
+              onSave={() => void onSave()}
+              onCancelEdit={() => {
+                setEditing(null);
+                setEntry('');
+              }}
+              onRemove={() => setConfirmingRemove(true)}
+              onAdvance={() => follow(advanceTargetFor(stops, stopId))}
+              onSkip={() => setConfirmingSkip(true)}
+              /* `D68`: the notes land at the foot of the ACTIONS column, filling
+                 the space beside the keypad that Add weight and Done left empty.
+                 Read-only context for the numbers above them, never a step in the
+                 job — so they take the leftover room and none of anyone else's. */
+              notes={<StopNotes detail={detail} />}
             />
-          ))}
-        </ul>
-      )}
+          ) : (
+            <ClosedPanel
+              detail={detail}
+              busy={busy}
+              onAdvance={() => follow(advanceTargetFor(stops, stopId))}
+              notes={<StopNotes detail={detail} />}
+            />
+          )}
 
-      {open ? (
-        <KeypadPanel
-          detail={detail}
-          selectedTile={selectedTile}
-          entry={entry}
-          onEntryChange={(next) => setEntry((current) => acceptKeypadValue(current, next))}
-          editing={editing}
-          busy={busy}
-          onAdd={() => void onAdd()}
-          onSave={() => void onSave()}
-          onCancelEdit={() => {
-            setEditing(null);
-            setEntry('');
-          }}
-          onRemove={() => setConfirmingRemove(true)}
-          onAdvance={() => follow(advanceTargetFor(stops, stopId))}
-          onSkip={() => setConfirmingSkip(true)}
-        />
-      ) : (
-        <ClosedPanel
-          detail={detail}
-          busy={busy}
-          onAdvance={() => follow(advanceTargetFor(stops, stopId))}
-        />
-      )}
+        </section>
+      </div>
 
       {confirmingSkip ? (
         <ConfirmModal
@@ -429,6 +500,44 @@ export function WeightEntryScreen({ params }: ScreenProps) {
             goTo(target);
           }}
         />
+      ) : null}
+
+      {/* `D62`: Submit on a run that is not finished. It names what is left and
+          goes NOWHERE — the receiver's next step is one of these stops, and the
+          strip behind the modal is how they get to it. Nothing to confirm, so no
+          Cancel: one button, and it closes the modal.
+
+          The sentence is `RECEIVE_INCOMPLETE_MESSAGE`, the same one the server
+          refuses with (I12) and the same one S2.2b's BLOCKED stage shows, so the
+          two screens cannot word this differently. */}
+      {showingOutstanding ? (
+        <Modal
+          question={COPY.notReady}
+          onCancel={() => setShowingOutstanding(false)}
+          showCancel={false}
+          actions={
+            <Button variant="primary" onClick={() => setShowingOutstanding(false)}>
+              {COPY.keepWeighing}
+            </Button>
+          }
+        >
+          <p className="r3-sheet__blocked">{RECEIVE_INCOMPLETE_MESSAGE}</p>
+          {outstanding.length > 0 ? (
+            <>
+              <p className="r3-sheet__outstanding-label">{COPY.outstandingLabel}</p>
+              <ul className="r3-sheet__outstanding">
+                {outstanding.map((item) => (
+                  <li key={item.id}>
+                    <span className="r3-sheet__outstanding-name">{item.donorName}</span>{' '}
+                    <span className="r3-sheet__outstanding-state">
+                      {stopStateLabel(item.state)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </Modal>
       ) : null}
     </div>
   );

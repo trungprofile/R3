@@ -33,10 +33,13 @@ import {
   targetForStops,
   toBands,
   toCard,
+  toDonationPanel,
   toCards,
   weekdayShort,
 } from './run-picker.ts';
 import type {
+  DonationSummary,
+  ReceiveDonationSummary,
   ReceiveRunSummary,
   ReceiveStopState,
   ReceiveStopSummary,
@@ -72,6 +75,14 @@ function run(over: Partial<ReceiveRunSummary> = {}): ReceiveRunSummary {
     doneCount,
     totalCount: stops.length,
     readyForReceiveDone: stops.length > 0 && doneCount === stops.length,
+    // `D66` — open unless a case says otherwise, which is the state nearly every
+    // run on this screen is in.
+    editWindowOpen: true,
+    // `D48`/I27 — a milestone inside IN_PROGRESS, unset until the driver taps it.
+    pickupCompletedAt: null,
+    // `COMPLETED` today, kept on the list read-only. Off by default: nearly every
+    // run this screen reasons about is still open.
+    closed: false,
     ...over,
     stops,
   };
@@ -108,8 +119,14 @@ describe('the run states its own date, never the device"s', () => {
     // rather than about the run, which is the drift the rule exists to prevent.
     const label = runSubtitle(run(), PANTRY);
     expect(label).not.toMatch(/today|yesterday|tomorrow/i);
+    // EVERY string this screen owns, with no exemption. The donation panel used to
+    // need three (`D67`'s "recorded today"); `D76` bounded both its lists to the
+    // receiver's edit window instead, so there is no longer a string on this
+    // screen that states a fact about a calendar day.
     for (const sentence of Object.values(COPY)) {
-      if (typeof sentence === 'string') expect(sentence).not.toMatch(/\btoday\b/i);
+      if (typeof sentence === 'string') {
+        expect(sentence).not.toMatch(/\btoday\b/i);
+      }
     }
   });
 
@@ -442,6 +459,14 @@ describe('the three bands', () => {
     occurrenceDate: '2026-04-14',
     stops: [stop({ state: 'PENDING' })],
   });
+  /** `D66` — past the receiver's edit window, with weighing still outstanding. */
+  const lapsed = run({
+    shiftId: 'lapsed',
+    occurrenceDate: '2026-04-01',
+    startsAt: '2026-04-01T14:00:00.000Z',
+    editWindowOpen: false,
+    stops: [stop({ state: 'PENDING' })],
+  });
 
   it('leads with today"s runs that still want weighing', () => {
     expect(bandFor(todayToWeigh, TODAY)).toBe('EXPECTED');
@@ -477,17 +502,150 @@ describe('the three bands', () => {
     expect(bandFor(run({ occurrenceDate: '2027-01-01' }), '2026-12-31')).toBe('LATER');
   });
 
-  it('splits the list into the three bands, oldest first inside each', () => {
-    const bands = toBands([tomorrow, todayReady, todayToWeigh, lastWeek], TODAY, PANTRY);
+  it('splits the list into the bands, oldest first inside each', () => {
+    const bands = toBands([tomorrow, todayReady, todayToWeigh, lastWeek, lapsed], TODAY, PANTRY);
+    expect(bands.lapsed.map((each) => each.run.shiftId)).toEqual(['lapsed']);
     expect(bands.expected.map((each) => each.run.shiftId)).toEqual(['last-week', 'today-todo']);
     expect(bands.finished.map((each) => each.run.shiftId)).toEqual(['today-ready']);
     expect(bands.later.map((each) => each.run.shiftId)).toEqual(['tomorrow']);
   });
 
   it('drops no run on the floor', () => {
-    const runs = [tomorrow, todayReady, todayToWeigh, lastWeek];
+    const runs = [tomorrow, todayReady, todayToWeigh, lastWeek, lapsed];
     const bands = toBands(runs, TODAY, PANTRY);
-    expect(bands.expected.length + bands.finished.length + bands.later.length).toBe(runs.length);
+    expect(
+      bands.expected.length + bands.finished.length + bands.later.length + bands.lapsed.length,
+    ).toBe(runs.length);
+  });
+
+  it('bands a lapsed run by its window and never by the calendar (`D66`)', () => {
+    expect(bandFor(lapsed, TODAY)).toBe('LAPSED');
+    // The window decides FIRST, so a run dated tomorrow whose window is somehow
+    // closed is lapsed rather than "later", and — the case that matters — an
+    // overdue run whose window is still OPEN stays in the leading band. Those are
+    // two different questions and a date comparison answers neither (A162).
+    expect(bandFor(run({ occurrenceDate: '2026-04-22', editWindowOpen: false }), TODAY)).toBe(
+      'LAPSED',
+    );
+    expect(bandFor(lastWeek, TODAY)).toBe('EXPECTED');
+  });
+
+  it('never calls a fully-weighed run too late to weigh', () => {
+    // QA round 5, from a screenshot. A run from a fortnight earlier, BOTH stops
+    // reading "weighed", sat under "Too late to weigh" — which told the receiver
+    // they had missed something when nothing had been missed. There is nothing
+    // left to weigh on such a run, so the closed window costs it nothing: the one
+    // remaining action is receive-done, and that is deliberately not window-gated.
+    const lapsedButWeighed = run({
+      shiftId: 'lapsed-ready',
+      occurrenceDate: '2026-04-01',
+      startsAt: '2026-04-01T14:00:00.000Z',
+      editWindowOpen: false,
+      stops: [stop({ state: 'WEIGHED' }), stop({ state: 'SKIPPED' })],
+    });
+    expect(lapsedButWeighed.readyForReceiveDone).toBe(true);
+    expect(bandFor(lapsedButWeighed, TODAY)).toBe('FINISHED');
+
+    // Which leaves the lapsed band holding exactly the runs the window DID take
+    // something from — the ones with a stop nobody can now resolve or close.
+    expect(lapsed.readyForReceiveDone).toBe(false);
+    expect(bandFor(lapsed, TODAY)).toBe('LAPSED');
+
+    // A future run that is somehow already resolved is still "later", not
+    // "finished": readiness does not override the calendar, it only outranks the
+    // window.
+    expect(bandFor(run({ occurrenceDate: '2027-01-01' }), '2026-12-31')).toBe('LATER');
+  });
+
+  it('stops saying a driver is returning once the food is in the building', () => {
+    // `pickup_completed_at` is set once and never cleared, so on its own it says
+    // "returning" forever. QA saw a run from a fortnight earlier, every stop
+    // weighed, announcing that its driver was on the way back. Tied to the stops
+    // rather than to a clock, because the stops are what make it untrue: if every
+    // one is resolved, the receiver has already weighed what the driver brought.
+    const stillComing = run({
+      pickupCompletedAt: '2026-04-21T16:30:00.000Z',
+      stops: [stop({ state: 'WEIGHED' }), stop({ state: 'PENDING' })],
+    });
+    expect(toCard(stillComing, PANTRY).count).toBe(COPY.returning);
+
+    const allIn = run({
+      pickupCompletedAt: '2026-04-21T16:30:00.000Z',
+      stops: [stop({ state: 'WEIGHED' }), stop({ state: 'SKIPPED' })],
+    });
+    expect(toCard(allIn, PANTRY).count).not.toBe(COPY.returning);
+    expect(toCard(allIn, PANTRY).count).toBe(COPY.doneCount(2, 2));
+  });
+
+  it("keeps today's closed runs on the screen, read-only", () => {
+    // Receive-done used to make a run vanish the moment it was confirmed, which is
+    // exactly when a receiver wants another look at what they just weighed. The
+    // server bounds the band to the pantry's today; this end shows it and offers
+    // nothing, because COMPLETED is terminal (I10).
+    const justClosed = run({
+      shiftId: 'closed-today',
+      closed: true,
+      stops: [stop({ state: 'WEIGHED' }), stop({ state: 'WEIGHED' })],
+    });
+    expect(bandFor(justClosed, TODAY)).toBe('CLOSED');
+
+    const card = toCard(justClosed, PANTRY);
+    expect(card.action).toBe('NONE');
+    expect(card.notice).toBe(COPY.closedNotice);
+    // It still opens — to S2.2b, which since `D46` names who signed off and when.
+    // A look, not a step.
+    expect(card.target).toEqual({ screen: 'receive-done', params: { shiftId: 'closed-today' } });
+
+    // Closed outranks every other band, including lapsed: "the weighing window has
+    // closed" is true of it and is the less useful of two true things.
+    const closedAndLapsed = run({ closed: true, editWindowOpen: false });
+    expect(bandFor(closedAndLapsed, TODAY)).toBe('CLOSED');
+    expect(toCard(closedAndLapsed, PANTRY).action).toBe('NONE');
+
+    // And it does not leak into the working bands.
+    const bands = toBands([justClosed, todayToWeigh], TODAY, PANTRY);
+    expect(bands.closed.map((each) => each.run.shiftId)).toEqual(['closed-today']);
+    expect(bands.finished).toHaveLength(0);
+    expect(bands.expected.map((each) => each.run.shiftId)).toEqual(['today-todo']);
+  });
+
+  it('keeps a lapsed run reachable, and pointed at the one thing left (A162)', () => {
+    // THE no-stranding property. `receiveDone` is not window-gated and this list is
+    // its only route, so a lapsed run must still be listed and must still lead to
+    // S2.2b — filtering it out would leave it IN_PROGRESS with nothing able to
+    // close it.
+    const bands = toBands([lapsed], TODAY, PANTRY);
+    expect(bands.lapsed).toHaveLength(1);
+
+    const card = bands.lapsed[0]!;
+    expect(card.action).toBe('RECEIVE_DONE');
+    expect(card.actionLabel).toBe(COPY.finishRun);
+    expect(card.target).toEqual({ screen: 'receive-done', params: { shiftId: 'lapsed' } });
+    // And it says why, in the row rather than only in the heading.
+    expect(card.notice).toBe(COPY.lapsedNotice);
+    expect(card.ariaLabel).toContain(COPY.lapsedNotice);
+  });
+
+  it('offers no weighing on a lapsed run, however fresh the stop list is', () => {
+    // The re-read on the tap cannot reopen a closed window, so a still-unresolved
+    // stop must not send the receiver to a sheet that refuses every write.
+    expect(targetForStops('lapsed', [stop({ state: 'PENDING' })], false)).toEqual({
+      screen: 'receive-done',
+      params: { shiftId: 'lapsed' },
+    });
+    // Open window, same stops: the sheet, as before.
+    expect(targetForStops('lapsed', [stop({ id: 'z', state: 'PENDING' })])).toEqual({
+      screen: 'receive-stop',
+      params: { shiftId: 'lapsed', stopId: 'z' },
+    });
+  });
+
+  it('offers nothing on a lapsed run with no stops at all', () => {
+    // Nothing to weigh and nothing to close (I12 needs at least one resolved stop),
+    // so the card is information only rather than a tap that leads nowhere.
+    const empty = run({ shiftId: 'bare', editWindowOpen: false, stops: [] });
+    expect(runAction(empty)).toBe('NONE');
+    expect(runTarget(empty)).toBeNull();
   });
 
   it('gives every band the same cards the flat list built', () => {
@@ -528,9 +686,9 @@ describe('card view', () => {
     expect(card.actionLabel).toBe('Next: Kroger');
   });
 
-  it('says Receive done on a ready run', () => {
+  it('labels the closing tap with the action, not with a completed fact', () => {
     const ready = toCard(run({ stops: [stop({ state: 'WEIGHED' })] }), PANTRY);
-    expect(ready.actionLabel).toBe(COPY.receiveDone);
+    expect(ready.actionLabel).toBe(COPY.finishRun);
   });
 
   it('gives a screen reader the whole row as one sentence', () => {
@@ -538,6 +696,22 @@ describe('card view', () => {
     expect(card.ariaLabel).toContain('Tuesday, April 21');
     expect(card.ariaLabel).toContain('1 of 3 done');
     expect(card.ariaLabel).toContain('Next: Kroger');
+  });
+
+  it('leads with the driver returning, in place of the progress count (`D48`)', () => {
+    const returning = toCard(
+      run({
+        pickupCompletedAt: '2026-04-21T17:30:00.000Z',
+        stops: [stop({ id: 'a', state: 'WEIGHED' }), stop({ id: 'b', state: 'PENDING' })],
+      }),
+      PANTRY,
+    );
+    expect(returning.count).toBe(COPY.returning);
+    expect(returning.ariaLabel).toContain(COPY.returning);
+    // Presentation only: I27 is a milestone inside IN_PROGRESS, so what the run
+    // offers is exactly what it offered before.
+    expect(returning.action).toBe('WEIGH');
+    expect(returning.actionLabel).toContain('Next:');
   });
 
   it('orders the cards as it orders the runs', () => {
@@ -549,6 +723,123 @@ describe('card view', () => {
       PANTRY,
     );
     expect(cards.map((each) => each.run.shiftId)).toEqual(['todo', 'ready']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The unscheduled-donation panel (`D67`, widened by `D76`)
+// ---------------------------------------------------------------------------
+
+function donation(over: Partial<DonationSummary> = {}): DonationSummary {
+  return {
+    id: 'd1',
+    shiftId: null,
+    status: 'CONFIRMED',
+    source: 'MASTER',
+    donorId: 'donor-1',
+    donorLabel: null,
+    donorDisplay: 'Lakeview Deli',
+    categoryId: 'cat-1',
+    categoryName: 'Bakery',
+    weight: '60.00',
+    reportable: true,
+    receivedDate: '2026-08-03',
+    note: null,
+    createdByName: 'Karen Diaz',
+    createdAt: '2026-08-03T15:00:00.000Z',
+    editableByReceiver: true,
+    ...over,
+  };
+}
+
+function summary(over: Partial<ReceiveDonationSummary> = {}): ReceiveDonationSummary {
+  return {
+    recordedCount: 0,
+    recordedTotal: '0.00',
+    pendingCount: 0,
+    suggested: [],
+    recorded: [],
+    ...over,
+  };
+}
+
+describe('the unscheduled-donation panel', () => {
+  it('summarises what has been recorded', () => {
+    const view = toDonationPanel(summary({ recordedCount: 2, recordedTotal: '145.00' }));
+    expect(view.summary).toBe('2 weighed · 145 lb');
+  });
+
+  it('trims a stored weight the way S2.3 does, and always shows the unit (§7)', () => {
+    expect(toDonationPanel(summary({ recordedCount: 1, recordedTotal: '12.50' })).summary)
+      .toBe('1 weighed · 12.5 lb');
+    expect(toDonationPanel(summary({ recordedCount: 1, recordedTotal: '0.00' })).summary)
+      .toBe('1 weighed · 0 lb');
+  });
+
+  it('says nothing about a count of nothing', () => {
+    expect(toDonationPanel(summary()).summary).toBe(COPY.donationNone);
+  });
+
+  it('still offers the way through when the counts never arrive', () => {
+    // The panel is the ONLY route to S2.3 — the nav entry is gone — so a failed or
+    // pending fetch must not take the affordance with it.
+    const view = toDonationPanel(null);
+    expect(view.title).toBe(COPY.unscheduled);
+    expect(view.addLabel).toBe(COPY.addWalkIn);
+    expect(view.summary).toBe(COPY.donationNone);
+    expect(view.suggested).toEqual([]);
+    expect(view.recorded).toEqual([]);
+  });
+
+  it("describes a driver's row as the empty form it is, not as missing data (D24)", () => {
+    const [row] = toDonationPanel(
+      summary({
+        pendingCount: 1,
+        suggested: [
+          donation({ status: 'SUGGESTED', categoryName: null, weight: null, note: null }),
+        ],
+      }),
+    ).suggested;
+    expect(row?.detail).toBe('no kind of food yet · no weight yet');
+    expect(row?.donor).toBe('Lakeview Deli');
+  });
+
+  it('names the driver, and quotes them when they left a note (D68)', () => {
+    const withNote = toDonationPanel(
+      summary({ suggested: [donation({ status: 'SUGGESTED', note: 'Two crates by the door' })] }),
+    ).suggested[0];
+    expect(withNote?.attribution).toBe('Karen Diaz: Two crates by the door');
+
+    const without = toDonationPanel(
+      summary({ suggested: [donation({ status: 'SUGGESTED', note: null })] }),
+    ).suggested[0];
+    expect(without?.attribution).toBe('Karen Diaz flagged this');
+  });
+
+  it('counts the suggestions in the heading only when there are some', () => {
+    expect(toDonationPanel(summary()).suggestedHeading).toBe(COPY.suggestedHeading);
+    expect(
+      toDonationPanel(summary({ suggested: [donation({ status: 'SUGGESTED' })] })).suggestedHeading,
+    ).toBe('Waiting for weights (1)');
+  });
+
+  it('offers the report switch only while the receiver still owns the row', () => {
+    const open = toDonationPanel(summary({ recorded: [donation()] })).recorded[0];
+    expect(open?.chip).toBe(COPY.reportedChip);
+    expect(open?.toggleLabel).toBe(COPY.stopReporting);
+
+    const notReported = toDonationPanel(
+      summary({ recorded: [donation({ reportable: false })] }),
+    ).recorded[0];
+    expect(notReported?.chip).toBe(COPY.notReportedChip);
+    expect(notReported?.toggleLabel).toBe(COPY.startReporting);
+
+    // Past the window the Reporter owns it (PRD cap 15), so this screen shows no
+    // control rather than one the server would refuse (§3 hides over disables).
+    const closed = toDonationPanel(
+      summary({ recorded: [donation({ editableByReceiver: false })] }),
+    ).recorded[0];
+    expect(closed?.toggleLabel).toBeNull();
   });
 });
 
@@ -593,6 +884,12 @@ describe('microcopy', () => {
     COPY.doneCount(2, 3),
     COPY.nextStop('Kroger'),
     COPY.bandLaterCount(3),
+    COPY.bandLapsedCount(2),
+    COPY.donationRecorded(2, '145 lb'),
+    COPY.suggestedCount(1),
+    COPY.flaggedBy('Karen Diaz'),
+    COPY.flaggedByNote('Karen Diaz', 'Two crates by the door'),
+    COPY.suggestedAria('Lakeview Deli', 'no kind of food yet · no weight yet'),
     COPY.runAria("Karen's Tue AM run", 'Riverside', '2 of 3 done', 'Next: Kroger'),
   ];
 
@@ -610,7 +907,9 @@ describe('microcopy', () => {
 
   it('keeps S2.1b"s fixed copy verbatim', () => {
     expect(COPY.header).toBe('Which run are you receiving?');
-    expect(COPY.receiveDone).toBe('Receive done');
+    // Not "All stops done, Receive done": that stated a fact where a label on an
+    // action belongs, and read as though the run were already closed.
+    expect(COPY.finishRun).toBe('Finish this run');
     expect(COPY.unscheduled).toBe('Unscheduled donation');
     expect(COPY.doneCount(2, 3)).toBe('2 of 3 done');
   });
@@ -620,7 +919,7 @@ describe('microcopy', () => {
     // the moment one reads "Today" it is a claim about a clock, and the date rule
     // this file exists for says every date on screen is the run's own. The general
     // ban above already covers "today"; these are the headings it applies to.
-    for (const heading of [COPY.bandExpected, COPY.bandFinished, COPY.bandLater]) {
+    for (const heading of [COPY.bandExpected, COPY.bandFinished, COPY.bandLater, COPY.bandLapsed]) {
       expect(heading).not.toMatch(/today|yesterday|tomorrow/i);
       expect(heading.length).toBeGreaterThan(0);
     }

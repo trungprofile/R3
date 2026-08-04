@@ -41,11 +41,8 @@ import {
   messageFor,
   nextInSameDonation,
   pickableDonors,
-  removeRow,
   shouldReloadAfter,
-  splitWorklist,
   tileCategories,
-  upsertRow,
   validateDraft,
   weightWithUnit,
 } from './donation.ts';
@@ -332,47 +329,8 @@ describe('validateDraft', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// The worklist
-// ---------------------------------------------------------------------------
-
-describe('splitWorklist', () => {
-  const rows = [
-    row({ id: 'a', status: 'CONFIRMED', createdAt: '2026-04-21T10:00:00.000Z' }),
-    row({ id: 'b', status: 'SUGGESTED', createdAt: '2026-04-23T10:00:00.000Z' }),
-    row({ id: 'c', status: 'SUGGESTED', createdAt: '2026-04-24T10:00:00.000Z' }),
-    row({ id: 'd', status: 'CONFIRMED', createdAt: '2026-04-24T11:00:00.000Z' }),
-  ];
-
-  it('separates what is waiting from what is recorded', () => {
-    const { pending, recorded } = splitWorklist(rows);
-    expect(pending.map((r) => r.id)).toEqual(['c', 'b']);
-    expect(recorded.map((r) => r.id)).toEqual(['d', 'a']);
-  });
-
-  it('does not mutate what it was given', () => {
-    const before = rows.map((r) => r.id);
-    splitWorklist(rows);
-    expect(rows.map((r) => r.id)).toEqual(before);
-  });
-});
-
-describe('upsertRow / removeRow', () => {
-  it('replaces a row in place when the server returns it updated', () => {
-    const rows = [row({ id: 'a' }), row({ id: 'b' })];
-    const next = upsertRow(rows, row({ id: 'b', status: 'CONFIRMED', weight: '10.00' }));
-    expect(next.map((r) => r.id)).toEqual(['a', 'b']);
-    expect(next[1]?.status).toBe('CONFIRMED');
-  });
-
-  it('puts a brand-new row at the top', () => {
-    expect(upsertRow([row({ id: 'a' })], row({ id: 'z' })).map((r) => r.id)).toEqual(['z', 'a']);
-  });
-
-  it('drops a discarded prefill', () => {
-    expect(removeRow([row({ id: 'a' }), row({ id: 'b' })], 'a').map((r) => r.id)).toEqual(['b']);
-  });
-});
+// The worklist helpers moved to S2.1b with the lists they fed (`D76`); the panel
+// re-reads rather than editing rows in place, so there is nothing left to split.
 
 describe('describeRow', () => {
   it('says a prefill has no weight yet rather than printing a zero', () => {
@@ -469,7 +427,12 @@ describe('errors', () => {
 // ---------------------------------------------------------------------------
 
 describe('microcopy', () => {
-  const sentences = Object.values(COPY);
+  // Two values are functions of a name (`D68`'s "[driver]: [note]" shape), so the
+  // sweep resolves them rather than skipping them — a forbidden word inside a
+  // template is still a forbidden word on the screen.
+  const sentences: string[] = Object.values(COPY).map((value) =>
+    typeof value === 'function' ? value('Karen Diaz') : value,
+  );
 
   it('says something everywhere', () => {
     for (const sentence of sentences) expect(sentence.length).toBeGreaterThan(0);
@@ -485,6 +448,13 @@ describe('microcopy', () => {
 
   it('labels the toggle exactly as the spec words it', () => {
     expect(COPY.reportLabel).toBe('Report this to North Texas Food Bank');
+  });
+
+  it('names the way out as a destination, not as a sentence (D43)', () => {
+    // `BackLink` draws a chevron beside this word, so a label reading "Back to
+    // the runs" says "back" twice. The label is where it goes: S2.1b's runs.
+    expect(COPY.back).toBe('Runs');
+    expect(COPY.back.toLowerCase()).not.toContain('back');
   });
 
   it('does not restate the shared copy it is required to quote verbatim', () => {

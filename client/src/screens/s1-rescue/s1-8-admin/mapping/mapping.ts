@@ -240,9 +240,10 @@ export const COPY = {
   notMatched: 'Not matched yet',
   archivedCategory: 'Archived',
   leaveUnmatched: 'Leave it unmatched',
-  /** The way out of the add/edit form below. §3 wants one way out of a screen,
-   *  and the form is still a screen even though the section around it is not. */
-  back: 'Back',
+  /* The way out of the add/edit form is the `BackLink` at the top of it (D43),
+     labelled `ntfbLabel` — the list it returns to, named as the list names
+     itself. The bare word "Back" it used to say was one of the eleven spellings
+     of one idea that `components/BackLink.tsx` exists to end. */
 
   /** Storage is the other half of a Meal Connect line item (D15), so it is chosen in
    *  the same breath as the category rather than on a screen of its own. Free text

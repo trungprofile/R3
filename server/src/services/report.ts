@@ -31,7 +31,11 @@
 // field write. Everything else is a read.
 
 import { sql } from 'kysely';
+import { DONATION_ON_ROUTE_MESSAGE } from '../../../shared/src/donation.js';
 import {
+  ATTACH_ALREADY_MESSAGE,
+  ATTACH_ANONYMOUS_MESSAGE,
+  ATTACH_LABEL_NOTE_PREFIX,
   EXPORT_BLOCKED_MESSAGE,
   type CategoryMapping,
   type NtfbCategory,
@@ -43,6 +47,7 @@ import {
   type ReportExport,
   type ReportLine,
   type UnmappedCategory,
+  type UnreportedDonation,
   type WeeklyReport,
 } from '../../../shared/src/report.js';
 import { db } from '../db/index.js';
@@ -429,6 +434,21 @@ interface ComputedReceipt {
   submitted: ReceiptSubmissionRow | null;
   /** Reportable only. Zero-pound lines are already dropped. */
   categories: ReceiptCategory[];
+  /**
+   * Whether ANY reportable row landed here, before the zero-pound filter below.
+   *
+   * Not the same as `categories.length > 0`, and the difference is the whole reason
+   * it exists (D54, D56):
+   *
+   *   - A receipt whose only line rounds away to nothing still has reportable
+   *     intake. It must keep its card, or the weight entry behind it has nowhere
+   *     to be corrected from now that the drill-in is gone.
+   *   - A receipt whose only intake is a walk-in somebody switched OFF has none. It
+   *     is not in the reported union at all (§6), so a card would tell the food bank
+   *     "No Pounds" about a store that was never on the route that day. Those rows
+   *     reach the reporter through the export's `notReported` list instead (D56).
+   */
+  hasReportable: boolean;
   /** Σ of this receipt's three deductions, whole pounds. `'0'` when there are none. */
   trashPounds: string;
   /** Everything NOT reportable, rounded at the same grain. Feeds `intakeTotal` only —
@@ -575,6 +595,7 @@ async function computeRange(from: string, to: string): Promise<{
         donorCode: row.donorCode,
         submitted: submissions.get(key) ?? null,
         categories: [],
+        hasReportable: false,
         trashPounds: '0',
         unreportablePounds: '0',
       };
@@ -595,6 +616,7 @@ async function computeRange(from: string, to: string): Promise<{
       continue;
     }
 
+    receipt.hasReportable = true;
     receipt.categories.push({
       categoryId: row.categoryId,
       categoryName: row.categoryName,
@@ -869,6 +891,7 @@ export async function reportEntries(
     id: string;
     kind: 'WEIGHT' | 'DONATION';
     day: string;
+    donor_id: string | null;
     donor_name: string;
     donor_code: string | null;
     category_id: string;
@@ -883,6 +906,9 @@ export async function reportEntries(
     SELECT we.id,
            'WEIGHT'                                        AS kind,
            to_char(s.occurrence_date, 'YYYY-MM-DD')        AS day,
+           -- (day, donor_id) is the RECEIPT's key (D55). Selected here so S3.1 can
+           -- put an entry under the card it belongs to rather than matching a name.
+           we.donor_id                                     AS donor_id,
            d.name                                          AS donor_name,
            d.ntfb_donor_code                               AS donor_code,
            we.category_id,
@@ -910,6 +936,7 @@ export async function reportEntries(
     SELECT ud.id,
            'DONATION'                                      AS kind,
            to_char(ud.received_date, 'YYYY-MM-DD')         AS day,
+           ud.donor_id                                     AS donor_id,
            -- The three source cases collapse here exactly as §8 says they do in the
            -- report: master donor, free-text label, or one "Unattributed" bucket.
            coalesce(d.name, ud.donor_label, 'Unattributed') AS donor_name,
@@ -944,6 +971,7 @@ export async function reportEntries(
     id: r.id,
     kind: r.kind,
     day: r.day,
+    donorId: r.donor_id,
     donorName: r.donor_name,
     donorCode: r.donor_code,
     categoryId: r.category_id,
@@ -1407,6 +1435,117 @@ const NOTE_ORDER: Record<ReceiptNoteRole, number> = {
   DONATION: 4,
 };
 
+/**
+ * The confirmed walk-ins the pantry decided NOT to report (D56).
+ *
+ * OUTSIDE THE UNION, AND THAT IS THE POINT. `domain-modeling.md §6` (locked) defines
+ * the report as `WeightEntry[!voided] ∪ UnscheduledDonation[CONFIRMED ∧ reportable]`,
+ * so these rows reach no line, no total and no receipt. Before D56 that also meant
+ * they reached no SCREEN: there was nothing on S3.1 for a reporter to flip, and the
+ * only way to turn one back on was a drill-in they never opened.
+ *
+ * So they travel BESIDE the receipts rather than among them. Folding them in would put
+ * unreported weight on a Meal Connect submission and break the conservation property
+ * D27 rests on — `net + trash == gross` over the reported set. Flipping one on moves
+ * it into the union on the next read, which is the only way it should ever move.
+ *
+ * `can_report` is I16(b) answered here rather than in the browser: `CONFIRMED ∧
+ * reportable=true ⇒ source non-null`, enforced in `setReportable` and reported here so
+ * the row can say why instead of offering a control that would 400.
+ *
+ * The weight is the RAW decimal. D28's whole-pound rounding is a property of a receipt
+ * line, and nothing here is one.
+ */
+async function unreportedDonations(
+  reader: Reader,
+  from: string,
+  to: string,
+): Promise<UnreportedDonation[]> {
+  const rows = await sql<{
+    id: string;
+    received_date: string;
+    donor_id: string | null;
+    donor_label: string | null;
+    donor_name: string;
+    category_name: string;
+    weight: string;
+    receiver_name: string;
+    note: string | null;
+  }>`
+    SELECT ud.id,
+           to_char(ud.received_date, 'YYYY-MM-DD')          AS received_date,
+           ud.donor_id,
+           ud.donor_label,
+           coalesce(d.name, ud.donor_label, 'Unattributed') AS donor_name,
+           c.name                                           AS category_name,
+           ud.weight::text                                  AS weight,
+           concat_ws(' ', u.first_name, u.last_name)        AS receiver_name,
+           ud.note
+    FROM unscheduled_donation ud
+    LEFT JOIN donor d  ON d.id = ud.donor_id
+    JOIN category c    ON c.id = ud.category_id
+    JOIN app_user u    ON u.id = ud.created_by
+    WHERE ud.status = 'CONFIRMED'
+      AND ud.reportable = FALSE
+      AND ud.received_date BETWEEN ${from}::date AND ${to}::date
+    ORDER BY ud.received_date, donor_name, c.name
+  `.execute(reader);
+
+  return rows.rows.map((r) => ({
+    id: r.id,
+    receivedDate: r.received_date,
+    donorName: r.donor_name,
+    categoryName: r.category_name,
+    weight: r.weight,
+    receiverName: r.receiver_name,
+    note: r.note,
+    // I16(b), the same predicate `requireSourceWhenReportable` applies on the write.
+    canReport: r.donor_id !== null || r.donor_label !== null,
+  }));
+}
+
+/**
+ * The label-only walk-ins in the range, keyed the way a receipt is (D72).
+ *
+ * `donor_id IS NULL AND donor_label IS NOT NULL` is exactly the row `I16(b)` accepts
+ * as a source and Meal Connect's own donor picker cannot be pointed at — reportable,
+ * carrying real weight, and unfileable forever unless somebody re-points it. The
+ * anonymous bucket is excluded on purpose: it has no name to re-point, and a receipt
+ * is never built from one anyway (it has no reportable intake, so `exportReceipts`
+ * drops the draft).
+ *
+ * A read, not a write. `attachDonorToDonations` is the write, and it re-checks
+ * everything below inside its own transaction rather than trusting this.
+ */
+async function labelDonationsByReceipt(
+  reader: Reader,
+  from: string,
+  to: string,
+): Promise<Map<string, string[]>> {
+  const rows = await sql<{ id: string; day: string; donor_label: string }>`
+    SELECT ud.id,
+           to_char(ud.received_date, 'YYYY-MM-DD') AS day,
+           ud.donor_label                          AS donor_label
+    FROM unscheduled_donation ud
+    WHERE ud.status = 'CONFIRMED'
+      AND ud.donor_id IS NULL
+      AND ud.donor_label IS NOT NULL
+      AND ud.received_date BETWEEN ${from}::date AND ${to}::date
+    ORDER BY ud.received_date, ud.donor_label, ud.id
+  `.execute(reader);
+
+  const byKey = new Map<string, string[]>();
+  for (const row of rows.rows) {
+    // The same key `intakeByReceipt` groups on: `coalesce(d.name, ud.donor_label, …)`
+    // IS the label when the donor is null, so the two agree by construction.
+    const key = receiptKey(row.day, null, row.donor_label);
+    const ids = byKey.get(key);
+    if (ids) ids.push(row.id);
+    else byKey.set(key, [row.id]);
+  }
+  return byKey;
+}
+
 interface ReceiptDraft {
   key: string;
   pickupDate: string;
@@ -1464,6 +1603,11 @@ export async function exportReceipts(from: string, to: string): Promise<ReportEx
   const { receipts: computed, trashTarget, submissions } = await computeRange(from, to);
   const context = await pickupContext(db, from, to);
   const notes = await intakeNotes(db, from, to);
+  // Beside the receipts, never among them (D56). See `unreportedDonations`.
+  const notReported = await unreportedDonations(db, from, to);
+  // D72 — which donations a label-only card is made of, so it can be pointed at a
+  // real store in one action.
+  const labelDonations = await labelDonationsByReceipt(db, from, to);
 
   const drafts = new Map<string, ReceiptDraft>();
 
@@ -1512,7 +1656,13 @@ export async function exportReceipts(from: string, to: string): Promise<ReportEx
       receipt.donorName,
       receipt.donorCode,
     );
-    draft.hasIntake = true;
+    // REPORTABLE intake, not intake (D56). A `(date, donor)` whose only intake is a
+    // walk-in somebody switched off is outside the reported union entirely, so a
+    // card for it would file "No Pounds" on a store that was never on the route that
+    // day — the exact thing the drop below exists to prevent. It is not lost: the
+    // reporter reaches it through `notReported`, and can put it back in the report
+    // from there. A store that ALSO has weighed intake keeps its card either way.
+    draft.hasIntake ||= receipt.hasReportable;
     for (const row of receipt.categories) {
       draft.lines.push({
         ntfbCategory: row.ntfbCategoryName ?? '',
@@ -1591,6 +1741,23 @@ export async function exportReceipts(from: string, to: string): Promise<ReportEx
 
     // Nothing happened, nothing was due, nothing to say. Emitting a card here would
     // put a store on the submission that was never on the route that day.
+    //
+    // D54 MADE THIS LINE LOAD-BEARING, so what it drops is now stated rather than
+    // assumed. S3.1's drill-in is gone and the receipt is the ONLY way to reach the
+    // cap-15 weight edit, so a receipt dropped here strands every WEIGHT behind it
+    // with no screen to correct it from.
+    //
+    // It drops exactly one thing: a `(date, donor)` with no stop that day and no
+    // reportable intake — which is a walk-in somebody switched off, and nothing else.
+    // A weight entry is reportable by construction (I15), so it always sets
+    // `hasReportable` and always keeps its card, down to a weight of zero. The
+    // switched-off walk-in is not lost either: it reaches the reporter through
+    // `notReported` (D56), which is where it can be put back into the report.
+    //
+    // `report-export.test.ts` asserts both halves directly — every entry the screen
+    // offers a correction on is reachable from a receipt or from that list, and no
+    // held-back donation manufactures a "No Pounds" card for a store that was never
+    // on the route.
     if (totalPounds === '0' && !notAttempted && !noPounds) continue;
 
     receipts.push({
@@ -1608,6 +1775,9 @@ export async function exportReceipts(from: string, to: string): Promise<ReportEx
       // no store to key the check-off on — the screen distinguishes the two from
       // `donorId`, not from this.
       submitted: draft.submitted,
+      // D72. Empty for every card that already has a store — there is nothing to
+      // re-point — and empty for one built only from scheduled stops.
+      labelDonationIds: draft.donorId === null ? labelDonations.get(draft.key) ?? [] : [],
     });
   }
 
@@ -1618,7 +1788,151 @@ export async function exportReceipts(from: string, to: string): Promise<ReportEx
       a.pickupDate.localeCompare(b.pickupDate) || a.donorName.localeCompare(b.donorName),
   );
 
-  return { from, to, receipts };
+  return { from, to, receipts, notReported };
+}
+
+// ---------------------------------------------------------------------------
+// Pointing a label-only walk-in at a real store (D72)
+// ---------------------------------------------------------------------------
+
+/**
+ * Give the walk-ins behind one label-only receipt a real store.
+ *
+ * THE PROBLEM IT FIXES. An `UnscheduledDonation` sources from `donor_id` OR
+ * `donor_label` and `I16(b)` accepts either, so a walk-in typed as "Sunrise Bagels" is
+ * legitimately `reportable = true` — its pounds are in the reported total and in Admin
+ * metrics. But a Meal Connect receipt keys on `(pickup date, donor_id)` and the
+ * check-off's own table requires a real store, so that receipt can never be ticked as
+ * filed. `domain-modeling.md` is right that this is deliberate at the moment the row is
+ * written: NTFB's donor picker cannot be pointed at a store that is not theirs either.
+ * What was NOT deliberate is that nothing re-pointed it once the store WAS added to our
+ * list, so those pounds sat outside NTFB permanently.
+ *
+ * NO SCHEMA CHANGE. Both columns exist and are nullable; this writes one and clears the
+ * other.
+ *
+ * `donor_label` CANNOT BE KEPT, AND THAT IS A TIER-1 RULE, NOT A CHOICE.
+ * `ck_ud_source_exclusive` (migration 0011) is `donor_id IS NULL OR donor_label IS
+ * NULL`, and `data-model.md §7` builds on it: the source discriminator is DERIVED from
+ * which of the two is set and is never stored. A row carrying both would be a fourth
+ * state nothing in the codebase reads. So the label is cleared here, and the plan's
+ * "keep it as provenance" is not available without a migration — which this is not.
+ *
+ * THE PROVENANCE STILL SURVIVES, in the one place it is actually read. The typed name
+ * is appended to the donation's own `note`, which `intakeNotes` already carries onto
+ * the receipt as a `DONATION` note — so the reporter filing the card can see the store
+ * name the receiver wrote down, beside the store it was filed under. A column nobody
+ * queries would have preserved less.
+ *
+ * `I16(b)` is satisfied throughout: source non-null before, source non-null after.
+ *
+ * ALL OF THEM OR NONE, in one SERIALIZABLE transaction (`architecture.md §4.1`). The
+ * card is `(pickup date, label)`; half of it moving to a store and half staying behind
+ * would leave two cards where the reporter was looking at one.
+ *
+ * TWO GUARDS, NEITHER OPTIONAL:
+ *
+ *   - **I29, the on-route donor guard.** If the donation has a shift, the chosen store
+ *     must not already be a `ShiftStop` of it — food from a scheduled stop is another
+ *     `weight_entry`, not an unscheduled donation, and this action is exactly the case
+ *     that can create the violation. Read inside the writing transaction, like the two
+ *     other I29 checks in `services/donation.ts`, so a stop added concurrently cannot
+ *     slip between the check and the write.
+ *   - **The store must be ACTIVE.** Donors are admin master data (I21) and a reporter
+ *     picks from them; naming an archived store would file against one the pantry has
+ *     stopped collecting from.
+ *
+ * D27 IS AFFECTED AND IS SUPPOSED TO BE. Trash rates are per donor (`donor.trash_rate_*`,
+ * null meaning "use the pantry default", which is NOT zero), so attaching a store
+ * changes this receipt's deduction. That MOVES weight between reported categories and
+ * never changes the reported total — the conservation property in the header, which
+ * `report-trash.test.ts` asserts directly, and which holds here because the deduction is
+ * recomputed per receipt from whatever rates now apply.
+ */
+/**
+ * The typed store name, folded into the donation's own note.
+ *
+ * `ATTACH_LABEL_NOTE_PREFIX` is what makes it findable later, and appending rather
+ * than replacing is what keeps the receiver's own words. Idempotent by construction:
+ * the attach can only run once per row, because the second one is refused by
+ * `ATTACH_ALREADY_MESSAGE`.
+ */
+function appendTypedName(note: string | null, label: string): string {
+  const line = `${ATTACH_LABEL_NOTE_PREFIX} ${label}.`;
+  const existing = (note ?? '').trim();
+  return existing === '' ? line : `${existing}\n${line}`;
+}
+
+export async function attachDonorToDonations(
+  actor: ReportActor,
+  donationIds: readonly string[],
+  donorId: string,
+): Promise<void> {
+  if (donationIds.length === 0) throw badRequest('Pick a pickup to file.');
+
+  await writeTransaction(async (tx) => {
+    const donor = await tx
+      .selectFrom('donor')
+      .select(['id', 'deactivated_at as deactivatedAt'])
+      .where('id', '=', donorId)
+      .executeTakeFirst();
+    if (!donor) throw notFound('No such store.');
+    if (donor.deactivatedAt !== null) {
+      throw conflict('That store is archived. Ask an admin to bring it back first.');
+    }
+
+    for (const id of donationIds) {
+      const row = await tx
+        .selectFrom('unscheduled_donation')
+        .select([
+          'id',
+          'status',
+          'note',
+          'shift_id as shiftId',
+          'donor_id as donorId',
+          'donor_label as donorLabel',
+        ])
+        .where('id', '=', id)
+        .executeTakeFirst();
+
+      if (!row) throw notFound('No such donation.');
+      // Only a recorded pickup has a receipt to merge into. A `SUGGESTED` prefill is
+      // the receiver's to finish (S2.3), and that screen already picks the store.
+      if (row.status !== 'CONFIRMED') throw conflict('That donation has not been recorded yet.');
+      if (row.donorId !== null) throw conflict(ATTACH_ALREADY_MESSAGE);
+      // No donor and no label: nobody wrote down where the food came from, and
+      // choosing a store here would be the app inventing provenance.
+      if (row.donorLabel === null) throw badRequest(ATTACH_ANONYMOUS_MESSAGE);
+
+      // I29 — the on-route donor guard.
+      if (row.shiftId !== null) {
+        const onRoute = await tx
+          .selectFrom('shift_stop')
+          .select('id')
+          .where('shift_id', '=', row.shiftId)
+          .where('donor_id', '=', donorId)
+          .executeTakeFirst();
+        if (onRoute) throw conflict(DONATION_ON_ROUTE_MESSAGE);
+      }
+
+      await tx
+        .updateTable('unscheduled_donation')
+        .set({
+          donor_id: donorId,
+          // Cleared because `ck_ud_source_exclusive` forbids both, and carried into
+          // the note instead so the reporter can still see what was written down.
+          donor_label: null,
+          note: appendTypedName(row.note, row.donorLabel),
+          updated_by: actor.id,
+          updated_at: sql<Date>`now()`,
+        })
+        .where('id', '=', id)
+        // Re-stated as a predicate so a concurrent attach cannot be overwritten by
+        // this one — the read above is not the guarantee, this is (`data-model.md §9`).
+        .where('donor_id', 'is', null)
+        .execute();
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

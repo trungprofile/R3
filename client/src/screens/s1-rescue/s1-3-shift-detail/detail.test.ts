@@ -199,6 +199,54 @@ describe('the coordinator note', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// D59 — a screen addresses one person
+// ---------------------------------------------------------------------------
+
+describe('D59 — the viewer as the subject of the run', () => {
+  // The account this decision came from: staff tier AND the Drive duty, looking at
+  // a run they claimed themselves.
+  const staffDriver: DetailViewer = { id: OWNER, isStaff: true, canDrive: true };
+
+  it('marks the owner as the subject and everyone else as not', () => {
+    expect(capabilitiesFor(shift(), owner, NOW).viewerIsSubject).toBe(true);
+    expect(capabilitiesFor(shift(), staffDriver, NOW).viewerIsSubject).toBe(true);
+    expect(capabilitiesFor(shift(), coordinator, NOW).viewerIsSubject).toBe(false);
+    expect(capabilitiesFor(shift(), otherDriver, NOW).viewerIsSubject).toBe(false);
+  });
+
+  it('hides the Driver row from the driver and shows it to everyone else', () => {
+    expect(capabilitiesFor(shift(), owner, NOW).showDriverRow).toBe(false);
+    expect(capabilitiesFor(shift(), staffDriver, NOW).showDriverRow).toBe(false);
+    expect(capabilitiesFor(shift(), coordinator, NOW).showDriverRow).toBe(true);
+    expect(capabilitiesFor(shift(), otherDriver, NOW).showDriverRow).toBe(true);
+  });
+
+  it('shows the Driver row on an unclaimed run — there is no subject to be', () => {
+    const open = shift({ status: 'OPEN', ownerId: null, ownerName: null });
+    expect(capabilitiesFor(open, coordinator, NOW).showDriverRow).toBe(true);
+    expect(capabilitiesFor(open, owner, NOW).showDriverRow).toBe(true);
+  });
+
+  it('does not offer a staff owner a note addressed to themselves', () => {
+    expect(capabilitiesFor(shift(), staffDriver, NOW).canEditStaffNote).toBe(false);
+  });
+
+  it('leaves the coordinator view untouched, note and all', () => {
+    const view = capabilitiesFor(shift({ staffNote: 'Back door after 4' }), coordinator, NOW);
+    expect(view.canEditStaffNote).toBe(true);
+    expect(view.showDriverRow).toBe(true);
+    expect(view.viewerIsSubject).toBe(false);
+  });
+
+  it('still gives a staff owner their own driver actions', () => {
+    // D59 changes what the screen SAYS, never what it lets the owner do.
+    const view = capabilitiesFor(shift(), staffDriver, NOW);
+    expect(view.canRelease).toBe(true);
+    expect(view.openRun).toBe('START');
+  });
+});
+
 describe('the conflict flag (I20 staff-assign exemption)', () => {
   it('shows the owner a banner when staff assigned them over a conflict', () => {
     const flagged = shift({ assignedOverConflict: true });

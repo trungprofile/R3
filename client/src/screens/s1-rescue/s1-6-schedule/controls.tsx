@@ -28,8 +28,13 @@ export interface DayPickerProps {
   /** The end of the chosen range. Equal to `from` outside range mode. */
   to?: string | null;
   onPick: (iso: string) => void;
-  /** Days before this are shown but not offered. */
-  earliest: string;
+  /** Days before this are shown but not offered. Omitted where the picker is
+   *  BROWSING rather than scheduling — D73's custom range has to be able to look
+   *  at a week that has already happened. */
+  earliest?: string | undefined;
+  /** Today at the pantry, for the ring on it. Defaults to `earliest`, which is
+   *  what it was on every scheduling picker: those are floored at today. */
+  today?: string | undefined;
   label: string;
   hint?: string;
 }
@@ -49,10 +54,14 @@ export function DayPicker({
   to = null,
   onPick,
   earliest,
+  today,
   label,
   hint,
 }: DayPickerProps) {
-  const atEarliestMonth = earliest.slice(0, 7) >= `${month.year}-${String(month.month).padStart(2, '0')}`;
+  const atEarliestMonth =
+    earliest !== undefined &&
+    earliest.slice(0, 7) >= `${month.year}-${String(month.month).padStart(2, '0')}`;
+  const marked = today ?? earliest;
   const rangeEnd = to ?? from;
 
   return (
@@ -118,7 +127,7 @@ export function DayPicker({
                 />
               );
             }
-            if (cell.iso < earliest) {
+            if (earliest !== undefined && cell.iso < earliest) {
               return (
                 <span key={cell.iso} className="s16-day s16-day--gone" aria-hidden="true">
                   {cell.day}
@@ -131,7 +140,7 @@ export function DayPicker({
             const classes = ['s16-day'];
             if (inRange) classes.push('s16-day--in-range');
             if (edge) classes.push('s16-day--edge');
-            if (cell.iso === earliest) classes.push('s16-day--today');
+            if (cell.iso === marked) classes.push('s16-day--today');
 
             return (
               <button

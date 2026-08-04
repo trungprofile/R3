@@ -26,28 +26,15 @@ function donationPath(id: string): string {
   return `/donations/${encodeURIComponent(id)}`;
 }
 
-/**
- * The worklist: every row awaiting confirmation, plus the recently confirmed
- * ones so a correction is reachable without hunting for it.
+/** One donation, by id — what `/donations/:id/weigh` opens on (`D76`).
  *
- * The recency window is the server's (7 days, A166) and is deliberately not
- * mirrored here — a second copy of an invented number is a drift hazard for no
- * gain.
+ * The row is fetched rather than handed over by the screen that linked here, so a
+ * reload on a docked tablet lands on the same donation instead of on nothing. It
+ * is also the fresher answer: on a shared tablet the row may already have been
+ * confirmed at the other counter, and a 404 here is how this screen finds out.
  */
-export function fetchWorklist(signal: AbortSignal): Promise<DonationSummary[]> {
-  return api.get<DonationSummary[]>('/donations', { signal });
-}
-
-/** What one driver flagged on one run. Used when S2.3 is opened in the context of
- *  a run being weighed, so the receiver sees that run's prefills rather than the
- *  whole pantry's. */
-export function fetchShiftDonations(
-  shiftId: string,
-  signal: AbortSignal,
-): Promise<DonationSummary[]> {
-  return api.get<DonationSummary[]>(`/shifts/${encodeURIComponent(shiftId)}/donations`, {
-    signal,
-  });
+export function fetchDonation(id: string, signal: AbortSignal): Promise<DonationSummary> {
+  return api.get<DonationSummary>(donationPath(id), { signal });
 }
 
 /** Active categories — the tile set renders from live data, never a hardcoded
@@ -63,7 +50,8 @@ export function fetchDonors(signal: AbortSignal): Promise<DonorSummary[]> {
 }
 
 export interface DonationScreenData {
-  rows: DonationSummary[];
+  /** The driver's row being weighed, or null on `/donations/new`. */
+  donation: DonationSummary | null;
   categories: CategorySummary[];
   donors: DonorSummary[];
 }
@@ -71,20 +59,24 @@ export interface DonationScreenData {
 /**
  * Everything the screen opens with, in one hook's worth of loading.
  *
- * Three requests rather than one endpoint, because the master lists are shared
+ * Separate requests rather than one endpoint, because the master lists are shared
  * with S1.8 and S2.2 and are cheap; `Promise.all` keeps them to a single round
  * trip's latency and a single skeleton (§6).
+ *
+ * The donors are fetched even on a driver's row, where the picker is not shown:
+ * the list is small, and a screen whose request shape changes with its mode is one
+ * more thing to get wrong for no measurable gain.
  */
 export async function fetchDonationScreen(
-  shiftId: string | null,
+  donationId: string | null,
   signal: AbortSignal,
 ): Promise<DonationScreenData> {
-  const [rows, categories, donors] = await Promise.all([
-    shiftId ? fetchShiftDonations(shiftId, signal) : fetchWorklist(signal),
+  const [donation, categories, donors] = await Promise.all([
+    donationId ? fetchDonation(donationId, signal) : Promise.resolve(null),
     fetchCategories(signal),
     fetchDonors(signal),
   ]);
-  return { rows, categories, donors };
+  return { donation, categories, donors };
 }
 
 /** Record a donation from scratch — a walk-in or a relayed store call. Born

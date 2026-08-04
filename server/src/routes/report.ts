@@ -33,6 +33,7 @@ import type {
 } from '../../../shared/src/report.js';
 import type { Tier } from '../../../shared/src/index.js';
 import {
+  attachDonorToDonations,
   clearReceiptSubmitted,
   createNtfbCategory,
   exportReceipts,
@@ -244,6 +245,38 @@ export const reportRoutes = [
       const input = body(req);
       await clearReceiptSubmitted(
         requiredString(input, 'pickupDate'),
+        requiredString(input, 'donorId'),
+      );
+      res.status(204).end();
+    },
+  }),
+
+  /**
+   * Point a label-only walk-in at a real store (D72), which is what makes its receipt
+   * fileable at all.
+   *
+   * `REPORTER`, like the rest of the report and for D17's reason: filing is the
+   * reporter's job and an Admin without the duty is not a Reporter (I2, set
+   * membership). Declared explicitly because a route that declares nothing is REJECTED
+   * rather than open (§4.3, default-deny).
+   *
+   * Parse, declare, shape — every rule (I29's on-route guard, the active-store check,
+   * the anonymous refusal, keeping `donor_label`) is in the service, inside the one
+   * transaction that writes.
+   */
+  defineRoute({
+    method: 'post',
+    path: '/report/donations/attach-donor',
+    access: REPORTER,
+    handler: async (req, res) => {
+      const input = body(req);
+      const ids = input['donationIds'];
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string' || id === '')) {
+        throw badRequest('donationIds must be a list of donation ids.');
+      }
+      await attachDonorToDonations(
+        actorOf(req),
+        ids as string[],
         requiredString(input, 'donorId'),
       );
       res.status(204).end();

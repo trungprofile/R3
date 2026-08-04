@@ -83,11 +83,12 @@
 
 /* --- Rows ---------------------------------------------------------------- */
 
-/* A row is a `ListRow` plus, for staff, the Edit link under it — a button cannot
- * nest inside the `<button>` that a tappable row is, so it sits below.
+/* A row is a `ListRow` plus, sometimes, the refused-claim sentence under it (D52) —
+ * that cannot go inside the `<button>` a tappable row is, so it sits below.
  *
  * That makes the separator the WRAPPER's: a line drawn by the row itself would run
- * between a run and its own Edit link, and the pair would read as two list items. */
+ * between a run and the sentence about it, and the pair would read as two list
+ * items. (Staff's Edit link used to sit here too; D63 took it out.) */
 .r3-board__row {
   border-bottom: 1px solid var(--border);
 }
@@ -96,10 +97,17 @@
   border-bottom: 0;
 }
 
-.r3-board__row-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 var(--space-4) var(--space-2);
+/* D52 — why that claim did not go through, on the row it belongs to.
+ *
+ * Inside the row's own border so it reads as part of that run and not as a banner
+ * about the board. Never colour alone (§2): it is indented under the row it names,
+ * carries the danger colour AND the server's whole sentence, and a screen reader
+ * gets it through `role="status"`. */
+.r3-board__refused {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-3);
+  font-size: var(--font-body);
+  color: var(--danger);
 }
 
 /* --- Day groups ---------------------------------------------------------- */
@@ -162,6 +170,19 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* --- The claim-scope prompt ---------------------------------------------- */
+
+/* Which run the prompt is about, above the sentence about scope. Bold because it
+ * is the thing a driver checks the modal against — "did I tap the right row?" */
+.r3-board__scope-run {
+  margin: 0 0 var(--space-2);
+  font-weight: 700;
+}
+
+.r3-board__scope-note {
+  margin: 0;
 }
 
 /* --- Skipped-dates list -------------------------------------------------- */

@@ -11,7 +11,6 @@
 // that reason and not a `<ul>`.
 
 import { ListItem, ListRow } from '../../../components/index.ts';
-import { COPY } from './run-picker.ts';
 import type { RunCardView } from './run-picker.ts';
 
 /** The stop strip: "Sam's ✓weighed · Kroger ●pending" (S2.1b). The glyph is
@@ -51,9 +50,9 @@ export function RunCard({ card, busy, onOpen }: RunCardProps) {
             card.action === 'RECEIVE_DONE' ? 's21b-side__go s21b-side__go--done' : 's21b-side__go'
           }
         >
-          {/* S2.2b's own name on the affordance that leads there, so the receiver
-              meets the same two words twice rather than two wordings once. */}
-          {card.action === 'RECEIVE_DONE' ? `${COPY.receiveDoneHint}, ` : ''}
+          {/* The label says what the tap DOES and nothing else. It used to be
+              prefixed with "All stops done, " — a completed fact in front of an
+              action, which read as "this run is already closed". */}
           {card.actionLabel}
         </span>
       )}
@@ -65,7 +64,17 @@ export function RunCard({ card, busy, onOpen }: RunCardProps) {
       <ListRow
         title={card.label}
         subtitle={card.subtitle}
-        meta={<StopDots stops={card.stops} />}
+        meta={
+          <>
+            <StopDots stops={card.stops} />
+            {/* `D66` — why a lapsed run is here and what is still possible on it.
+                Inside the row, not the band heading, because the heading names the
+                group and this is the sentence that says the run is not stuck. */}
+            {card.notice === null ? null : (
+              <span className="s21b-notice">{card.notice}</span>
+            )}
+          </>
+        }
         side={side}
         ariaLabel={card.ariaLabel}
         // A run with no stops is information only: `ListRow` renders a static row

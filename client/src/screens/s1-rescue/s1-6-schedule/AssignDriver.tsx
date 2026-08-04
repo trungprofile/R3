@@ -12,9 +12,27 @@
 // What staff may NOT confirm through is also the server's call, and this screen only
 // reflects it: a driver without the Drive duty, or a deactivated account, is a hard
 // refusal for staff as much as for self-select (`logic.ts`'s `assignIsBlocked`).
+//
+// TWO DIFFERENT QUESTIONS, AND THEY STACK (D74).
+//
+//   * "Karen is already on a run then" is I20's staff-assign exemption — deliberate
+//     override authority over a SCHEDULING conflict, decided by the server, shown
+//     inline, and confirmed by pressing "Assign anyway".
+//   * "Did you mean to take this run off Karen and give it to Dan?" is a question
+//     about the EDIT, decided here, and asked in a modal the same way taking a
+//     driver off already asks it. Replacing a driver is the same magnitude of change
+//     as removing one and used to confirm nothing.
+//
+// Both may be on screen for one assignment. Neither stands in for the other.
 
 import { useCallback, useState } from 'react';
-import { Button, EmptyState, ErrorBlock, SkeletonRows } from '../../../components/index.ts';
+import {
+  Button,
+  ConfirmModal,
+  EmptyState,
+  ErrorBlock,
+  SkeletonRows,
+} from '../../../components/index.ts';
 import { useAsyncData, useToast } from '../../../app/index.ts';
 import type { EligibilityPreviewResponse, ShapedUser, ShiftSummary } from '../../../api/shared.ts';
 import { assignDriver, checkEligibility, fetchUsers } from './api.ts';
@@ -38,8 +56,17 @@ export function AssignDriver({ run, onAssigned, onClose }: AssignDriverProps) {
   const [checking, setChecking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmSwap, setConfirmSwap] = useState(false);
 
   const drivers = driverChoices(state.data ?? []);
+
+  // D74: the run's own driver, and the row the picker opens on. It used to open on
+  // nobody, with the current driver sitting unmarked among everyone else — so the
+  // one fact staff most needed ("who has it now?") was the one the picker hid.
+  // Derived rather than held in state: the list arrives asynchronously, and a
+  // useState seeded before it lands would seed with null.
+  const current = drivers.find((driver) => driver.id === run.ownerId) ?? null;
+  const selected = picked ?? current;
 
   /** Tapping a name never assigns on its own: the check comes first, because the
    *  warning has to be on screen BEFORE staff confirms (S1.6). */
@@ -63,9 +90,11 @@ export function AssignDriver({ run, onAssigned, onClose }: AssignDriverProps) {
     try {
       await assignDriver(run.id, driver.id, confirmConflict);
       toast.success(COPY.assigned(driver.firstName));
+      setConfirmSwap(false);
       onAssigned();
       onClose();
     } catch (cause) {
+      setConfirmSwap(false);
       // A 409 here is either the confirmation this flow exists to collect
       // (`ASSIGN_CONFLICT`, which the preview should already have surfaced) or a
       // refusal staff cannot confirm through (`DRIVER_UNAVAILABLE`). Both arrive
@@ -87,6 +116,10 @@ export function AssignDriver({ run, onAssigned, onClose }: AssignDriverProps) {
   const reasons = preview?.eligibility.reasons ?? [];
   const blocked = preview !== null && assignIsBlocked(reasons);
   const warning = preview?.warning ?? null;
+  // A swap, not a first assignment: the run has a driver and a different one is
+  // chosen. Re-picking the driver already on the run is not a swap and asks nothing.
+  const swapping =
+    current !== null && picked !== null && picked.id !== current.id;
 
   return (
     <div className="s16-assign">
@@ -94,8 +127,15 @@ export function AssignDriver({ run, onAssigned, onClose }: AssignDriverProps) {
 
       <ChoiceList
         label={COPY.assignHeading}
-        items={drivers.map((driver) => ({ id: driver.id, label: fullName(driver) }))}
-        value={picked?.id ?? null}
+        items={drivers.map((driver) => ({
+          id: driver.id,
+          label: fullName(driver),
+          // Marked in words, not by the selected highlight alone — §2 forbids one
+          // channel carrying a meaning on its own, and "selected" and "already
+          // driving this" are two different facts about the same row.
+          ...(driver.id === run.ownerId ? { detail: COPY.currentDriver } : {}),
+        }))}
+        value={selected?.id ?? null}
         onSelect={(id) => {
           const driver = drivers.find((candidate) => candidate.id === id);
           if (driver) void pick(driver);
@@ -124,7 +164,14 @@ export function AssignDriver({ run, onAssigned, onClose }: AssignDriverProps) {
           <Button
             variant="primary"
             loading={saving}
-            onClick={() => void send(picked, warning !== null)}
+            onClick={() => {
+              // D74. A swap is confirmed first; a first assignment goes straight
+              // through, as it always has. I20's conflict confirmation rides along
+              // in `confirmConflict` either way — it is a different question and is
+              // not satisfied by having answered this one.
+              if (swapping) setConfirmSwap(true);
+              else void send(picked, warning !== null);
+            }}
           >
             {warning !== null ? COPY.assignAnyway : COPY.assign}
           </Button>
@@ -133,6 +180,17 @@ export function AssignDriver({ run, onAssigned, onClose }: AssignDriverProps) {
           Cancel
         </Button>
       </div>
+
+      {confirmSwap && picked !== null && current !== null ? (
+        <ConfirmModal
+          question={COPY.swapDriverQuestion(fullName(current), fullName(picked))}
+          consequence={COPY.swapDriverConsequence(fullName(current))}
+          confirmLabel={COPY.swapDriverGo}
+          busy={saving}
+          onConfirm={() => void send(picked, warning !== null)}
+          onCancel={() => setConfirmSwap(false)}
+        />
+      ) : null}
     </div>
   );
 }

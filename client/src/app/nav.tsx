@@ -9,15 +9,32 @@
 //
 // D30 undid the other half of D22 — the three headings. PICKING UP / RECEIVING /
 // OFFICE grouped seven entries into three runs of two or three, which is a map of
-// the duty model rather than of the app: the person who needs the grouping is the
-// one holding two duties, and they were already reading only two of the three
-// groups. ONE ENTRY PER CAPABILITY, one unheaded list, the same list everywhere:
+// the duty model rather than of the app. ONE ENTRY PER CAPABILITY, one unheaded
+// list, the same list everywhere. That rule stands; two things about it moved.
 //
-//   Home · Pick up food · Receive a load · Report · Schedule · Admin · Inbox
+// D51 REPLACES D30's ORDER. D30 listed the entries "in the order a week runs" —
+// pick the food up, receive it, report it. Read top-down that puts a volunteer's
+// screens above an admin's, so the person with the most to do scrolls furthest for
+// the thing only they can reach. The list now descends by privilege, which puts the
+// narrowest capability first and means a shorter list is always a PREFIX-free
+// subset of a longer one rather than a differently-shuffled version of it:
 //
-// Two entries went with the headings rather than under them:
-//   - My shifts is a tab of the Board now, so a second link to the same screen
-//     would be the two-links-to-one-place problem D18 already settled for Metrics.
+//   Home · Admin · Schedule · Report · Receive a load · Today's pickup · Shift board · Inbox
+//
+// D49 SOFTENS D30's "one entry per capability" for DRIVE, and only for DRIVE.
+// Driving is two jobs, not one: the runs you already own (today, and the rest of
+// the week) and the board you claim new ones from. D30 nested the first inside the
+// second as `?tab=mine`, which then grew a second tab row inside itself — two
+// levels of tabs for a driver looking for their own morning. They are two sibling
+// entries now:
+//   - Today's pickup → `/my-shifts`, the driver's own runs. Named for the day it
+//     opens on rather than for the job (D64): the page leads with today's run.
+//   - Shift board  → `/board`, the claimable board and When I'm away.
+// This is not a licence to split any other capability; it is a statement that DRIVE
+// was two capabilities that had been written down as one.
+//
+// Two entries are still absent, for D30's original reason:
+//   - Metrics is Admin's first tab (D18), so the Admin entry leads to it.
 //   - Log a donation is reached from `Unscheduled donation` on the receive run
 //     picker, which is where a receiver already is when they need it.
 //
@@ -25,12 +42,10 @@
 //   - Desktop: the whole list in `SideNav`.
 //   - Phone AND tablet: a shorter, CAPPED list in `BottomNav`. §3 caps the bottom
 //     nav at four items with icon and label, which is why this is a different list
-//     rather than the same one drawn smaller — six destinations, room for four.
-//     Office work is reached through the Home hub on those two surfaces, which is
-//     what earns the hub its place (D22).
-//
-// Metrics is absent on purpose. D18 made it S1.8's first tab, so the Admin entry
-// leads to it; a second entry would be two links to one screen.
+//     rather than the same one drawn smaller — up to eight destinations, room for
+//     four. Office work is reached through the Home hub on those two surfaces,
+//     which is what earns the hub its place (D22). The cap is the design, not a
+//     truncation of the desktop list.
 //
 // Tier is hierarchical, duty is set membership — see `access.ts`.
 
@@ -38,6 +53,7 @@ import type { ReactNode } from 'react';
 import {
   BellIcon,
   BoardIcon,
+  CalendarIcon,
   ChartIcon,
   ClockIcon,
   DocumentIcon,
@@ -81,12 +97,18 @@ const home = () => entry('home', 'Home', <HomeIcon />);
 const inbox = () => entry('inbox', 'Inbox', <BellIcon />);
 const board = (label: string) => entry('board', label, <BoardIcon />);
 const receive = (label: string) => entry('receive-runs', label, <ChartIcon />);
+/** The driver's own runs (D49). A calendar rather than a truck: what this entry
+ *  answers is "when am I out?", and the board beside it is the list of runs. */
+const myShifts = (label: string) => entry('my-shifts', label, <CalendarIcon />);
 
 /**
- * The desktop nav: one entry per capability this user holds, in one flat run (D30).
+ * The desktop nav: one entry per capability this user holds, in one flat run (D30),
+ * descending by privilege (D51), with DRIVE's two entries adjacent (D49).
  *
- * The order is the order a week runs — pick the food up, receive it, report it —
- * with the two screens everyone has bracketing it.
+ *   Home · Admin · Schedule · Report · Receive a load · Today's pickup · Shift board · Inbox
+ *
+ * Eight is the whole list and it belongs to exactly one person: an Admin holding
+ * all three duties. Everyone else reads a subset in the same relative order.
  */
 export function navSectionsFor(user: CurrentUser): NavSection[] {
   const drives = hasDuty(user, 'DRIVE');
@@ -94,51 +116,73 @@ export function navSectionsFor(user: CurrentUser): NavSection[] {
 
   const items: NavEntry[] = [home()];
 
-  // §4 gives the board to the Staff tier as well as to drivers: a coordinator
-  // watches claims land there. D30 renamed it to match the Home card — a
-  // coordinator opening it is still watching people pick food up.
-  if (drives || staff) items.push(board('Pick up food'));
-  if (hasDuty(user, 'RECEIVE') && shipped('receive-runs')) items.push(receive('Receive a load'));
+  if (atLeastTier(user, 'ADMIN')) items.push(entry('admin', 'Admin', <PeopleIcon />));
+  if (staff) items.push(entry('schedule', 'Schedule', <ClockIcon />));
   if (hasDuty(user, 'REPORT') && shipped('report')) {
     items.push(entry('report', 'Report', <DocumentIcon />));
   }
-  if (staff) items.push(entry('schedule', 'Schedule', <ClockIcon />));
-  if (atLeastTier(user, 'ADMIN')) items.push(entry('admin', 'Admin', <PeopleIcon />));
+  if (hasDuty(user, 'RECEIVE') && shipped('receive-runs')) items.push(receive('Receive a load'));
+
+  // The driver's own runs. Gated on the duty alone, matching `routes.ts` — a
+  // coordinator has no runs of their own, so this page would be empty for them.
+  // D64: named for what the page opens on — today's run — not for the duty.
+  if (drives) items.push(myShifts("Today's pickup"));
+  // §4 gives the board to the Staff tier as well as to drivers: a coordinator
+  // watches claims land there. It is named for what it IS since D49 — the driver's
+  // own runs belong to the entry above, and a coordinator was never opening this to
+  // pick food up anyway.
+  if (drives || staff) items.push(board('Shift board'));
 
   items.push(inbox());
   return [{ heading: null, items }];
 }
 
+/** §3's cap on the bottom bar. Not a layout preference: 56px tall with the icon
+ *  above the word is what makes a fifth item unreadable rather than merely tight. */
+const BOTTOM_BAR_CAP = 4;
+
 /**
  * The bottom bar: at most four items, icon and label (§3).
  *
- * Deliberately NOT the full list. Schedule, Report and Admin are reached through
- * the Home hub on a phone and on a tablet, because §3's cap leaves room for four
- * and an admin who also drives has six places to be (D22).
+ * Deliberately NOT the full list, and not a truncation of it either. Home and Inbox
+ * are fixed at the ends, which leaves TWO slots for up to six capabilities — so the
+ * bar carries one entry per DUTY held and everything else is reached through the
+ * Home hub. That is what earns the hub its place (D22), and it is the design rather
+ * than a screen that ran out of room.
  *
- * Shorter labels than the sidebar's for the same reason: 56px tall, icon above the
- * word, and "Receive a load" does not fit on a 375px phone at four across.
+ * D49 gave DRIVE a second entry, which does not fit beside a second duty. A driver
+ * who does not receive spends the spare slot on the Shift board; a driver who also
+ * receives gets Receive there instead, and reaches the board from Home. The slots
+ * fill in the same descending-privilege order as the sidebar (D51).
+ *
+ * Shorter labels than the sidebar's: 56px tall, icon above the word, and "Receive a
+ * load" does not fit on a 375px phone at four across.
  */
 function bottomBarFor(user: CurrentUser): NavEntry[] {
   const drives = hasDuty(user, 'DRIVE');
   const receives = hasDuty(user, 'RECEIVE') && shipped('receive-runs');
 
-  const items: NavEntry[] = [home()];
-  if (drives) items.push(board('Pick up'));
-  if (receives) items.push(receive('Receive'));
-  // Neither duty: the board is what the rest of the app is about and everyone can
-  // open it, so a coordinator or a volunteer with nothing assigned gets a bar with
-  // somewhere to go rather than two items floating in 56px.
-  if (!drives && !receives) items.push(board('Board'));
-  items.push(inbox());
-  return items;
+  // The middle, in the sidebar's order. Home and Inbox bracket it, so this may be
+  // at most two long.
+  const middle: NavEntry[] = [];
+  if (receives) middle.push(receive('Receive'));
+  if (drives) middle.push(myShifts('Pickup'));
+  // The board takes whatever slot is left. For a driver who does not receive that is
+  // their second entry (D49); for anyone holding neither duty it is the one
+  // destination everyone can open, so a coordinator or a volunteer with nothing
+  // assigned gets a bar with somewhere to go rather than two items in 56px.
+  if (!receives) middle.push(board('Board'));
+
+  // The cap is §3's and it is enforced here rather than trusted to the branches
+  // above: a fourth duty would otherwise silently draw a fifth item into 56px.
+  return [home(), ...middle.slice(0, BOTTOM_BAR_CAP - 2), inbox()];
 }
 
 /**
  * What this surface shows. The whole list on the desktop, a capped one elsewhere.
  *
  * One entry point rather than two exports, so a caller cannot draw the desktop's
- * seven items into a bar §3 caps at four.
+ * eight items into a bar §3 caps at four.
  */
 export function navItemsFor(user: CurrentUser, viewport: Viewport): NavSection[] {
   if (viewport === 'desktop') return navSectionsFor(user);

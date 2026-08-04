@@ -6,6 +6,11 @@
 //
 // Withdrawing sends no notification (state A64), so nothing here says one goes
 // out. Declaring does notify the coordinator; the save toast says so.
+//
+// MOUNTED BY THE BOARD SINCE D49 (`/board?tab=away`), not by this folder's screen —
+// which is why it imports its own stylesheet rather than relying on `MyShiftsScreen`
+// having been rendered first. It still belongs here: it is S1.4's own half of the
+// spec, and where a panel is mounted is a navigation decision, not an ownership one.
 
 import { useCallback, useState } from 'react';
 import {
@@ -23,6 +28,7 @@ import { AwayForm } from './AwayForm.tsx';
 import { fetchMyTimeAway, withdrawTimeAway } from './data.ts';
 import { COPY, failureMessage, groupBlocks } from './logic.ts';
 import type { BlockView } from './logic.ts';
+import './my-shifts.css';
 
 function BlockRow({ block, onRemove }: { block: BlockView; onRemove: () => void }) {
   return (

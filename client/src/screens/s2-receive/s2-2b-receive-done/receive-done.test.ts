@@ -34,6 +34,8 @@ import {
   outstandingLines,
   runTitle,
   shouldReloadAfter,
+  signOff,
+  signOffTime,
   weightWithUnit,
 } from './receive-done.ts';
 
@@ -51,6 +53,9 @@ function summary(over: Partial<ReceiveDoneSummary> = {}): ReceiveDoneSummary {
     lines: [line()],
     runTotal: '2192.00',
     readyForReceiveDone: true,
+    editWindowOpen: true,
+    completedBy: null,
+    completedAt: null,
     ...over,
   };
 }
@@ -221,12 +226,27 @@ describe('the way back into the weights', () => {
     // `services/receive.ts` refuses every receiver write on a run that is not
     // IN_PROGRESS. This asks the same question one screen earlier; it does not
     // answer it — the server does, again, on the write that matters.
-    expect(canEditWeights(true)).toBe(true);
-    expect(canEditWeights(false)).toBe(false);
+    expect(canEditWeights(true, true)).toBe(true);
+    expect(canEditWeights(false, true)).toBe(false);
   });
 
   it('stays open when the screen could not find out', () => {
-    expect(canEditWeights(null)).toBe(true);
+    expect(canEditWeights(null, true)).toBe(true);
+  });
+
+  it('closes once the receiver edit window has lapsed (`D47`)', () => {
+    // The second half of the same guard. `requireWindowOpen` refuses the write
+    // whatever this says; what it buys is that the receiver is not walked into a
+    // sheet that says no. An open run with a lapsed window is exactly the case
+    // that used to offer the button.
+    expect(canEditWeights(true, false)).toBe(false);
+  });
+
+  it('needs BOTH halves, including when the run"s state is unknown', () => {
+    // "Could not find out whether the run is open" is not permission to ignore a
+    // window the server DID answer.
+    expect(canEditWeights(null, false)).toBe(false);
+    expect(canEditWeights(false, false)).toBe(false);
   });
 
   it('opens the run"s first stop in route order', () => {
@@ -244,6 +264,49 @@ describe('the way back into the weights', () => {
   it('has nowhere to go on a run with no stops', () => {
     // Such a run closes vacuously (I12) and has no sheet to open.
     expect(firstStopId({ stops: [] })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Who signed off (`D46`)
+// ---------------------------------------------------------------------------
+
+describe('the completion attribution', () => {
+  it('names whoever closed the run', () => {
+    expect(
+      signOff(summary({ completedBy: 'Karen Diaz', completedAt: '2026-08-02T20:14:00.000Z' })),
+    ).toEqual({ name: 'Karen Diaz', at: '2026-08-02T20:14:00.000Z' });
+  });
+
+  it('is absent on a run that is not finished', () => {
+    // The server sends null on anything but a COMPLETED shift, because
+    // `updated_by` on an open run is merely the last person to touch it — a skip
+    // stamps it too. Naming them as the person who finished the run would be
+    // wrong, and this side must not invent one from a summary that is otherwise
+    // complete.
+    expect(signOff(summary())).toBeNull();
+    expect(signOff(summary({ readyForReceiveDone: true }))).toBeNull();
+  });
+
+  it('refuses to render half an attribution', () => {
+    // A name with no time, or a time with no name, is a sentence the screen
+    // should not attempt. The two are null and non-null together or not at all.
+    expect(signOff(summary({ completedBy: 'Karen Diaz', completedAt: null }))).toBeNull();
+    expect(signOff(summary({ completedBy: null, completedAt: '2026-08-02T20:14:00.000Z' }))).toBeNull();
+  });
+
+  it('reads the moment in the pantry"s zone, not the device"s (A120)', () => {
+    // 20:14 UTC is 3:14pm in Chicago and 8:14pm in London. The receiver is
+    // reading a screen about the pantry's day.
+    const chicago = signOffTime('2026-08-02T20:14:00.000Z', 'America/Chicago');
+    expect(chicago).toContain('3:14');
+    expect(chicago).toContain('Aug');
+    expect(chicago).toContain('2026');
+    expect(signOffTime('2026-08-02T20:14:00.000Z', 'Europe/London')).toContain('9:14');
+  });
+
+  it('says nothing rather than "Invalid Date"', () => {
+    expect(signOffTime('not a time', 'America/Chicago')).toBe('');
   });
 });
 

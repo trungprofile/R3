@@ -123,151 +123,14 @@
   color: var(--text);
 }
 
-/* --- the two totals, never conflated (PRD §3) ------------------------------ */
+/* The totals, the per-category table and the AGFP drill-in rows all went with the
+ * landing they sat on (D54): `.s31-totals`, `.s31-total*`, `.s31-table`,
+ * `.s31-line*`, `.s31-agfp*` and `.s31-export`. What survives below is the entry
+ * row and the weight-edit form, which moved intact from the drill-in onto the
+ * receipt (`Corrections.tsx`) — the same controls, in front of the reporter. */
 
-.s31-totals {
-  display: grid;
-  /* Three side by side on the desktop, stacking on their own as the column gets
-   * narrower — at tablet width, and equally at 200% zoom. */
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: var(--space-4);
-  margin: 0;
-}
+/* --- the corrections on a receipt (D54) ------------------------------------ */
 
-.s31-total {
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-3);
-}
-
-/* SMALL AND COMPACT, UNDER THE ACTION (D34). These were three full-size figures in
- * a card at the top of the screen, each with a sentence under it. The reporter's
- * job is the Meal Connect report; these two are the cross-check they glance at on
- * the way past, so they sit in one row under the primary button and take the space
- * a row deserves. Nothing is hidden: both are still fully labelled, which since the
- * captions went is the only place PRD §3's boundary is drawn. */
-.s31-totals--compact {
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
-}
-
-.s31-totals--compact .s31-total {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-2);
-}
-
-.s31-total__label {
-  font-size: var(--font-label);
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.s31-total__value {
-  margin: 0;
-  font-size: var(--font-body);
-  font-weight: 700;
-}
-
-/* --- the report table ------------------------------------------------------ */
-
-.s31-table {
-  margin-top: var(--space-5);
-}
-
-.s31-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border);
-}
-
-.s31-line__name {
-  font-size: var(--font-h3);
-  margin: 0;
-}
-
-.s31-line__total {
-  white-space: nowrap;
-}
-
-/* The Trash line has no drill-in and nothing was weighed into it (D27), so what
- * would otherwise be an empty card gets the sentence that explains the absence. */
-.s31-line__computed {
-  font-size: var(--font-label);
-  color: var(--text-muted);
-  margin: var(--space-3) 0 0 0;
-  max-width: 46rem;
-}
-
-.s31-line__sub {
-  font-size: var(--font-label);
-  color: var(--text-muted);
-  font-weight: 400;
-  margin: var(--space-3) 0 var(--space-2) 0;
-}
-
-/* One of our categories inside a food bank line — the drill-in's target. Full
- * row is the target, and it is a real button so the keyboard reaches it. */
-.s31-agfp {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  min-height: var(--row-min);
-  padding: var(--space-2) var(--space-3);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  font: inherit;
-  font-size: var(--font-body);
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-}
-
-.s31-agfp:hover {
-  border-color: var(--border);
-}
-
-.s31-agfp[aria-expanded='true'] {
-  border-color: var(--brand-orange);
-}
-
-.s31-agfp__name {
-  font-weight: 600;
-}
-
-.s31-agfp__weight {
-  white-space: nowrap;
-}
-
-/* --- the drill-in ---------------------------------------------------------- */
-
-.s31-drill {
-  border-left: var(--space-1) solid var(--brand-orange);
-  padding: var(--space-3) var(--space-4);
-  margin: var(--space-2) 0 var(--space-4) var(--space-3);
-}
-
-.s31-day {
-  margin-bottom: var(--space-4);
-}
-
-.s31-day__heading {
-  font-size: var(--font-body);
-  color: var(--text-muted);
-  font-weight: 600;
-  margin: 0 0 var(--space-2) 0;
-}
 
 .s31-entry {
   display: flex;
@@ -341,53 +204,39 @@
   margin-top: var(--space-3);
 }
 
-.s31-drill__total {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-4);
-  font-size: var(--font-h3);
-  margin: var(--space-3) 0;
+/* WHERE THE CORRECTIONS SIT ON THE CARD. Below the line, in "ours" territory: they
+ * are never typed into the portal, and they are the reason the reporter can fix a
+ * number at all once the receiver's window has closed (PRD cap 15). */
+.s31-corrections {
+  margin-top: var(--space-4);
   padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+  border-top: 1px dashed var(--border);
 }
 
-/* The trash deduction, shown as the subtraction it is (D27): what was weighed,
- * what moved to Trash, what is reported. The last line keeps `.s31-drill__total`
- * so the reported figure carries the same weight it did when it was the only one. */
-.s31-drill__totals {
-  margin: var(--space-3) 0;
+.s31-corrections__title {
+  font-size: var(--font-h3);
+  margin: 0 0 var(--space-1) 0;
 }
 
-.s31-drill__line {
+/* `.s31-corrections__hint` went with the paragraph it styled (D69). */
+.s31-corrections__empty {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3) 0;
+  max-width: 46rem;
+}
+
+.s31-corrections__total {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-4);
   font-size: var(--font-body);
-  margin: 0 0 var(--space-2) 0;
-}
-
-.s31-drill__note {
-  font-size: var(--font-label);
-  color: var(--text-muted);
-  margin: 0;
-  max-width: 46rem;
-}
-
-/* --- the one primary action ------------------------------------------------ */
-
-/* AT THE TOP SINCE D34, and no longer a pair: "Print or save as PDF" moved inside
- * the report view, where the cards are. One button, one job, and nothing beside it
- * to be one mis-tap away from. */
-.s31-export {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin-bottom: var(--space-5);
+  font-weight: 600;
+  margin: var(--space-3) 0 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
 }
 
 /* --- the receipts (D29) ---------------------------------------------------- */
@@ -423,21 +272,228 @@
   font-weight: 600;
 }
 
+/* D69 — D28's whole-pound note, ON PAPER ONLY.
+ *
+ * D69 took four standing paragraphs off this screen. Three were describing what the
+ * reporter was already looking at; this one was not. It is the only thing explaining
+ * why S3.1 and Admin metrics show two similar numbers a pound or two apart, so
+ * deleting it would leave that gap with nothing to say why.
+ *
+ * Print is where a reporter is holding the receipt against the portal, which is where
+ * the explanation earns its line. The precedent is D57, three rules down in the print
+ * block: an unticked Meal Connect checkbox is hidden here and drawn there, for exactly
+ * this reason. One element, two stylesheets — DO NOT "fix" this by dropping it from
+ * the markup. */
+.s31-receipts__note--print {
+  display: none;
+}
+
+/* --- progress: a bar AND a sentence (D56) ---------------------------------- */
+
+/* §3 does not let a visual signal carry a state on its own, and a bar with no
+ * number is not a status. So the sentence is the fact and the bar is the same fact
+ * drawn — they are never one without the other. */
+.s31-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 30rem;
+}
+
+.s31-progress__track {
+  height: var(--space-3);
+  background: var(--surface-paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
+.s31-progress__fill {
+  height: 100%;
+  background: var(--success);
+}
+
+/* --- master and detail (D55) ----------------------------------------------- */
+
+/* TWO COLUMNS ON A DESKTOP, ONE BELOW IT. S3.1's canonical device is the desktop
+ * (the responsive matrix marks report + metrics `n/a` on a phone), so the second
+ * column is an affordance rather than a requirement: below the breakpoint the panes
+ * stack and it is list-then-detail, which is exactly what this screen already was.
+ * `grid` rather than two floats so the detail column can be sticky against a long
+ * list without either column deciding the other's height. */
+.s31-receipts__panes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (min-width: 64rem) {
+  .s31-receipts__panes {
+    grid-template-columns: minmax(18rem, 24rem) 1fr;
+  }
+}
+
 /* --- the compact list (D35) ------------------------------------------------ */
 
 .s31-receipts__list {
   margin-bottom: var(--space-5);
 }
 
+/* Section 2. Everything here is outside the report, for one of two reasons, and
+ * each row says its own (D56). */
+.s31-unfiled {
+  margin-top: var(--space-5);
+}
+
+.s31-unreported {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--row-min);
+  padding: var(--space-2) 0;
+}
+
+/* I16b: an anonymous walk-in has no store and no name, so it cannot be reported.
+ * The row says so where the button would have been — never a disabled control
+ * (§3 prefers hiding over disabling), and never colour alone. */
+.s31-unreported__blocked {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  max-width: 18rem;
+}
+
+/* --- pointing a label at a real store (D72) -------------------------------- */
+
+/* A picker, not a form. §1.5 rules out a dropdown where a column of big targets
+ * fits, and the pantry's store list is short by construction — so the modal holds
+ * the same `ListRow`s every other "tap it from a list" in R3 uses. Capped and
+ * scrolled rather than allowed to push the dialogue past the viewport. */
+.s31-attach__list {
+  max-height: 22rem;
+  overflow-y: auto;
+  margin: var(--space-3) 0;
+}
+
+.s31-attach__hint {
+  font-size: var(--font-label);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2) 0;
+  max-width: 30rem;
+}
+
+/* Nothing chosen yet. An instruction rather than an empty pane (§6). */
+.s31-receipts__pick {
+  font-size: var(--font-body);
+  color: var(--text-muted);
+  margin: 0;
+}
+
 .s31-receipts__side {
+  /* The chip STACKS ABOVE the weight rather than sitting beside it. Side by side
+   * they cost the row about 100px, and the list column is capped at 24rem — enough
+   * to wrap "08/03/2026 · Lakeview Deli" onto three lines, which is a worse row
+   * than the one this change set out to fix. Stacked, the column is only as wide as
+   * the chip, and it costs no height: a filed row's subtitle is already two lines. */
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
 
-/* A filed receipt is marked by its WORDS first — the row's subtitle names who and
- * when — and the colour only agrees with them (§3: never colour alone). */
+/* A FILED RECEIPT READS DIFFERENTLY ON FOUR CHANNELS, never on colour alone —
+ * §2 does not allow a signal to be carried by hue (D56). A ticked chip reading
+ * "Submitted" sits beside the weight, the row's subtitle names who filed it and
+ * when, and the weight itself drops to a lighter, muted setting. GREEN is the
+ * fourth channel and only the fourth: `--success` is §2's own colour for
+ * "reported, submitted", and the chip carries it as a fill behind
+ * `--text-on-fill` (5.3:1), which is the pair §2 documents as passing.
+ *
+ * D56 originally had the filed treatment RECEDE so it could not be mistaken for
+ * the open receipt's advancing one (D70). It no longer recedes — QA read receded
+ * as absent, a tick alone being too small to catch from across a counter. What
+ * keeps the two facts apart now is not loudness but WHERE and WHAT: "open" is an
+ * orange rule down the left edge of the whole row plus a tinted surface, "filed"
+ * is a green chip on the right-hand end of one line. Both can be true of the same
+ * row at once and neither hides the other — see the note under D70 below.
+ *
+ * Drop any one of tick, word, byline or muted weight and this becomes a signal
+ * carried by hue, which §2 forbids. They travel together. */
 .s31-receipts__side--done {
   color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* The chip itself, on both sides of the master/detail (D55): the list row and the
+ * open card carry the same mark, so a reporter who has the card open still sees
+ * the state without looking back at the list.
+ *
+ * A FILLED CHIP, NOT A LONE GLYPH. The thing being fixed is legibility in a hurry,
+ * and a shape with a word in it survives being seen from across a counter where a
+ * bare ☑ did not. `--success` is §2's "reported, submitted" and is used nowhere
+ * else on S3.1 except the progress bar, which is this same fact counted; the
+ * screen's other two colours are `--warning` (the blocked-export rule, §80) and
+ * `--danger` (error text, §44), neither of which is a filled pill.
+ *
+ * The border is not decoration: a printer that drops background fills leaves the
+ * outline, the tick and the word behind rather than nothing. */
+.s31-filed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--success);
+  border-radius: var(--radius-pill);
+  background: var(--success);
+  color: var(--text-on-fill);
+  font-size: var(--font-label);
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+
+/* --- the receipt being filed (D70) ----------------------------------------- */
+
+/* THE ROW THAT OPENED THE CARD, AND THE CARD, ARE ONE THING ACROSS TWO COLUMNS.
+ *
+ * D55 gave the receipts a master/detail shape, but the open row looked exactly like
+ * the twenty above it — so a reporter halfway through typing a receipt into Meal
+ * Connect, glancing back at the list, had nothing telling them where they were.
+ *
+ * FOUR CHANNELS, AND COLOUR IS ONLY ONE OF THEM (§2 does not allow a signal to be
+ * carried by hue): an accent rule down the left edge, the indent it creates, a raised
+ * tinted surface, and a heavier title. `aria-current="true"` on the row is the fifth,
+ * for anyone hearing the list.
+ *
+ * IT MUST NOT READ AS "SUBMITTED" (D56). A filed row is a green ticked chip at the
+ * right-hand end of one line (`.s31-filed`); an open row is an orange rule down the
+ * left edge of the WHOLE row, an indent, a tint and a heavier title. Different edge,
+ * different shape, different hue — so when both are true of the same row (an open
+ * receipt that has already been filed) neither treatment covers the other: the orange
+ * rule and the paper tint sit on the row, the green chip sits inside it, and the two
+ * facts are still read separately. Orange is never a fill here and green is never an
+ * edge; keep it that way and they cannot collide. */
+.s31-receipts__row {
+  border-left: var(--space-1) solid transparent;
+}
+
+.s31-receipts__row--open {
+  border-left-color: var(--brand-orange);
+  background: var(--surface-paper);
+}
+
+.s31-receipts__row--open .r3-row,
+.s31-receipts__row--open .r3-row:hover {
+  background: var(--surface-paper);
+}
+
+.s31-receipts__row--open .r3-row__title {
+  font-weight: 700;
 }
 
 /* ONE CARD AT A TIME ON SCREEN. The portal takes one submission at a time, so this
@@ -445,6 +501,14 @@
  * printout is the whole range on paper and nobody is clicking anything. */
 .s31-receipts__card--closed {
   display: none;
+}
+
+/* The card's half of the same treatment. Same accent, same tint, so the eye joins
+ * the row on the left to the card on the right without either of them being labelled
+ * "the one you are on". */
+.s31-receipts__card--open .s31-receipt {
+  border-left: var(--space-1) solid var(--brand-orange);
+  background: var(--surface-paper);
 }
 
 .s31-receipts__title {
@@ -471,7 +535,13 @@
   border-top: 1px solid var(--border);
 }
 
+/* The chip sits at the head of this line on the card, so the card carries the same
+ * mark as the row that opened it (D55's two halves, one fact). */
 .s31-receipt__submit-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--font-body);
   color: var(--text);
   margin: 0;
@@ -546,6 +616,22 @@
 .s31-receipt__tick {
   font-size: var(--font-h3);
   line-height: 1;
+}
+
+/* D57 — SCREEN AND PRINT DIVERGE HERE, DELIBERATELY.
+ *
+ * On screen an unticked box is an empty checkbox a reporter tries to click, and
+ * neither of these is a control: both are computed from the pickup (D29). So the
+ * unticked one is hidden.
+ *
+ * ON PAPER IT COMES BACK, in the print block below. The printout is a mirror of
+ * Meal Connect's own form, and a reporter typing from it needs to see the box they
+ * are leaving unticked — an absent box reads as a field the form does not have.
+ *
+ * This is why the element is rendered and hidden rather than not rendered: one
+ * markup path, two stylesheets. Do not "fix" it by dropping the element. */
+.s31-receipt__box--unticked {
+  display: none;
 }
 
 .s31-receipt__lines {
@@ -730,15 +816,67 @@
     display: block;
   }
 
-  /* The list, the buttons and the check-off are ways to WORK the receipts on
-   * screen. On paper they are neither usable nor informative, and the state they
-   * report is already stale by the time the sheet is in a hand. */
+  /* The list, the buttons, the check-off, the progress bar and the corrections are
+   * ways to WORK the receipts on screen. On paper they are neither usable nor
+   * informative, and the state they report is already stale by the time the sheet
+   * is in a hand. */
   body.s31-print-mode .s31-receipts__list,
   body.s31-print-mode .s31-receipt__submit,
-  body.s31-print-mode .s31-receipts__progress,
+  body.s31-print-mode .s31-progress,
+  body.s31-print-mode .s31-corrections,
+  body.s31-print-mode .s31-receipts__pick,
   body.s31-print-mode .r3-back,
   body.s31-print-mode .s31-receipts__head .r3-btn {
     display: none;
+  }
+
+  /* One column on paper: the list is gone, so the detail pane is the page. */
+  body.s31-print-mode .s31-receipts__panes {
+    display: block;
+  }
+
+  /* D69 — D28's whole-pound note is a PRINT thing now. It is hidden on screen and
+   * drawn here, on the same argument D57 makes three rules down: the printout is
+   * what a reporter holds against the portal, and the reason S3.1 and Admin metrics
+   * differ by a pound or two is only worth a sentence where both numbers are in
+   * front of them. Black on white like the rest of the sheet. */
+  body.s31-print-mode .s31-receipts__note--print {
+    display: block;
+    color: #000;
+  }
+
+  /* D70's focus treatment is a way to keep your place while clicking. On paper every
+   * card prints and nothing is open, so the accent would mark one card as special
+   * for no reason. */
+  body.s31-print-mode .s31-receipts__card--open .s31-receipt {
+    border-left: 1px solid #000;
+    background: #fff;
+  }
+
+  /* D57 — BOTH CHECKBOXES PRINT, TICKED OR NOT, and this rule is the whole reason
+   * the unticked one is rendered at all. The printout mirrors Meal Connect's own
+   * form (D29), and a reporter comparing the two has to see the box they are
+   * leaving alone. On screen it is hidden; here it is not. */
+  body.s31-print-mode .s31-receipt__box--unticked {
+    display: flex;
+  }
+
+  /* THE FILED CHIP IS A SCREEN THING, and on paper it is drawn in ink rather than
+   * in green. Both of its homes — the list and the card's check-off line — are
+   * already hidden by the rule above, on the argument stated there: the check-off
+   * is a way to WORK the receipts, and its state is stale by the time the sheet is
+   * in a hand. This rule is the belt on that brace. Browsers drop background fills
+   * when printing by default, and a green chip that lost its fill but kept
+   * `--text-on-fill` would print as white-on-white, or as a grey block on a printer
+   * that honours it. So wherever it does reach paper it is black on white with a
+   * black outline, keeping the tick and the word — the same literal ink the rest of
+   * this block uses, for the same reason (a printer has no theme to inherit). */
+  body.s31-print-mode .s31-filed {
+    background: #fff;
+    color: #000;
+    border-color: #000;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   body.s31-print-mode .s31-receipt__lines th,

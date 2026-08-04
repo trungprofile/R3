@@ -114,13 +114,27 @@ export function AppShell({ screens, unreadCount, alertsEnabled, onFixAlerts }: A
 
   const onSelect = (id: string) => navigate(routeById(id as ScreenId).path);
 
+  // Both dead ends below carry the same door, in the same slot, to the same place.
+  // They used to differ: the way out of "not here" was nested in the body text
+  // while "no access" had it as the action, so one of the two read as a sentence
+  // rather than a control and QA reached for the URL bar instead. §3 obliges a
+  // dead-end state to carry the way out AS A CONTROL, which is a claim about
+  // where it sits, not only that the words exist.
+  const goHome = (
+    <button
+      type="button"
+      className="r3-linkish"
+      onClick={() => navigate(homePathFor(user, viewport))}
+    >
+      Go home
+    </button>
+  );
+
   let content: ReactNode;
   if (!match) {
     content = (
-      <EmptyState title="That page isn't here.">
-        <button type="button" className="r3-linkish" onClick={() => navigate(HOME_PATH)}>
-          Go home
-        </button>
+      <EmptyState title="That page isn't here." action={goHome}>
+        Check the link, or start again from home.
       </EmptyState>
     );
   } else if (!canSee(user, match.route.requires)) {
@@ -132,16 +146,8 @@ export function AppShell({ screens, unreadCount, alertsEnabled, onFixAlerts }: A
     // re-login is the usual way to land here, and the button is faster than
     // finding the nav. One destination for everyone since D22 gave every viewport
     // a hub; the second wording existed only because the tablet had no nav.
-    const home = homePathFor(user, viewport);
     content = (
-      <EmptyState
-        title="You don't have access to this page."
-        action={
-          <button type="button" className="r3-linkish" onClick={() => navigate(home)}>
-            Go home
-          </button>
-        }
-      >
+      <EmptyState title="You don't have access to this page." action={goHome}>
         Ask a coordinator if you need it.
       </EmptyState>
     );

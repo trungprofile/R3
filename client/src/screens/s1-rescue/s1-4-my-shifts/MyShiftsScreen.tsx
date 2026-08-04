@@ -1,73 +1,49 @@
-// S1.4 — My shifts + availability. Driver, phone-canonical (responsive matrix).
+// S1.4 — the driver's own runs. Driver, phone-canonical (responsive matrix).
 //
-// "Layout: two tabs, 'My runs' (list) and 'When I'm away'." Availability lives
-// inside My Shifts and has no nav entry of its own (§4), which is why it is a tab
-// here rather than a screen.
+// ONE JOB, NO TABS, SINCE D49. S1.4 was specified as "two tabs, 'My runs' and 'When
+// I'm away'", and D30 then mounted the whole thing as a tab on the board — so a
+// driver met a tab row inside a tab row, with the inner one held in local state
+// where no link could reach it. That nesting was the top complaint of round 4.
 //
-// The screen is reached at `/my-shifts`, declared `requires: { anyDuty: ['DRIVE'] }`
-// in `app/routes.ts` — set membership, never a tier comparison (I2). The shell
-// hides it from anyone else and the server refuses it again; neither check is the
-// rule on its own.
+// D49 splits the two halves by what they are for rather than by which screen they
+// were specified on:
 //
-// TWO WAYS IN SINCE D30. Its nav entry is gone — a driver was carrying two entries
-// for one job — and the board (S1.2) mounts this same component as its second tab.
-// The route stays: a bookmark, and the Home hub's "My shifts" card, both still point
-// here, and a screen that is only ever a tab is a screen you cannot link to.
+//   * this screen, `/my-shifts`, nav entry "Today's pickup" — today's run and the rest
+//     of the week. It is where a driver lands, and it has no tabs.
+//   * "When I'm away" — the availability declaration, which §4 gives no nav entry of
+//     its own — is now the board's second tab (`/board?tab=away`), where it is
+//     linkable and survives a reload.
 //
-// The two mountings differ in exactly one thing, `embedded`, and it is a heading
-// question rather than a behavioural one. See the prop.
+// `AwayPanel` still lives in this folder: it is S1.4's own half of the spec, and the
+// board imports it. Which screen mounts a panel is a navigation decision; which
+// screen OWNS it is not.
+//
+// The `embedded` prop is gone with the nesting. This screen is a route again and
+// carries its own `<h1>`.
+//
+// The route is declared `requires: { anyDuty: ['DRIVE'] }` in `app/routes.ts` — set
+// membership, never a tier comparison (I2). The shell hides it from anyone else and
+// the server refuses it again; neither check is the rule on its own.
+//
+// No `BackLink` (D43): this screen IS a nav entry, and a nav destination has no
+// parent to go back to.
 
-import { useState } from 'react';
 import type { ScreenProps } from '../../../app/index.ts';
-import { Segmented, tabPanelProps } from '../../../components/index.ts';
-import type { SegmentedOption } from '../../../components/index.ts';
-import { AwayPanel } from './AwayPanel.tsx';
+import { COPY } from './logic.ts';
 import { RunsPanel } from './RunsPanel.tsx';
 import './my-shifts.css';
 
-type TabId = 'runs' | 'away';
+/** `params` stays optional: the registry's `ComponentType<ScreenProps>` is the only
+ *  caller, and this screen reads none of them. */
+type MyShiftsScreenProps = Partial<ScreenProps>;
 
-/** `mode="tabs"`, not the default filter mode: these switch which panel is
- *  mounted rather than narrowing a list that stays on screen (§3). */
-const TABS: readonly SegmentedOption<TabId>[] = [
-  { value: 'runs', label: 'My runs' },
-  { value: 'away', label: "When I'm away" },
-];
-
-/** `params` is optional because the board mounts this as a tab rather than as a
- *  route, and a tab has no `:params` to hand it. Still assignable to the registry's
- *  `ComponentType<ScreenProps>`, which is the only other caller. */
-interface MyShiftsScreenProps extends Partial<ScreenProps> {
-  /**
-   * D30 — mounted inside another screen's tab rather than as `/my-shifts`.
-   *
-   * Drops this screen's own `<h1>`, and nothing else. The board already carries the
-   * page heading and a selected tab reading "My shifts", so a second `<h1>` would be
-   * both a repeated word on screen and two top-level headings in one document.
-   */
-  embedded?: boolean;
-}
-
-export function MyShiftsScreen({ embedded = false }: MyShiftsScreenProps) {
-  const [tab, setTab] = useState<TabId>('runs');
-
+export function MyShiftsScreen(_props: MyShiftsScreenProps) {
   return (
     <div className="s14">
-      {/* Matches the tab or card that leads here ("My shifts"), so the heading
-          confirms where the tap landed rather than renaming the place. Absent when
-          the board owns the page heading (D30). */}
-      {embedded ? null : <h1 className="s14-title">My shifts</h1>}
-      <Segmented
-        mode="tabs"
-        idPrefix="s14"
-        label="My runs and time away"
-        options={TABS}
-        value={tab}
-        onChange={setTab}
-      />
-      <div className="s14-panel" {...tabPanelProps('s14', tab)}>
-        {tab === 'runs' ? <RunsPanel /> : <AwayPanel />}
-      </div>
+      {/* The nav entry's own words, so the heading confirms where the tap landed
+          rather than renaming the place. */}
+      <h1 className="s14-title">{COPY.pageTitle}</h1>
+      <RunsPanel />
     </div>
   );
 }

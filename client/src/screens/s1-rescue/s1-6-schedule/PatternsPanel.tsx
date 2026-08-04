@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
+  BackLink,
   Button,
   Card,
   ConfirmModal,
@@ -89,6 +90,10 @@ export function PatternsPanel({ editPatternId, onEditConsumed }: PatternsPanelPr
           the one case where the editor is not attached to a list item. */}
       {form !== null && form.patternId === null ? (
         <>
+          {/* §3's one way out, above the form and before its heading (D43). The
+              label names the list it returns to, which is also what the tab that
+              got here is called — one word for one place. */}
+          <BackLink label={COPY.tabRepeating} onBack={() => setForm(null)} />
           <PatternForm
             key="new"
             form={form}
@@ -96,9 +101,6 @@ export function PatternsPanel({ editPatternId, onEditConsumed }: PatternsPanelPr
             routes={routes.data ?? []}
             onSaved={patterns.reload}
           />
-          <Button variant="secondary" onClick={() => setForm(null)}>
-            Back to the list
-          </Button>
         </>
       ) : null}
 
@@ -117,6 +119,10 @@ export function PatternsPanel({ editPatternId, onEditConsumed }: PatternsPanelPr
         renderEditor={(pattern) =>
           form === null || form.patternId !== pattern.id ? null : (
             <div className="s16-list-editor">
+              {/* Same one way out, at the top of the editor rather than under a
+                  bulk-terminate calendar the reader has to scroll past to reach
+                  it (D43). It closes the editor; the list is where it was. */}
+              <BackLink label={COPY.tabRepeating} onBack={() => setForm(null)} />
               <PatternForm
                 key={pattern.id}
                 form={form}
@@ -130,9 +136,6 @@ export function PatternsPanel({ editPatternId, onEditConsumed }: PatternsPanelPr
                 today={today}
                 onTerminated={patterns.reload}
               />
-              <Button variant="secondary" onClick={() => setForm(null)}>
-                Back to the list
-              </Button>
             </div>
           )
         }
