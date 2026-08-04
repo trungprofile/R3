@@ -1,20 +1,23 @@
 # R3: status and review notes for Scott
 
-Hi Scott, short brief on where R3 is, how it's laid out, and what I'd like you to hammer on before we let the
-pantry near it. Skim the first three sections, then spend your time on the test plan at the end.
+Hi Scott. Here's where R3 is, how it's laid out, and what I'd like you to hammer on before we let the
+pantry near it. Skim the first three sections; the part I need you on is the test list at the end.
 
 ## Where things stand
 
 All three phases are built and working: the rescue loop and scheduling, receiving and weighing, and
-the weekly report with metrics. What's left before a pilot:
+the weekly report with metrics.
 
-- Deploying to the pantry box. In progress. The app now builds into a container, which it did not a
-  few days ago.
-- Database backups. There are none on the box today. Going in as part of the deploy.
+**It's deployed.** `rescue.amazinggracepantry.org` runs R3 in Docker on the pantry box, behind the
+existing nginx. The old April prototype is retired; it had been serving a dead API for months.
+
+What's left before a pilot:
+
+- Database backups. There are none on the box today.
 - Your review, which is what this note is for.
-- The NTFB donor codes for the stores on our routes (I've realized this from the [MealConnect receipt you sent us on 03/24](https://amazinggracefoodpantry.sharepoint.com/:b:/r/sites/PantryDevs/Shared%20Documents/Retail%20Rescue%20Platform/MealConnect%20-%20Example%20Receipt%20002418274354.pdf?d=w9dae8e800b224e3c836330f5e7817a7d&csf=1&web=1&e=wCwTXd)).
+- The NTFB donor codes for the stores on our routes (from the [MealConnect receipt you sent on 03/24](https://amazinggracefoodpantry.sharepoint.com/:b:/r/sites/PantryDevs/Shared%20Documents/Retail%20Rescue%20Platform/MealConnect%20-%20Example%20Receipt%20002418274354.pdf?d=w9dae8e800b224e3c836330f5e7817a7d&csf=1&web=1&e=wCwTXd)). It's the one field on the receipt I can't fill in myself.
 
-What you'll be looking at is a seeded test world.
+What you'll be looking at is a seeded test world, not pantry data. Break whatever you like.
 
 ## How the repo is laid out
 
@@ -61,20 +64,23 @@ area you're asking about rather than all of them.
 
 ## Getting in
 
-| | |
-|:--|:--|
-| URL | `rescue.amazinggracepantry.org` |
-| Admin & Staff account | _(to fill in at handover)_ |
-| Driver, receiver and reporter account | _(to fill in at handover)_ |
+<https://rescue.amazinggracepantry.org>
 
-You need both accounts. Navigation shows one entry per capability you hold, so the admin account
-shows you the admin's app and nothing else. The driver and receiver screens need those duties.
+| Account | Sign in as | Credential | What it shows |
+|:--|:--|:--|:--|
+| Admin, all three duties | Ada Grace | `dev-password` | Everything: admin, schedule, report, and the driver and receiver screens |
+| Volunteer, driver + receiver | Luis Park | `4321` | What an actual volunteer sees: no admin, no schedule |
+| Volunteer, no duties | Nina Torres | `4321` | The read-only case |
+
+Use at least the first two. Navigation shows one entry per capability you hold, so signing in as
+admin alone shows you the admin's app, not the volunteer's.
 
 Sign in is name first: pick your name off the list, then enter the credential. Volunteers use a
-4 digit PIN, staff and admin use a password. That's deliberate, not an oversight. The pantry's
-volunteers are older and not especially comfortable with technology, and the account is identified
-before the credential is checked, so rate limiting carries the load that PIN complexity would
-elsewhere.
+4 digit PIN, staff and admin use a password. Deliberate. The pantry's volunteers are older and not
+comfortable with technology, and because the account is identified before the credential is checked,
+rate limiting carries the load PIN complexity would elsewhere.
+
+These are seeded test credentials, published in the repo. They get replaced before real data exists.
 
 ## What I'd like you to stress test
 
@@ -94,9 +100,9 @@ with the printed receipt, that's the most valuable bug you could find.
 the same run. Two reporters marking the same receipt as filed. All of these should have exactly one
 winner. Everything writes at SERIALIZABLE with a retry, so I'd like to know if you can break it.
 
-**4. Permissions.** Sign in as a volunteer and try to reach admin screens and other people's phone
-numbers, by URL as well as by clicking. Personal data leaves through a single function, which is the
-thing that makes it checkable, so a leak would mean something structural is wrong.
+**4. Permissions.** Sign in as Luis and try to reach admin screens and other people's phone numbers,
+by URL as well as by clicking. Personal data leaves through a single function, so a leak would mean
+something structural is wrong.
 
 **5. Real devices.** Drivers use phones and the dock uses a tablet. Run the driver flow on an actual
 phone rather than a resized browser window. The nav bar caps at four entries on small screens by
@@ -106,8 +112,8 @@ design, so office work is reached through Home there.
 pickup. A driver who can't finish a run. A weight typed in wrong and corrected a week later. These
 are where paper processes used to absorb the mess, and where the app has to instead.
 
-**7. The words.** Imagine you are the volunteers. If a label or message would confuse
-Suzie (I forgot how to spell her name), that's a real defect and I'd rather hear it now.
+**7. The words.** If a label or message would confuse Suzie (I forgot how to spell her name), that's
+a real defect and I'd rather hear it now.
 
 Six things look like bugs and aren't, so please skim these before filing:
 
@@ -121,15 +127,26 @@ Six things look like bugs and aren't, so please skim these before filing:
 - Drivers can't close their own run. Only the receiver can.
 - Home is capped at seven cards and is not a duty picker.
 
+## Filing what you find
+
+Issues are open at <https://github.com/trungprofile/R3/issues>. Please include the screen, which
+account you were signed in as, the device, and what you expected. The docs are organised by screen,
+so a bug with a screen name attached is one I can go straight to.
+
+If you'd rather do it live, an hour walking the weekly cycle together is worth more than a list.
+
 ## One ask
 
 The box currently takes traffic through a port forward on the pantry router, a NAT rule, an nginx
 with a certificate to renew, and a firewall allow list. R3 is designed to replace all four with a
 Cloudflare tunnel that connects outbound from the app, which closes the inbound port for good.
 
-That needs access to the Cloudflare account. If you can add me as a member, I can make that change
-and the ones after it without coming back to you each time. It isn't blocking anything today, the
-deploy routes around it, but it's a big security improvement available and it's cheap.
+That needs the Cloudflare account. If you can add me as a member, I can make that change and the ones
+after it without coming back to you each time. Nothing is blocked on it today, since the deploy routes
+around it, but it's a real security improvement going cheap.
+
+One more, whenever you get to it: the tunnel token on the box was exposed in shell history by the
+old setup and should be rotated from the dashboard. It only serves SSH today, not the website.
 
 Thanks,
 Trung
